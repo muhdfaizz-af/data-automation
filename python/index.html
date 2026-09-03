@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<title>Upload Reports</title>
+</head>
+<body>
+  <h1>Upload Order Reports</h1>
+
+  <form id="uploadForm">
+    <div>
+      <label>Order History File (.xlsx / .csv)</label><br>
+      <input type="file" name="order_history" accept=".xlsx,.csv">
+    </div>
+    <br>
+    <div>
+      <label>Tax Invoice File (.xlsx / .csv)</label><br>
+      <input type="file" name="tax_invoice" accept=".xlsx,.csv">
+    </div>
+    <br>
+    <div>
+      <label>CSV Delimiter</label><br>
+      <input type="text" name="delimiter" value="," maxlength="1" size="2">
+    </div>
+    <br>
+    <button type="submit">Upload Files</button>
+  </form>
+
+  <pre id="result"></pre>
+
+  <script>
+    const apiUrl = (() => {
+      const currentOrigin = window.location.origin;
+      const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+      if (isLocalDev && currentOrigin.includes('localhost')) {
+        return `${currentOrigin}/process`;
+      }
+
+      return `${currentOrigin}/python/process`;
+    })();
+
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      document.getElementById('result').textContent = 'Uploading...';
+
+      try {
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          body: formData,
+          credentials: 'same-origin'
+        });
+
+        const text = await res.text();
+        let data;
+
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(`Server returned non-JSON response (${res.status}): ${text.slice(0, 200)}`);
+        }
+
+        if (!res.ok) {
+          throw new Error(data.message || `HTTP ${res.status}`);
+        }
+
+        document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        document.getElementById('result').textContent = 'Error: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
