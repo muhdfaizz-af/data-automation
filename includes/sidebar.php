@@ -97,6 +97,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
     </button>
     <div class="nav-children">
       <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $activeNav === 'salesperformance', $navBasePath) ?>
+      <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $activeNav === 'hub_comparison', $navBasePath) ?>
       <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', false, $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', false, $navBasePath) ?>
       <?= navItem('salesperformance/topupper_product.php', $icoSales, 'Top Upper Product', false, $navBasePath) ?>
