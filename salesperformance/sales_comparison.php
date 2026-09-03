@@ -51,7 +51,7 @@ if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) 
 $_SESSION['last_activity'] = time();
 
 $adminUsername = $_SESSION['admin_username'] ?? '';
-$activeNav = 'salesperformance';
+$activeNav = 'salescomparison';
 $navBasePath = '../';
 
 function getDBConnection() {
