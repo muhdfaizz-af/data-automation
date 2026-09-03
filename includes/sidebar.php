@@ -110,6 +110,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   <div class="nav-divider"></div>
   <div class="sidebar-section-label">Tools</div>
   <?= navItem('upload_reports/index.php', $icoUpload, 'Upload Reports', $activeNav === 'upload', $navBasePath) ?>
+  <?= navItem('salestarget/index.php', $icoUpload, 'Sales Target', $activeNav === 'salestarget', $navBasePath) ?>
   <?= navItem('upload_reports/manual_sales.php', $icoSales, 'Manual Sales', $activeNav === 'manual_sales', $navBasePath) ?>
   
   <div class="nav-divider"></div>

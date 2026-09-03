@@ -223,6 +223,27 @@ CREATE TABLE `manual_sales` (
 COMMENT='Stores sales that are not available in Solucis';
 
 -- ============================================================
+-- sales_target table
+-- Stores daily admin-set sales target. Sales/Different/New Target
+-- are ALWAYS computed live from `orders` — never stored here.
+-- ============================================================
+CREATE TABLE `sales_target` (
+  `id`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `target_date`    DATE NOT NULL,
+  `target_amount`  DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  `created_by`     INT DEFAULT NULL,
+  `updated_by`     INT DEFAULT NULL,
+  `created_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_target_date` (`target_date`),
+  CONSTRAINT `fk_sales_target_created_by` FOREIGN KEY (`created_by`) REFERENCES `admin_users`(`id`)
+    ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT `fk_sales_target_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `admin_users`(`id`)
+    ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
 -- Table: exchange_rates
 -- ============================================================
 DROP TABLE IF EXISTS `exchange_rates`;
