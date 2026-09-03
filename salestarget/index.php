@@ -17,7 +17,7 @@ require_once __DIR__ . '/../config/db.php';           // expects $pdo (PDO insta
 if (!function_exists('toMyr')) {
     function toMyr($amount, $currency) {
         // TODO: replace with the real FX helper used elsewhere (e.g. sales-performance.php)
-        $rates = ['MYR' => 1.0, 'SGD' => 3.35];
+        $rates = ['MYR' => 1.0, 'SGD' => 3.27];
         return $amount * ($rates[$currency] ?? 1.0);
     }
 }

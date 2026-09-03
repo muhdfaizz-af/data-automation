@@ -176,6 +176,67 @@ function clampYear($v) {
     return [$v, ''];
 }
 
+function getSalesTargetNewTarget($pdo, $reportDate) {
+    if (!$pdo) return 0.0;
+
+    try {
+        $date = new DateTime($reportDate);
+        $monthStart = $date->format('Y-m-01');
+        $nextMonth = (clone $date)->modify('first day of next month')->format('Y-m-d');
+        $today = date('Y-m-d');
+
+        $targetStmt = $pdo->prepare('SELECT target_amount FROM sales_target WHERE target_date = :target_date');
+        $targetStmt->execute(['target_date' => $reportDate]);
+        $targetAmount = (float)($targetStmt->fetchColumn() ?: 0);
+
+        if ($reportDate < $today) {
+            $salesStmt = $pdo->prepare(
+                'SELECT currency_code, SUM(sub_total) AS total FROM orders
+                 WHERE order_datetime >= :from_dt AND order_datetime < :to_dt
+                 GROUP BY currency_code'
+            );
+            $salesStmt->execute([
+                'from_dt' => $reportDate . ' 00:00:00',
+                'to_dt' => $date->modify('+1 day')->format('Y-m-d') . ' 00:00:00',
+            ]);
+            $sales = 0.0;
+            foreach ($salesStmt->fetchAll() as $row) {
+                $sales += toMyr($row['total'], $row['currency_code']);
+            }
+            return round($sales, 2);
+        }
+
+        $salesStmt = $pdo->prepare(
+            'SELECT currency_code, SUM(sub_total) AS total FROM orders
+             WHERE order_datetime >= :from_dt AND order_datetime < :to_dt
+             GROUP BY currency_code'
+        );
+        $salesStmt->execute([
+            'from_dt' => $monthStart . ' 00:00:00',
+            'to_dt' => $today . ' 00:00:00',
+        ]);
+        $salesBeforeToday = 0.0;
+        foreach ($salesStmt->fetchAll() as $row) {
+            $salesBeforeToday += toMyr($row['total'], $row['currency_code']);
+        }
+
+        $previousTargetsStmt = $pdo->prepare(
+            'SELECT COALESCE(SUM(target_amount), 0) FROM sales_target
+             WHERE target_date >= :month_start AND target_date < :today'
+        );
+        $previousTargetsStmt->execute(['month_start' => $monthStart, 'today' => $today]);
+        $previousTargets = (float)$previousTargetsStmt->fetchColumn();
+
+        $daysInMonth = (int)$date->format('t');
+        $remainingDays = $date->format('Y-m') === date('Y-m')
+            ? max(1, $daysInMonth - (int)date('j') + 1)
+            : $daysInMonth;
+        return round($targetAmount - (($salesBeforeToday - $previousTargets) / $remainingDays), 2);
+    } catch (Exception $e) {
+        return 0.0;
+    }
+}
+
 // ════════════════════════════════════════════════════
 // 3.4 + 3.5 DATA — Daily / MTD / YTD totals by hub, as of a reporting date
 // ════════════════════════════════════════════════════
@@ -195,6 +256,7 @@ function getHubSummary($pdo, $reportDate, $statusFilter) {
 
     return [
         'report_date' => $reportDate,
+        'daily_target_new' => getSalesTargetNewTarget($pdo, $reportDate),
         'daily'       => buildPeriodPayload($daily),
         'monthly'     => buildPeriodPayload($monthly),
         'yearly'      => buildPeriodPayload($yearly),
@@ -403,6 +465,7 @@ svg{display:block;}
 @media(max-width:1000px){.target-grid{grid-template-columns:1fr;}}
 .target-panel{background:var(--gray-100);border-radius:var(--radius-md);padding:16px;}
 .target-panel-title{font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-700);margin-bottom:12px;}
+.target-total-source{font-size:12px;font-weight:700;color:var(--gray-700);margin:-2px 0 14px;}
 .target-chart-wrap{position:relative;height:210px;margin-bottom:14px;}
 .target-table input.target-input{width:100%;padding:6px 8px;border:1.5px solid var(--gray-300);border-radius:7px;font-size:12.5px;font-family:'Plus Jakarta Sans',sans-serif;text-align:right;font-variant-numeric:tabular-nums;outline:none;}
 .target-table input.target-input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(245,166,35,.15);}
@@ -536,12 +599,13 @@ svg{display:block;}
       <div class="report-icon ri-gold"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></div>
       <div>
         <div class="report-card-title">Sales and Target by Hub</div>
-        <div class="report-card-sub">Enter Target per hub to see the Different (%) — targets are <strong>not saved</strong>, they reset on page reload.</div>
+        <div class="report-card-sub">Enter a daily total target to allocate it by each region's sales percentage. Monthly targets remain per hub and are <strong>not saved</strong>.</div>
       </div>
     </div>
     <div class="target-grid" id="targetGrid">
       <div class="target-panel">
         <div class="target-panel-title" id="targetDailyTitle">Daily Target</div>
+                <div class="target-total-source" id="dailyTargetSource">New Target from Sales Target: RM 0.00</div>
         <div class="target-chart-wrap"><canvas id="dailyTargetChart"></canvas></div>
         <table class="hub-table target-table" id="dailyTargetTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th><th style="text-align:right">Target</th><th style="text-align:right">Different</th></tr></thead>
@@ -559,7 +623,7 @@ svg{display:block;}
     </div>
     <div class="target-note">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      Different % = (Total Sales − Target) ÷ Target × 100. Type a Target value and it recalculates automatically.
+    Daily targets are allocated by each region's sales percentage. Different % = (Total Sales − Target) ÷ Target × 100. Targets recalculate automatically.
     </div>
   </div>
 
@@ -728,6 +792,8 @@ function applySummaryResult(json){
     document.getElementById('dailyPanelSub').textContent = dateLabel + ' only';
     document.getElementById('monthlyPanelSub').textContent = '1st – ' + dateLabel.split(' ')[0] + ' ' + dateLabel.split(' ').slice(1).join(' ');
     document.getElementById('yearlyPanelSub').textContent = 'Jan 1 – ' + dateLabel;
+    targetState.dailyNew = Number(json.daily_target_new) || 0;
+    document.getElementById('dailyTargetSource').textContent = 'New Target from Sales Target: ' + formatRM(targetState.dailyNew);
 
     ['daily','monthly','yearly'].forEach(period => {
         const payload = json[period];
@@ -744,7 +810,7 @@ function applySummaryResult(json){
 // ════════════════════════════════════════════════════
 // 3.5 — TARGET (client-side only, NOT persisted to DB)
 // ════════════════════════════════════════════════════
-const targetState = { daily: {}, monthly: {} }; // hub -> target value entered by admin
+const targetState = { daily: {}, monthly: {}, dailyNew: 0 }; // dailyNew comes from Sales Target
 const targetInstances = {};
 let latestActuals = { daily: {}, monthly: {} };
 
@@ -767,15 +833,20 @@ function renderTargetTable(period){
     HUB_KEYS.forEach(k => {
         const meta = HUBS[k];
         const actual = (latestActuals[period][k] || { total: 0, pct: 0 });
-        const target = targetState[period][k] ?? '';
+        const target = period === 'daily'
+            ? (targetState.dailyNew > 0 ? targetState.dailyNew * Number(actual.pct || 0) / 100 : null)
+            : (targetState[period][k] ?? '');
         const diff = computeDifferent(actual.total, Number(target));
         const diffClass = diff === null ? '' : (diff >= 0 ? 'diff-pos' : 'diff-neg');
+        const targetCell = period === 'daily'
+            ? formatRM(target || 0)
+            : `<input type="number" min="0" step="0.01" class="target-input" data-period="${period}" data-hub="${k}" value="${target}" placeholder="0.00">`;
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><span class="hub-name-cell"><span class="hub-dot" style="background:${meta.color}"></span>${meta.label}</span></td>
             <td class="num">${formatRM(actual.total)}</td>
             <td class="num">${formatPct(actual.pct, false)}</td>
-            <td class="num"><input type="number" min="0" step="0.01" class="target-input" data-period="${period}" data-hub="${k}" value="${target}" placeholder="0.00"></td>
+            <td class="num">${targetCell}</td>
             <td class="num ${diffClass}">${diff === null ? '—' : formatPct(diff, true)}</td>`;
         tbody.appendChild(tr);
     });
@@ -786,7 +857,9 @@ function renderTargetChart(period){
     const canvasId = period + 'TargetChart';
     const labels = HUB_KEYS.map(k => HUBS[k].label);
     const actualValues = HUB_KEYS.map(k => (latestActuals[period][k] || {}).total || 0);
-    const targetValues = HUB_KEYS.map(k => Number(targetState[period][k]) || 0);
+    const targetValues = HUB_KEYS.map(k => period === 'daily'
+        ? (targetState.dailyNew > 0 ? targetState.dailyNew * Number((latestActuals[period][k] || {}).pct || 0) / 100 : 0)
+        : Number(targetState[period][k]) || 0);
 
     if (targetInstances[canvasId]) targetInstances[canvasId].destroy();
     const ctx = document.getElementById(canvasId).getContext('2d');
