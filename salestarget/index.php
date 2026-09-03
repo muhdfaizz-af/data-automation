@@ -13,7 +13,6 @@ error_reporting(E_ALL);
 ini_set('display_errors', 0);
 
 require_once __DIR__ . '/../config/db.php';           // expects $pdo (PDO instance)
-require_once __DIR__ . '/../includes/functions.php';  // expects toMyr($amount, $currency)
 
 if (!function_exists('toMyr')) {
     function toMyr($amount, $currency) {
@@ -24,6 +23,19 @@ if (!function_exists('toMyr')) {
 }
 
 $isLoggedIn = isset($_SESSION['admin_id']);
+
+$pdo = null;
+try {
+  $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', DB_HOST, DB_PORT, DB_NAME, DB_CHARSET);
+  $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES => false,
+  ]);
+} catch (PDOException $e) {
+  http_response_code(503);
+  exit('Database connection failed. Please check the database configuration.');
+}
 
 // ============================================================
 // POST = AJAX save (return JSON, exit early — never reaches HTML below)
@@ -38,8 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $adminId = (int)$_SESSION['admin_id'];
-    $today   = date('Y-m-d');
-
     $body = json_decode(file_get_contents('php://input'), true);
     if (!is_array($body) || empty($body['targets']) || !is_array($body['targets'])) {
         http_response_code(400);
@@ -48,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $sql = "INSERT INTO sales_target (target_date, target_amount, created_by, updated_by)
-            VALUES (:date, :amount, :admin, :admin)
+          VALUES (:date, :amount, :created_by, :updated_by)
             ON DUPLICATE KEY UPDATE
                 target_amount = VALUES(target_amount),
                 updated_by    = VALUES(updated_by)";
@@ -72,17 +82,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = "Jumlah tidak sah untuk $date";
                 continue;
             }
-            // Server-side guard: reject overwrite of an already-past (locked) date
-            // even if this endpoint is hit directly, bypassing the readonly UI.
-            if ($date < $today) {
-                $errors[] = "$date sudah locked, tidak boleh diedit.";
-                continue;
-            }
-
             $stmt->execute([
-                ':date'   => $date,
-                ':amount' => (float)$amount,
-                ':admin'  => $adminId,
+              ':date'       => $date,
+              ':amount'     => (float)$amount,
+              ':created_by' => $adminId,
+              ':updated_by' => $adminId,
             ]);
             $saved++;
         }
@@ -140,14 +144,14 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 // ---- actual sales for this month, grouped by date+currency, converted to MYR ----
 $salesByDate = [];
 $stmt = $pdo->prepare(
-    "SELECT DATE(order_datetime) AS d, currency, SUM(sub_total) AS subtotal_sum
+    "SELECT DATE(order_datetime) AS d, currency_code, SUM(sub_total) AS subtotal_sum
      FROM orders
      WHERE order_datetime >= :start AND order_datetime < DATE_ADD(:end, INTERVAL 1 DAY)
-     GROUP BY DATE(order_datetime), currency"
+    GROUP BY DATE(order_datetime), currency_code"
 );
 $stmt->execute([':start' => $firstDay, ':end' => $lastDay]);
 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $myr = toMyr((float)$row['subtotal_sum'], $row['currency']);
+      $myr = toMyr((float)$row['subtotal_sum'], $row['currency_code']);
     $salesByDate[$row['d']] = ($salesByDate[$row['d']] ?? 0) + $myr;
 }
 
@@ -319,8 +323,7 @@ table.target-tbl tr.row-total td{font-weight:800;border-top:2px solid var(--ink)
 
   <div class="card">
     <div class="legend">
-      <span><i class="dot dot-locked"></i> Locked (dah lepas — sales sebenar dah masuk)</span>
-      <span><i class="dot dot-future"></i> Boleh edit (akan datang)</span>
+      <span><i class="dot dot-future"></i> Semua tarikh boleh diedit</span>
     </div>
 
     <form id="targetForm">
@@ -337,7 +340,7 @@ table.target-tbl tr.row-total td{font-weight:800;border-top:2px solid var(--ink)
           </thead>
           <tbody>
             <?php foreach ($rows as $r):
-                $rowClass = $r['is_past'] ? 'row-locked' : '';
+                $rowClass = '';
                 if ($r['date'] === $today) $rowClass .= ' row-today';
                 $diffClass = '';
                 if ($r['different'] !== null) {
@@ -347,9 +350,6 @@ table.target-tbl tr.row-total td{font-weight:800;border-top:2px solid var(--ink)
             <tr class="<?= trim($rowClass) ?>">
               <td>
                 <?= date('D, d M', strtotime($r['date'])) ?>
-                <?php if ($r['is_past']): ?>
-                  <span class="badge-lock">🔒</span>
-                <?php endif; ?>
               </td>
               <td>
                 <input
@@ -359,7 +359,6 @@ table.target-tbl tr.row-total td{font-weight:800;border-top:2px solid var(--ink)
                   class="target-input"
                   data-date="<?= $r['date'] ?>"
                   value="<?= number_format($r['target'], 2, '.', '') ?>"
-                  <?= $r['is_past'] ? 'readonly' : '' ?>
                 >
               </td>
               <td><?= fmtMoney($r['sales']) ?></td>
@@ -405,7 +404,7 @@ document.getElementById('targetForm').addEventListener('submit', async function(
   const status = document.getElementById('saveStatus');
   const statusContainer = document.getElementById('statusContainer');
 
-  const inputs = document.querySelectorAll('.target-input:not([readonly])');
+  const inputs = document.querySelectorAll('.target-input');
   const payload = Array.from(inputs).map(inp => ({
     date: inp.dataset.date,
     amount: parseFloat(inp.value || '0')
