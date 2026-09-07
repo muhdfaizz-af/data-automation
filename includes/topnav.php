@@ -69,3 +69,30 @@ $adminUsername = $adminUsername ?? '';
     </a>
   </div>
 </header>
+
+<script>
+/**
+ * Shared desktop sidebar control.
+ * Defined here because every page using the top navigation needs it.
+ */
+window.toggleSidebarOnDesktop = function () {
+  if (window.innerWidth < 900) {
+    if (typeof window.openDrawer === 'function') {
+      window.openDrawer();
+    }
+    return;
+  }
+
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+
+  try {
+    if (collapsed) {
+      localStorage.setItem('adminSidebarCollapsed', '1');
+    } else {
+      localStorage.removeItem('adminSidebarCollapsed');
+    }
+  } catch (error) {
+    // The sidebar still works if browser storage is unavailable.
+  }
+};
+</script>
