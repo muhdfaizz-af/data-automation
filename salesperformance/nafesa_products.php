@@ -284,6 +284,10 @@ function classifyNafesaProduct(
         'VOUCHER',
         'DISPLAY',
         'PACKAGING',
+        'CHARM',
+        'KEYCHAIN',
+        'ENAMEL PIN',
+        
     ];
 
     foreach ($excludedTerms as $term) {
