@@ -17,6 +17,16 @@ $icoLogout='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 // ── Navigation Item Helper Function ──
 $navBasePath = $navBasePath ?? '';
 $activeNav = $activeNav ?? 'dashboard';
+$currentPage = basename($_SERVER['SCRIPT_NAME'] ?? '');
+$salesPerformancePages = [
+  'sales_comparison.php',
+  'hub_comparison.php',
+  'sales_estimation.php',
+  'asd_comparison.php',
+  'top_product.php',
+  'top_bottom.php',
+  'reqruitment.php',
+];
 
 function navItem($href, $icon, $label, $active = false, $basePath = '') {
     $c = $active ? ' active' : '';
@@ -88,7 +98,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   
   <div class="sidebar-section-label">Reports</div>
   <div class="nav-group open" data-nav-id="salesperformance">
-    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' ? 'active' : '' ?>" aria-expanded="true">
+    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' || in_array($currentPage, $salesPerformancePages, true) ? 'active' : '' ?>" aria-expanded="true">
       <span class="nav-parent-content">
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
@@ -96,13 +106,13 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <span class="nav-chev">▾</span>
     </button>
     <div class="nav-children">
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $activeNav === 'salescomparison', $navBasePath) ?>
-      <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $activeNav === 'salesbyhub', $navBasePath) ?>
-      <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', false, $navBasePath) ?>
-      <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', false, $navBasePath) ?>
-      <?= navItem('salesperformance/topupper_product.php', $icoSales, 'Top Upper Product', false, $navBasePath) ?>
-      <?= navItem('salesperformance/topbottom_product.php', $icoSales, 'Top Bottom Product', false, $navBasePath) ?>
-      <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Reqruitment', false, $navBasePath) ?>
+      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
+      <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/top_product.php', $icoSales, 'Top Upper Product', $currentPage === 'top_product.php', $navBasePath) ?>
+      <?= navItem('salesperformance/top_bottom.php', $icoSales, 'Top Bottom Product', $currentPage === 'top_bottom.php', $navBasePath) ?>
+      <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Reqruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
     </div>
   </div>
   <?= navItem('products.php', $icoBox, 'Products', $activeNav === 'products', $navBasePath) ?>
@@ -137,7 +147,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   
   <div class="sidebar-section-label">Reports</div>
   <div class="nav-group open" data-nav-id="salesperformance">
-    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' ? 'active' : '' ?>" aria-expanded="true">
+    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' || in_array($currentPage, $salesPerformancePages, true) ? 'active' : '' ?>" aria-expanded="true">
       <span class="nav-parent-content">
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
@@ -145,10 +155,13 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <span class="nav-chev">▾</span>
     </button>
     <div class="nav-children">
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $activeNav === 'salesperformance', $navBasePath) ?>
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Estimation', false, $navBasePath) ?>
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Monthly Summary', false, $navBasePath) ?>
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Yearly Overview', false, $navBasePath) ?>
+      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
+      <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/top_product.php', $icoSales, 'Top Upper Product', $currentPage === 'top_product.php', $navBasePath) ?>
+      <?= navItem('salesperformance/top_bottom.php', $icoSales, 'Top Bottom Product', $currentPage === 'top_bottom.php', $navBasePath) ?>
+      <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Reqruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
     </div>
   </div>
   <?= navItem('product-bundles.php', $icoBundle, 'Product Bundles', $activeNav === 'bundles', $navBasePath) ?>
