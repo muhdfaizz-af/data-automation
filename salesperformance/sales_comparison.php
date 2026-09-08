@@ -132,7 +132,7 @@ function buildSectionResponse($data, $error, $from, $to) {
     $total = array_sum($data['values']);
     $count = count($data['values']);
     $avg   = $count > 0 ? $total / $count : 0;
-    return [
+    $resp = [
         'labels'  => $data['labels'],
         'values'  => $data['values'],
         'total'   => round($total, 2),
@@ -141,6 +141,10 @@ function buildSectionResponse($data, $error, $from, $to) {
         'from'    => $from,
         'to'      => $to,
     ];
+    if (isset($data['keys'])) {
+        $resp['keys'] = $data['keys'];
+    }
+    return $resp;
 }
 
 // ════════════════════════════════════════════════════
@@ -370,7 +374,7 @@ function getMonthlySales($pdo, $monthFrom, $monthTo, $dayFrom, $dayTo, $statusFi
     }
 
     // ── Fill every month touched by the range (Jul -> Aug, etc) ──
-    $labels = []; $values = [];
+    $labels = []; $values = []; $keys = [];
     $cursor = new DateTime($monthFrom . '-01');
     $end    = new DateTime($monthTo . '-01');
     $end->modify('+1 month');
@@ -378,9 +382,10 @@ function getMonthlySales($pdo, $monthFrom, $monthTo, $dayFrom, $dayTo, $statusFi
         $key = $cursor->format('Y-m');
         $labels[] = $cursor->format('M Y');
         $values[] = round($totalsByYm[$key] ?? 0, 2);
+        $keys[]   = $key;
         $cursor->modify('+1 month');
     }
-    return ['labels' => $labels, 'values' => $values];
+    return ['labels' => $labels, 'values' => $values, 'keys' => $keys];
 }
 
 // ════════════════════════════════════════════════════
@@ -447,12 +452,13 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
         $totalsByYear[$y] = ($totalsByYear[$y] ?? 0) + toMyr($r['total'], $r['company_code']);
     }
 
-    $labels = []; $values = [];
+    $labels = []; $values = []; $keys = [];
     for ($y = $yearFrom; $y <= $yearTo; $y++) {
         $labels[] = (string)$y;
         $values[] = round($totalsByYear[$y] ?? 0, 2);
+        $keys[]   = $y;
     }
-    return ['labels' => $labels, 'values' => $values];
+    return ['labels' => $labels, 'values' => $values, 'keys' => $keys];
 }
 
 $pdo = getDBConnection();
@@ -595,8 +601,9 @@ svg{display:block;}
 
 /* ── LAYOUT ── */
 .layout{display:flex;margin-top:var(--topbar-h);}
-.main{margin-left:var(--sidebar-w);flex:1;padding:28px 32px 48px;min-width:0;transition:margin-left .25s ease;}
-@media(max-width:900px){.main{margin-left:0;padding:20px;} body.sidebar-collapsed .main{margin-left:0;}}
+.main{margin-left:var(--sidebar-w);width:calc(100% - var(--sidebar-w));flex:1;padding:28px 32px 48px;min-width:0;box-sizing:border-box;overflow-x:hidden;transition:margin-left .25s ease,width .25s ease;}
+body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(100% - var(--sidebar-w-collapsed));}
+@media(max-width:900px){.main{margin-left:0;width:100%;padding:20px;} body.sidebar-collapsed .main{margin-left:0;width:100%;}}
 
 /* ── PAGE HEADER ── */
 .page-header{margin-bottom:24px;}
@@ -629,8 +636,9 @@ svg{display:block;}
 .global-filter-hint{font-size:11.5px;color:var(--gray-500);margin-left:auto;align-self:center;max-width:260px;}
 
 /* ── two-column body: filter panel (left) + stats & chart (right) ── */
-.report-card-body{display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:start;}
+.report-card-body{display:grid;grid-template-columns:300px minmax(0,1fr);gap:28px;align-items:start;}
 @media(max-width:860px){.report-card-body{grid-template-columns:1fr;}}
+.report-card-main{min-width:0;}
 
 .filter-panel{display:flex;flex-direction:column;gap:12px;background:var(--gray-100);border-radius:var(--radius-md);padding:16px;}
 .filter-panel-label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
@@ -675,6 +683,20 @@ svg{display:block;}
 .chart-wrap.is-loading{opacity:.35;pointer-events:none;}
 .chart-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--gray-500);font-size:13px;font-weight:600;text-align:center;}
 .chart-empty.show{display:flex;}
+
+/* ── BREAKDOWN TABLE (per section, full card width, mirrors the chart's current filtered range) ── */
+.comparison-table-wrap{margin-top:20px;width:100%;}
+.comparison-table-wrap.is-loading{opacity:.35;pointer-events:none;}
+.comparison-table-title{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px;}
+.comparison-table-scroll{overflow-x:auto;border:1px solid var(--gray-100);border-radius:var(--radius-md);width:100%;}
+.comparison-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:auto;}
+.comparison-table thead th{background:var(--green);color:#fff;text-align:left;padding:12px 16px;font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.3px;white-space:nowrap;}
+.comparison-table tbody td{padding:11px 16px;border-top:1px solid var(--gray-100);white-space:nowrap;}
+.comparison-table tbody tr:hover{background:var(--gray-100);}
+.comparison-table td.col-total{font-weight:700;}
+.change-positive{color:var(--green);font-weight:700;}
+.change-negative{color:var(--red);font-weight:700;}
+.change-neutral{color:var(--gray-500);font-weight:600;}
 
 @media(max-width:600px){.main{padding:16px 14px 40px;} .stats-row{flex-direction:column;align-items:flex-start;} .global-filter-hint{margin-left:0;max-width:none;}}
 </style>
@@ -770,7 +792,7 @@ svg{display:block;}
         </button>
       </form>
 
-      <div>
+      <div class="report-card-main">
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
@@ -791,6 +813,19 @@ svg{display:block;}
           <canvas id="dailyChart"></canvas>
           <div class="chart-empty" id="dailyEmpty">No sales data in this range.</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Breakdown table: full card width, mirrors dailyForm's current filtered range -->
+    <div class="comparison-table-wrap" id="dailyTableWrap">
+      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-scroll">
+        <table class="comparison-table">
+          <thead>
+            <tr><th>Date</th><th>Total Sales</th><th>Changes (%)</th></tr>
+          </thead>
+          <tbody id="dailyTableBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -837,7 +872,7 @@ svg{display:block;}
         </button>
       </form>
 
-      <div>
+      <div class="report-card-main">
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
@@ -858,6 +893,19 @@ svg{display:block;}
           <canvas id="monthlyChart"></canvas>
           <div class="chart-empty" id="monthlyEmpty">No sales data in this range.</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Breakdown table: full card width, mirrors monthlyForm's current filtered range -->
+    <div class="comparison-table-wrap" id="monthlyTableWrap">
+      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-scroll">
+        <table class="comparison-table">
+          <thead>
+            <tr><th>Month</th><th>Total Sales</th><th>Changes (%)</th></tr>
+          </thead>
+          <tbody id="monthlyTableBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -927,7 +975,7 @@ svg{display:block;}
         </button>
       </form>
 
-      <div>
+      <div class="report-card-main">
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
@@ -948,6 +996,19 @@ svg{display:block;}
           <canvas id="yearlyChart"></canvas>
           <div class="chart-empty" id="yearlyEmpty">No sales data in this range.</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Breakdown table: full card width, mirrors yearlyForm's current filtered range, with actual date detail -->
+    <div class="comparison-table-wrap" id="yearlyTableWrap">
+      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-scroll">
+        <table class="comparison-table">
+          <thead>
+            <tr><th>Year</th><th>Total Sales</th><th>Changes (%)</th></tr>
+          </thead>
+          <tbody id="yearlyTableBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -1033,9 +1094,17 @@ function makeDataset(type, label, data, color, hoverColor, ctx){
 
 // ── Initial data rendered from PHP — everything after this is updated via AJAX ──
 const chartData = {
-    daily:   { labels: <?= json_encode($dailyData['labels']) ?>,   values: <?= json_encode($dailyData['values']) ?>,   label:'Daily Sales',   color:'#E0202E', hover:'#8E1620' },
-    monthly: { labels: <?= json_encode($monthlyData['labels']) ?>, values: <?= json_encode($monthlyData['values']) ?>, label:'Monthly Sales', color:'#00B4B4', hover:'#008A8A' },
-    yearly:  { labels: <?= json_encode($yearlyData['labels']) ?>,  values: <?= json_encode($yearlyData['values']) ?>,  label:'Yearly Sales',  color:'#F5A623', hover:'#c97e0e' }
+    daily:   { labels: <?= json_encode($dailyData['labels']) ?>,   values: <?= json_encode($dailyData['values']) ?>,   keys: [],                                        label:'Daily Sales',   color:'#E0202E', hover:'#8E1620' },
+    monthly: { labels: <?= json_encode($monthlyData['labels']) ?>, values: <?= json_encode($monthlyData['values']) ?>, keys: <?= json_encode($monthlyData['keys']) ?>, label:'Monthly Sales', color:'#00B4B4', hover:'#008A8A' },
+    yearly:  { labels: <?= json_encode($yearlyData['labels']) ?>,  values: <?= json_encode($yearlyData['values']) ?>,  keys: <?= json_encode($yearlyData['keys']) ?>,  label:'Yearly Sales',  color:'#F5A623', hover:'#c97e0e' }
+};
+
+// ── Current day/month sub-range for each section (so the breakdown table can
+//    show the actual date detail, e.g. "1 - 20 Aug 2026" instead of just "Aug 2026") ──
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const sectionMeta = {
+    monthly: { dayFrom: <?= (int)$monthlyDayFrom ?>, dayTo: <?= (int)$monthlyDayTo ?> },
+    yearly:  { monthFrom: <?= (int)$yearlyMonthFrom ?>, monthTo: <?= (int)$yearlyMonthTo ?>, dayFrom: <?= (int)$yearlyDayFrom ?>, dayTo: <?= (int)$yearlyDayTo ?> }
 };
 
 const chartInstances = {};
@@ -1066,12 +1135,92 @@ function renderChart(key, type){
 }
 
 // ════════════════════════════════════════════════════
+// Build the human-readable period label for a table row.
+// Daily: chart label is already a full date ("17 Aug") — use as-is.
+// Monthly: show the day-of-month range picked, e.g. "1 - 20 Aug 2026".
+// Yearly: show the month+day range picked, e.g. "1 Jan - 20 Aug 2025".
+// ════════════════════════════════════════════════════
+function buildPeriodLabel(key, label, rowKey){
+    if (key === 'monthly') {
+        const meta = sectionMeta.monthly;
+        if (!rowKey) return label;
+        const parts = rowKey.split('-');
+        const y = Number(parts[0]);
+        const m = Number(parts[1]);
+        const monthName = MONTH_NAMES[m - 1] || '';
+        return meta.dayFrom + ' - ' + meta.dayTo + ' ' + monthName + ' ' + y;
+    }
+    if (key === 'yearly') {
+        const meta = sectionMeta.yearly;
+        const y = Number(rowKey || label);
+        const fromName = MONTH_NAMES[meta.monthFrom - 1] || '';
+        const toName   = MONTH_NAMES[meta.monthTo - 1] || '';
+        if (meta.monthFrom === meta.monthTo) {
+            return meta.dayFrom + ' - ' + meta.dayTo + ' ' + fromName + ' ' + y;
+        }
+        return meta.dayFrom + ' ' + fromName + ' - ' + meta.dayTo + ' ' + toName + ' ' + y;
+    }
+    return label;
+}
+
+// ════════════════════════════════════════════════════
+// BREAKDOWN TABLE — mirrors chartData[key], one row per label,
+// "Changes (%)" compares each row to the row before it in the SAME range.
+// ════════════════════════════════════════════════════
+function renderTable(key){
+    const tbody = document.getElementById(key + 'TableBody');
+    if (!tbody) return;
+
+    const { labels, values, keys } = chartData[key];
+
+    if (!labels.length) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--gray-500);padding:16px;">No data in this range.</td></tr>';
+        return;
+    }
+
+    let rowsHtml = '';
+    let prevValue = null;
+
+    labels.forEach(function(label, i){
+        const value = Number(values[i]) || 0;
+        const rowKey = keys && keys[i] !== undefined ? keys[i] : null;
+        const periodLabel = buildPeriodLabel(key, label, rowKey);
+        let changeCell = '<span class="change-neutral">–</span>';
+
+        if (prevValue !== null) {
+            if (prevValue === 0) {
+                changeCell = value > 0
+                    ? '<span class="change-positive">New</span>'
+                    : '<span class="change-neutral">0.00%</span>';
+            } else {
+                const pct = ((value - prevValue) / prevValue) * 100;
+                const cls = pct > 0 ? 'change-positive' : (pct < 0 ? 'change-negative' : 'change-neutral');
+                const sign = pct > 0 ? '+' : '';
+                changeCell = '<span class="' + cls + '">' + sign + pct.toFixed(2) + '%</span>';
+            }
+        }
+
+        rowsHtml += '<tr>'
+            + '<td>' + periodLabel + '</td>'
+            + '<td class="col-total">' + formatRM(value) + '</td>'
+            + '<td>' + changeCell + '</td>'
+            + '</tr>';
+
+        prevValue = value;
+    });
+
+    tbody.innerHTML = rowsHtml;
+}
+
+// ════════════════════════════════════════════════════
 // AJAX FILTERING — the page URL never changes, everything goes through fetch()
 // ════════════════════════════════════════════════════
 const AJAX_URL = window.location.pathname;
 
 function setSectionLoading(key, isLoading){
     document.getElementById(key + 'ChartWrap').classList.toggle('is-loading', isLoading);
+    const tableWrap = document.getElementById(key + 'TableWrap');
+    if (tableWrap) tableWrap.classList.toggle('is-loading', isLoading);
     const form = document.getElementById(key + 'Form');
     if (form) {
         const btn = form.querySelector('.btn-apply');
@@ -1139,6 +1288,7 @@ async function fetchSection(key){
 function applySectionResult(key, json){
     chartData[key].labels = json.labels || [];
     chartData[key].values = json.values || [];
+    chartData[key].keys   = json.keys || [];
 
     document.getElementById(key + 'TotalValue').textContent   = formatRM(json.total);
     document.getElementById(key + 'AverageValue').textContent = formatRM(json.average);
@@ -1160,6 +1310,8 @@ function applySectionResult(key, json){
         if (json.to)   document.getElementById('monthlyMonthTo').value   = json.to;
         if (json.day_from) document.getElementById('monthlyDayFrom').value = json.day_from;
         if (json.day_to)   document.getElementById('monthlyDayTo').value   = json.day_to;
+        if (json.day_from) sectionMeta.monthly.dayFrom = Number(json.day_from);
+        if (json.day_to)   sectionMeta.monthly.dayTo   = Number(json.day_to);
     } else if (key === 'yearly') {
         if (json.from) document.getElementById('yearlyYearFrom').value = String(json.from);
         if (json.to)   document.getElementById('yearlyYearTo').value   = String(json.to);
@@ -1167,10 +1319,15 @@ function applySectionResult(key, json){
         if (json.month_to)   document.getElementById('yearlyMonthTo').value   = json.month_to;
         if (json.day_from)   document.getElementById('yearlyDayFrom').value   = json.day_from;
         if (json.day_to)     document.getElementById('yearlyDayTo').value     = json.day_to;
+        if (json.month_from) sectionMeta.yearly.monthFrom = Number(json.month_from);
+        if (json.month_to)   sectionMeta.yearly.monthTo   = Number(json.month_to);
+        if (json.day_from)   sectionMeta.yearly.dayFrom   = Number(json.day_from);
+        if (json.day_to)     sectionMeta.yearly.dayTo     = Number(json.day_to);
     }
 
     const typeSelect = document.querySelector('.chart-type-select[data-chart="' + key + '"]');
     renderChart(key, typeSelect ? typeSelect.value : 'line');
+    renderTable(key);
 }
 
 document.addEventListener('DOMContentLoaded', function(){
@@ -1181,6 +1338,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
     ['daily','monthly','yearly'].forEach(function(key){
         renderChart(key, 'line');
+        renderTable(key);
     });
 
     document.querySelectorAll('.chart-type-select').forEach(function(select){
