@@ -6,15 +6,14 @@
  * - Tax Invoice MY and SG, stored in order_items
  *
  * Rules:
- * - Include Choco Albab and Zeky products
- * - Include Nafesa scarves, excluding known accessories
+ * - Include Nafesa products only
+ * - Divide products into Scarf, Inner and Hand Socks
  * - Include all regions
  * - Consolidate codes representing the same product/design
  * - Convert SG invoice amounts to MYR
  * - Rank by total sales
- * - Exclude zero/negative sales from Bottom 5
+ * - Exclude zero/negative sales from Bottom 10
  */
-
 session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
@@ -24,11 +23,22 @@ require_once __DIR__ . '/../config/db.php';
 // Define SG exchange rate
 define('SGD_TO_MYR_RATE', 3.27);
 
-// Define all brands to measure the top and bottom 5 products
-define('ALLOWED_BRANDS', [
-    'NAFESA',
-    'CHOCO ALBAB',
-    'ZEKY',
+// Fix the report to Nafesa and define the selectable product types.
+define('REPORT_BRAND', 'NAFESA');
+
+define('ALLOWED_PRODUCT_TYPES', [
+    'scarf'      => 'Scarf',
+    'inner'      => 'Inner',
+    'hand_socks' => 'Hand Socks',
+]);
+
+define('DEFAULT_PRODUCT_TYPE', 'scarf');
+
+define('ALLOWED_REGIONS', [
+    'all' => 'All Regions',
+    'SM'  => 'Semenanjung',
+    'BT'  => 'Bintulu',
+    'SG'  => 'Singapore',
 ]);
 
 /**
@@ -123,45 +133,51 @@ function validatePeriod(string $from, string $to): string
     $toDate = new DateTime($to);
     $days = (int)$fromDate->diff($toDate)->format('%a');
 
+    if ($days > 731) {
+        return 'The reporting period cannot exceed 732 days.';
+    }
+
     return '';
 }
 
-if ($days > 731) {
-    return 'The reporting period cannot exceed 732 days.';
-}
-
 /**
- * Validate the company filter
+ * Validate the submitted region.
+ *
+ * Any invalid or missing region defaults to All Regions.
  */
-function normalizeCompany($company): string
+function normalizeRegion($region): string
 {
-    if (!is_string($company)) {
+    if(!is_string($region)) {
         return 'all';
     }
 
-    return in_array($company, ['all', 'MY', 'SG'], true)
-        ? $company
+    return array_key_exists($region, ALLOWED_REGIONS)
+        ? $region
         : 'all';
 }
 
 /**
- * Validate submitted brands.
+ * Validate one selected product type.
  */
-function normalizeBrands($brands): array
+function normalizeProductType($type): string
 {
-    if (!is_array($brands)) {
-        return[];
+    if (!is_string($type)) {
+        return DEFAULT_PRODUCT_TYPE;
     }
 
-    $brands = array_map(
-        static fn($brand) => strtoupper(trim((string)$brand)),
-        $brands
-    );
+    $type = strtolower(trim($type));
 
-    return array_values(array_unique(array_intersect(
-        ALLOWED_BRANDS,
-        $brands
-    )));
+    return array_key_exists($type, ALLOWED_PRODUCT_TYPES)
+        ? $type
+        : DEFAULT_PRODUCT_TYPE;
+}
+
+/**
+ * Return a user-friendly product-type level
+ */
+function getProductTypeLabel(string $type): string
+{
+    return ALLOWED_PRODUCT_TYPES[$type] ?? 'Unknown';
 }
 
 /**
@@ -216,55 +232,70 @@ function cleanProductName(string $description): string
 }
 
 /**
- * Determine whether a Nafesa item is a scarf rather than an accessory.
+ * Classify a Nafesa item as Scarf, Inner or Hand Socks.
  *
- * The database has a brand column but does not have a dedicated
- * "scarf" category. Therefore, known accessory code families are
- * excluded here.
+ * Return null for packaging, promotional items and other items that
+ * should not participate in the product ranking.
+ *
  */
-function isNafesaScarf(
-    string $brand,
+function classifyNafesaProduct(
     string $itemCode,
     string $description
-): bool {
-    if ($brand !== 'NAFESA') {
-        return true;
-    }
-
+): ?string {
     $code = canonicalizeItemCode($itemCode);
     $description = strtoupper(trim($description));
 
-    // Known Nafesa non-scarf SKU families.
-    $excludedCodePatterns = [
-        '/^NTU/',     // Inner Tube
-        '/^NCH/',     // Inner Chin
-        '/^NST/',     // Inner Strap
-        '/^NIN/',     // Inner Ninja
-        '/^NAFESA-/', // Paper bags and general accessories
-    ];
-
-    foreach ($excludedCodePatterns as $pattern) {
-        if (preg_match($pattern, $code)) {
-            return false;
-        }
+    /*
+     * Hand Socks must be checked before the general scarf fallback.
+     */
+    if (
+        preg_match('/^NHS/', $code) ||
+        str_contains($description, 'HANDSOCK') ||
+        str_contains($description, 'HAND SOCK')
+    ) {
+        return 'hand_socks';
     }
 
-    $excludedDescriptionTerms = [
-        'INNER TUBE',
-        'INNER CHIN',
-        'INNER STRAP',
-        'INNER NINJA',
+    /*
+     * Known Nafesa inner code families and descriptions.
+     *
+     * MERD-NCH codes are also captured through the description.
+     */
+    if (
+        preg_match('/^(?:NTU|NCH|NST|NIN)/', $code) ||
+        str_contains($code, '-NCH') ||
+        str_contains($description, 'INNER TUBE') ||
+        str_contains($description, 'INNER CHIN') ||
+        str_contains($description, 'INNER STRAP') ||
+        str_contains($description, 'INNER NINJA') ||
+        str_contains($description, 'FREE INNER')
+    ) {
+        return 'inner';
+    }
+
+    /*
+     * Exclude packaging and non-wearable promotional materials.
+     */
+    $excludedTerms = [
         'PAPERBAG',
         'PAPER BAG',
+        'BUNTING',
+        'BROCHURE',
+        'VOUCHER',
+        'DISPLAY',
+        'PACKAGING',
     ];
 
-    foreach ($excludedDescriptionTerms as $term) {
+    foreach ($excludedTerms as $term) {
         if (str_contains($description, $term)) {
-            return false;
+            return null;
         }
     }
 
-    return true;
+    /*
+     * Remaining qualifying Nafesa designs are treated as scarves.
+     */
+    return 'scarf';
 }
 
 /**
@@ -274,38 +305,89 @@ function getRankedProducts(
     PDO $pdo,
     string $from,
     string $to,
-    string $companyFilter,
-    array $brands
+    string $regionFilter,
+    string $selectedType
 ): array {
-    if (empty($brands)) {
-        return [];
-    }
-
     $params = [
         'from_date'    => $from . ' 00:00:00',
         'to_exclusive' => (new DateTime($to))
             ->modify('+1 day')
             ->format('Y-m-d 00:00:00'),
-        'status'       => 'Confirmed',
+        'status'       => 'Confirmed', // Void orders are excluded
+        'brand'       => REPORT_BRAND,
     ];
 
-    $brandPlaceholders = [];
+    /*
+    * Region rules:
+    *
+    * all = Semenanjung + Bintulu + Singapore
+    * SM  = Malaysia, excluding Bintulu
+    * BT  = Malaysia Bintulu warehouse
+    * SG  = Singapore
+    *
+    * When All Regions is selected, no additional region condition
+    * is added. This allows every MY and SG transaction to qualify.
+    */
+    $regionCondition = '';
 
-    foreach ($brands as $index => $brand) {
-        $parameterName = 'brand_' . $index;
+    if ($regionFilter === 'BT') {
+        /*
+        * Bintulu:
+        * - Tax Invoice location MYBTWH, or
+        * - Order invoice prefix MYBT
+        */
+        $regionCondition = "
+            AND c.company_code = 'MY'
 
-        $brandPlaceholders[] = ':' . $parameterName;
-        $params[$parameterName] = $brand;
-    }
+            AND (
+                UPPER(TRIM(COALESCE(
+                    oi.order_processed_location,
+                    ''
+                ))) = 'MYBTWH'
 
-    $brandInClause = implode(', ', $brandPlaceholders);
+                OR UPPER(TRIM(COALESCE(
+                    o.invoice_prefix,
+                    ''
+                ))) = 'MYBT'
+            )
+        ";
+    } elseif ($regionFilter === 'SG') {
+        /*
+        * Singapore:
+        * All Singapore company transactions.
+        */
+        $regionCondition = "
+            AND c.company_code = 'SG'
+        ";
+    } elseif ($regionFilter === 'SM') {
+        /*
+        * Semenanjung:
+        * Malaysia transactions that are not identified as Bintulu.
+        */
+        $regionCondition = "
+            AND c.company_code = 'MY'
 
-    $companyCondition = '';
+            AND NOT (
+                UPPER(TRIM(COALESCE(
+                    oi.order_processed_location,
+                    ''
+                ))) = 'MYBTWH'
 
-    if ($companyFilter !== 'all') {
-        $companyCondition =
-            ' AND c.company_code = :company_code';
-        $params['company_code'] = $companyFilter;
+                OR UPPER(TRIM(COALESCE(
+                    o.invoice_prefix,
+                    ''
+                ))) = 'MYBT'
+            )
+        ";
+    } else {
+        /*
+         * All Regions:
+         * Include the two supported invoice companies. Malaysia covers
+         * both Semenanjung and Bintulu, while SG covers Singapore.
+         */
+        $regionCondition = "
+            AND c.company_code IN ('MY', 'SG')
+        ";
     }
 
     /*
@@ -339,8 +421,8 @@ function getRankedProducts(
     WHERE o.order_datetime >= :from_date
         AND o.order_datetime < :to_exclusive
         AND o.order_status = :status
-        AND UPPER(TRIM(oi.brand)) IN ({$brandInClause})
-        {$companyCondition}
+        AND UPPER(TRIM(oi.brand)) = :brand
+        {$regionCondition}
 
     GROUP BY
         UPPER(TRIM(oi.brand)),
@@ -362,17 +444,25 @@ function getRankedProducts(
         (string)($row['item_description'] ?? '')
     );
 
-    // Nafesa must contain scarves only.
-    if (!isNafesaScarf($brand, $rawCode, $description)) {
-        continue;
-    }
+   $productType = classifyNafesaProduct(
+    $rawCode,
+    $description
+   );
+
+   if (
+    $productType === null ||
+    $productType !== $selectedType
+   ) {
+    continue;
+   }
 
     $masterCode = canonicalizeItemCode($rawCode);
     $key = $brand . '|' . $masterCode;
 
     if (!isset($products[$key])) {
         $products[$key] = [
-            'brand'          => $brand,
+            'brand'          => REPORT_BRAND,
+            'product_type'   => $productType,
             'item_code'      => $masterCode,
             'product_name'   => cleanProductName($description),
             'total_quantity' => 0,
@@ -409,10 +499,12 @@ function getRankedProducts(
     $result = [];
 
     foreach ($products as $product) {
+
     /*
-    * Bottom 5 excludes products with zero sales.
+    * Bottom 10 excludes products with zero sales.
     * A product must also have at least one sold unit.
     */
+
     if (
         $product['total_quantity'] <= 0 ||
         $product['total_sales'] <= 0
@@ -444,41 +536,46 @@ function getRankedProducts(
 }
 
 /**
- * Sort and return the Top 5 and Bottom 5.
+ * Assign overall sales ranks and return Top 10 and Bottom 10
+ *
+ * The complete list is first ranked from highest sales to lowest
+ * sales. Bottom products retain their overall rank numbers.
  */
+
 function splitRankings(array $products): array
 {
-    $topProducts = $products;
-
+    /*
+     * Sort every qualifying product by Total Sales from highest
+     * to lowest.
+     *
+     * The spaceship operator returns:
+     * - Negative number when $b should come before $a
+     * - Zero when both sales values are equal
+     * - Positive number when $a should come before $b
+     *
+     * $b is placed before $a here, creating descending order.
+     */
     usort(
-        $topProducts,
+        $products,
         static function (array $a, array $b): int {
             $salesComparison =
                 $b['total_sales'] <=> $a['total_sales'];
-            
-                if ($salesComparison !==0 ) {
-                    return $salesComparison;
-                }
 
-                return strcmp(
-                    $a['product_name'],
-                    $b['product_name']
-                );
-        }
-    );
-
-    $bottomProducts = $products;
-
-    usort(
-        $bottomProducts,
-        static function (array $a, array $b): int {
-            $salesComparison =
-                $a['total_sales'] <=> $b['total_sales'];
-
+            /*
+             * If the sales values are different, use the sales
+             * comparison as the sorting result.
+             */
             if ($salesComparison !== 0) {
                 return $salesComparison;
             }
 
+             /*
+             * If two products have exactly the same Total Sales,
+             * sort them alphabetically by product name.
+             *
+             * This gives the report a consistent order when sales
+             * values are tied.
+             */
             return strcmp(
                 $a['product_name'],
                 $b['product_name']
@@ -486,11 +583,38 @@ function splitRankings(array $products): array
         }
     );
 
+    /*
+     * Assign overall rank:
+     * highest sales = 1
+     * lowest sales  = total number of products
+     */
+
+    foreach ($products as $index => &$product) {
+        $product['overall_rank'] = $index + 1;
+    }
+
+    unset($product);
+
+    $topProducts = array_slice($products, 0, 10);
+
+    /*
+     * Take the final 10 products from the descending list, then
+     * reverse them so the lowest-selling product appears first.
+     *
+     * Example with 23 products:
+     * 23, 22, 21, 20 ...
+     */
+
+    $bottomProducts = array_reverse(
+        array_slice($products, -10)
+    );
+
     return [
-        'top'    => array_slice($topProducts, 0, 5),
-        'bottom' => array_slice($bottomProducts, 0, 5),
+        'top'    => $topProducts,
+        'bottom' => $bottomProducts,
     ];
 }
+
 
 $defaultFrom = date('Y-m-01');
 $defaultTo = date('Y-m-d');
@@ -503,15 +627,14 @@ $to = is_string($_GET['to'] ?? null)
     ? $_GET['to']
     : $defaultTo;
 
-$companyFilter = normalizeCompany(
-    $_GET['company'] ?? 'all'
+$regionFilter = normalizeRegion(
+    $_GET['region'] ?? 'all'
 );
 
 $isSubmitted = isset($_GET['apply']);
 
-$selectedBrands = normalizeBrands(
-    $_GET['brands'] ??
-    ($isSubmitted ? [] : ALLOWED_BRANDS)
+$selectedType = normalizeProductType(
+    $_GET['type'] ?? DEFAULT_PRODUCT_TYPE
 );
 
 $errors = [];
@@ -520,10 +643,6 @@ $periodError = validatePeriod($from, $to);
 
 if ($periodError !== '') {
     $errors[] = $periodError;
-}
-
-if (empty($selectedBrands)) {
-    $errors[] = 'Please select at least one brand.';
 }
 
 $products = [];
@@ -541,12 +660,12 @@ if (!$pdo) {
 if (empty($errors) && $pdo) {
     try {
         $products = getRankedProducts(
-            $pdo,
-            $from,
-            $to,
-            $companyFilter,
-            $selectedBrands
-        );
+    $pdo,
+    $from,
+    $to,
+    $regionFilter,
+    $selectedType
+);
 
         $rankings = splitRankings($products);
     } catch (Throwable $e) {
@@ -572,12 +691,13 @@ function renderProductRows(array $products): void
         return;
     }
 
-    foreach ($products as $index => $product) {
-        $codes = implode(', ', $product['source_codes']);
+    foreach ($products as $product) {
         ?>
         <tr>
             <td>
-                <span class="rank-number"><?= $index + 1 ?></span>
+                <span class="rank-number">
+                    <?= number_format($product['overall_rank']) ?>
+                </span>
             </td>
 
             <td>
@@ -593,7 +713,9 @@ function renderProductRows(array $products): void
 
             <td>
                 <span class="brand-badge">
-                    <?= htmlspecialchars($product['brand']) ?>
+                    <?= htmlspecialchars(
+                        getProductTypeLabel($product['product_type'])
+                    ) ?>
                 </span>
             </td>
 
@@ -605,9 +727,6 @@ function renderProductRows(array $products): void
                 RM<?= number_format($product['total_sales'], 2) ?>
             </td>
 
-            <td class="source-codes">
-                <?= htmlspecialchars($codes) ?>
-            </td>
         </tr>
         <?php
     }
@@ -619,7 +738,7 @@ function renderProductRows(array $products): void
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Top &amp; Bottom Products — S ASIA SALES REPORT</title>
+<title>Top &amp; Bottom Nafesa Products — S ASIA SALES REPORT</title>
 <link rel="icon" href="../images/icon-sasia.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -656,17 +775,21 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 /* ── FILTER SECTION ── */
 .filter-grid {display:grid;grid-template-columns:repeat(2,minmax(180px,1fr)) 200px;gap:16px;align-items:end;margin-top:20px;}
 .field {display:flex;flex-direction:column;gap:6px;}
-.field label, .filter-label {color:var(--gray-700);font-size:10.5px;font-weight:800;letter-spacing:.35px;text-transform:uppercase;}
+.field label, .filter-label {color:var(--gray-700);font-size:10px;font-weight:800;letter-spacing:.35px;text-transform:uppercase;}
 .field input,
-.field select {width:100%;min-height:43px;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;background:var(--white);outline:none;}
+.field select {width:100%;min-height:43px;padding:10px 12px;font-size:16px;border:1.5px solid var(--gray-300);border-radius:9px;background:var(--white);outline:none;}
 .field input:focus, .field select:focus {border-color:var(--red);box-shadow:0 0 0 3px rgba(224,32,46,.10);}
+
+/* ── PRODUCT TYPE SECTION ── */
+.type-help {margin-top:9px;color:var(--gray-500);font-size:11px;line-height:1.5;}
 
 /* ── BRAND SECTION ── */
 .brand-section {margin-top:18px;}
 .brand-options {display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;}
 .brand-option {display:flex;align-items:center;gap:8px;padding:10px 13px;border:1.5px solid var(--gray-300);border-radius:9px;background:var(--white);cursor:pointer;font-size:12px;font-weight:700;}
 .brand-option:has(input:checked) {border-color:var(--red);background:#FFF5F5;}
-.brand-option input {width:16px;height:16px;accent-color:var(--red);}
+.brand-option input[type="radio"] {width:17px;height:17px;flex-shrink:0;accent-color:var(--red);cursor:pointer;}
+.brand-option:has(input[type="radio"]:checked) {border-color:var(--red);background:#FFF5F5;box-shadow:0 0 0 2px rgba(224,32,46,.06);}
 .filter-footer {display:flex;justify-content:flex-end;margin-top:18px;}
 
 /* ── APPLY BUTTON ── */
@@ -678,24 +801,29 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .info-box {border:1px solid #BFDBFE;background:#EFF6FF;color:#1E3A8A;}
 
 /* ── SUMMARY SECTION ── */
-.summary-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:24px;}
+.summary-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px;}
 .summary-card {padding:18px;border:1px solid var(--gray-100);border-radius:var(--radius-md);background:var(--white);box-shadow:var(--shadow-card);}
 .summary-label {margin-bottom:5px;color:var(--gray-500);font-size:10px;font-weight:800;text-transform:uppercase;}
-.summary-value {font-size:21px;font-weight:800;}
+.summary-value {font-size:16px;font-weight:800;}
 
 /* ── RANKING SECTION ── */
 .ranking-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
 .ranking-card {min-width:0;}
-.table-wrap {margin-top:18px;overflow-x:auto;}
-.ranking-table {width:100%;min-width:760px;border-collapse:collapse;}
-.ranking-table th, .ranking-table td {padding:12px;border-bottom:1px solid var(--gray-100);text-align:left;vertical-align:top;font-size:12px;}
-.ranking-table th {color:var(--gray-500);font-size:10px;letter-spacing:.3px;text-transform:uppercase;}
-.ranking-table th:nth-child(4),.ranking-table td:nth-child(4),.ranking-table th:nth-child(5),
-.ranking-table td:nth-child(5) {text-align:right;}
+.table-wrap {width:100%;min-width:0;margin-top:18px;overflow-x:hidden;}
+.ranking-table {width:100%;table-layout:fixed;border-collapse:collapse;}
+.ranking-table th, .ranking-table td {padding:12px 8px;border-bottom:1px solid var(--black-100);text-align:left;vertical-align:top;font-size:11px;overflow-wrap:anywhere;}
+.ranking-table th {color:var(--black-500);font-size:10px;letter-spacing:.3px;text-transform:uppercase;}
+.ranking-table th:nth-child(1),.ranking-table td:nth-child(1) {width:10%;}
+.ranking-table th:nth-child(2),.ranking-table td:nth-child(2) {width:39%;}
+.ranking-table th:nth-child(3),.ranking-table td:nth-child(3) {width:16%;}
+.ranking-table th:nth-child(4),.ranking-table td:nth-child(4) {width:14%;}
+.ranking-table th:nth-child(5),.ranking-table td:nth-child(5) {width:21%;}
+.ranking-table th:nth-child(4),.ranking-table td:nth-child(4),
+.ranking-table th:nth-child(5),.ranking-table td:nth-child(5) {text-align:right;}
 .rank-number {display:inline-flex;width:25px;height:25px;align-items:center;justify-content:center;border-radius:50%;background:var(--gray-100);font-weight:800;}
-.product-code,.source-codes {margin-top:4px;color:var(--gray-500);font-size:10px;line-height:1.4;}
+.product-code,.source-codes {margin-top:4px;color:var(--black-500);font-size:10px;line-height:1.4;}
 .brand-badge {display:inline-flex;min-width:76px;min-height:32px;padding:5px 10px;align-items:center;justify-content:center;border-radius:20px;background:var(--gray-100);font-size:9px;font-weight:800;line-height:1.15;text-align:center;}
-.sales-value {color:var(--red);font-weight:800;white-space:nowrap;}
+.sales-value {color:var(--black);font-weight:800;white-space:normal;}
 .empty-row {padding:30px !important;color:var(--gray-500);text-align:center !important;}
 @media(max-width:1100px) {.ranking-grid {grid-template-columns:1fr;}}
 @media(max-width:900px) {.main,body.sidebar-collapsed .main {margin-left:0;padding:20px;}}
@@ -720,7 +848,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 </script>
 
 <?php
-$pageTitle = 'Top & Bottom Products';
+$pageTitle = 'Top & Bottom Nafesa Products';
 include __DIR__ . '/../includes/topnav.php';
 include __DIR__ . '/../includes/sidebar.php';
 ?>
@@ -729,8 +857,8 @@ include __DIR__ . '/../includes/sidebar.php';
 <main class="main">
 
     <div class="page-header">
-        <h1>Top &amp; Bottom Products</h1>
-        <p>Rank Tax Invoice MY and SG products by converted total sales.</p>
+        <h1>Top &amp; Bottom Nafesa Products</h1>
+        <p>Rank Nafesa Scarf, Inner and Hand Socks products using converted Tax Invoice sales.</p>
     </div>
 
     <?php if (!empty($errors)): ?>
@@ -744,16 +872,18 @@ include __DIR__ . '/../includes/sidebar.php';
     <?php endif; ?>
 
     <div class="info-box">
-        Bottom 5 includes only products with at least one sold unit and
-        positive sales during the selected reporting period. All regions
-        are included.
+        This report includes Nafesa products only. Rankings are based
+        on Total Sales after converting Singapore sales to MYR.
+        Bottom 10 includes products with at least one sold unit and
+        positive sales during the selected period. Results are limited
+        to the selected region.
     </div>
 
     <section class="card">
         <div class="card-title">Report Filters</div>
 
         <div class="card-subtitle">
-            Select the period, company and brands to include.
+            Select the period, region and one Nafesa product type.
         </div>
 
         <form method="get" action="top_bottom.php">
@@ -770,27 +900,55 @@ include __DIR__ . '/../includes/sidebar.php';
                 </div>
 
                 <div class="field">
-                    <label for="company">Company</label>
-                    <select id="company" name="company">
-                        <option value="all" <?= $companyFilter === 'all' ? 'selected' : '' ?>>All Companies
-                        </option>
-                        <option value="MY" <?= $companyFilter === 'MY' ? 'selected' : '' ?>>Malaysia
-                        </option>
-                        <option value="SG" <?= $companyFilter === 'SG' ? 'selected' : '' ?>>Singapore
-                        </option>
+                    <label for="region">Region</label>
+
+                    <select id="region" name="region" required>
+                        <?php foreach (
+                            ALLOWED_REGIONS as $regionValue => $regionLabel
+                        ): ?>
+                            <option
+                                value="<?= htmlspecialchars($regionValue) ?>"
+                                <?= $regionFilter === $regionValue
+                                    ? 'selected'
+                                    : '' ?>
+                            >
+                                <?= htmlspecialchars($regionLabel) ?>
+
+                                <?php if ($regionValue !== 'all'): ?>
+                                    (<?= htmlspecialchars($regionValue) ?>)
+                                <?php endif; ?>
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
             </div>
 
             <div class="brand-section">
-                <div class="filter-label">Brand / Type</div>
+                <div class="filter-label">Nafesa Product Type</div>
+
                 <div class="brand-options">
-                    <?php foreach (ALLOWED_BRANDS as $brand): ?>
+                    <?php foreach (
+                        ALLOWED_PRODUCT_TYPES as $typeValue => $typeLabel
+                    ): ?>
                         <label class="brand-option">
-                            <input type="checkbox" name="brands[]" value="<?= htmlspecialchars($brand) ?>" <?= in_array($brand, $selectedBrands, true) ? 'checked' : '' ?>>
-                            <span><?= $brand === 'NAFESA' ? 'Nafesa — Scarf only' : htmlspecialchars($brand) ?></span>
+                            <input
+                                type="radio"
+                                name="type"
+                                value="<?= htmlspecialchars($typeValue) ?>"
+                                <?= $selectedType === $typeValue
+                                    ? 'checked'
+                                    : '' ?>
+                                required
+                            >
+
+                            <span><?= htmlspecialchars($typeLabel) ?></span>
                         </label>
                     <?php endforeach; ?>
+                </div>
+
+                <div class="type-help">
+                    Select one product type. Rankings are generated separately
+                    for Scarf, Inner or Hand Socks.
                 </div>
             </div>
 
@@ -803,9 +961,7 @@ include __DIR__ . '/../includes/sidebar.php';
     <?php if (empty($errors)): ?>
         <section class="summary-grid">
             <div class="summary-card">
-                <div class="summary-label">
-                    Ranked Products
-                </div>
+                <div class="summary-label">Ranked Products</div>
 
                 <div class="summary-value">
                     <?= number_format(count($products)) ?>
@@ -813,23 +969,31 @@ include __DIR__ . '/../includes/sidebar.php';
             </div>
 
             <div class="summary-card">
-                <div class="summary-label">
-                    Reporting Period
-                </div>
-
+                <div class="summary-label">Reporting Period</div>
                 <div class="summary-value">
-                    <?= htmlspecialchars(
-                        date('d M Y', strtotime($from))
-                    ) ?>
+                    <?= htmlspecialchars(date('d M Y', strtotime($from))) ?>
+                    &ndash;
+                    <?= htmlspecialchars(date('d M Y', strtotime($to))) ?>
                 </div>
             </div>
 
             <div class="summary-card">
-                <div class="summary-label">
-                    Currency
-                </div>
+                <div class="summary-label">Region</div>
 
-                <div class="summary-value">MYR</div>
+                <div class="summary-value">
+                    <?= htmlspecialchars(
+                        ALLOWED_REGIONS[$regionFilter]
+                    ) ?>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Product Type</div>
+
+                <div class="summary-value">
+                    <?= htmlspecialchars(
+                        getProductTypeLabel($selectedType)
+                    ) ?>
+                </div>
             </div>
         </section>
 
@@ -837,7 +1001,7 @@ include __DIR__ . '/../includes/sidebar.php';
 
             <section class="card ranking-card top-card">
                 <div class="card-title">
-                    Top 5 by Total Sales
+                    Top 10 by Total Sales
                 </div>
 
                 <div class="card-subtitle">
@@ -850,10 +1014,9 @@ include __DIR__ . '/../includes/sidebar.php';
                             <tr>
                                 <th>Rank</th>
                                 <th>Product</th>
-                                <th>Brand</th>
+                                <th>Type</th>
                                 <th>Quantity</th>
                                 <th>Total Sales</th>
-                                <th>Consolidated Codes</th>
                             </tr>
                         </thead>
 
@@ -866,7 +1029,7 @@ include __DIR__ . '/../includes/sidebar.php';
 
             <section class="card ranking-card bottom-card">
                 <div class="card-title">
-                    Bottom 5 by Total Sales
+                    Bottom 10 by Total Sales
                 </div>
 
                 <div class="card-subtitle">
@@ -879,10 +1042,9 @@ include __DIR__ . '/../includes/sidebar.php';
                             <tr>
                                 <th>Rank</th>
                                 <th>Product</th>
-                                <th>Brand</th>
+                                <th>Type</th>
                                 <th>Quantity</th>
                                 <th>Total Sales</th>
-                                <th>Consolidated Codes</th>
                             </tr>
                         </thead>
 
@@ -900,31 +1062,25 @@ include __DIR__ . '/../includes/sidebar.php';
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.querySelector(
-        'form [action="top_bottom.php"]'
+document.addEventListener('DOMContentLoaded', function () {
+    const typeRadios = document.querySelectorAll(
+        'input[name="type"]'
     );
 
-    const checkboxes = Array.from(
-        document.querySelectorAll('input[name="brands[]"]')
-    );
+    typeRadios.forEach(function (radio) {
+        radio.addEventListener('change', function () {
+            document.querySelectorAll('.brand-option').forEach(
+                function (option) {
+                    option.classList.remove('selected');
+                }
+            );
 
-    if (!form) {
-        return;
-    }
+            const selectedOption = radio.closest('.brand-option');
 
-    form.addEventListener('submit', function (event) {
-        const hasSelectedBrand = checkboxes.some(
-            function (checkbox) {
-                return checkbox.checked;
+            if (selectedOption) {
+                selectedOption.classList.add('selected');
             }
-        );
-
-        if (!hasSelectedBrand) {
-            event.preventDefault();
-            alert('Please select at least one brand.');
-            checkboxes[0].focus();
-        }
+        });
     });
 });
 </script>
