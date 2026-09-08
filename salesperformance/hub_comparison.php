@@ -350,7 +350,7 @@ if (isset($_GET['ajax'])) {
     header('Content-Type: application/json; charset=utf-8');
 
     $section      = $_GET['ajax'];
-    $statusFilter = normalizeStatus($_GET['status_filter'] ?? 'all');
+    $statusFilter = normalizeStatus($_GET['status_filter'] ?? 'confirmed');
 
     if ($section === 'summary') {
         [$reportDate, $err] = clampReportDate($_GET['report_date'] ?? '');
@@ -379,7 +379,7 @@ if (isset($_GET['ajax'])) {
 // ════════════════════════════════════════════════════
 $todayYmd     = date('Y-m-d');
 $currentYear  = (int)date('Y');
-$statusFilter = 'all';
+$statusFilter = 'confirmed';
 $reportDate   = $todayYmd;
 $incrementYear = $currentYear;
 
@@ -546,8 +546,8 @@ svg{display:block;}
       <div class="global-filter-group">
         <label for="globalStatus">Status</label>
         <select id="globalStatus">
-          <option value="all" selected>All</option>
-          <option value="confirmed">Confirmed</option>
+          <option value="all">All</option>
+          <option value="confirmed" selected>Confirmed</option>
           <option value="void">Void</option>
         </select>
       </div>

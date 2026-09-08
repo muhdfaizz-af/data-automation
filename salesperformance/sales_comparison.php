@@ -529,7 +529,7 @@ $todayYmd    = date('Y-m-d');
 $currentYear = (int)date('Y');
 $currentYm   = date('Y-m');
 
-$statusFilter  = 'all';
+$statusFilter  = 'confirmed';
 $companyFilter = 'all';
 $sourceFilter  = 'all';
 
@@ -719,8 +719,8 @@ svg{display:block;}
       <div class="global-filter-group">
         <label for="globalStatus">Status</label>
         <select id="globalStatus">
-          <option value="all" selected>All</option>
-          <option value="confirmed">Confirmed</option>
+          <option value="all">All</option>
+          <option value="confirmed" selected>Confirmed</option>
           <option value="void">Void</option>
         </select>
       </div>
