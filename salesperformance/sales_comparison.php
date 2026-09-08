@@ -9,7 +9,7 @@
  * Daily:   date range (day to day).
  * Monthly: Month range (e.g. Jan 2026 - Mar 2026) + Day-of-month range (1-31),
  *          e.g. only count the 1st-15th of every month in the range.
- * Yearly:  Year range (e.g. 2025 - 2026) + Month range (e.g. Jan - Aug) + Day range (e.g. 1-25),
+ * Yearly:  Year range (e.g. 2025 - 2026) + chronological date range (e.g. Jan 1 - Aug 25),
  *          applied to EVERY year in the range, so you can fairly compare
  *          partial years like "2025 vs 2026, Jan 1 - Aug 25 only".
  *
@@ -228,7 +228,7 @@ function clampYearlyRange($yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom, $d
 
     $dayFrom = normalizeDay($dayFrom, $defDayFrom);
     $dayTo   = normalizeDay($dayTo, $defDayTo);
-    if ($dayFrom > $dayTo) {
+    if ($monthFrom === $monthTo && $dayFrom > $dayTo) {
         [$dayFrom, $dayTo] = [$dayTo, $dayFrom];
     }
 
@@ -384,7 +384,7 @@ function getMonthlySales($pdo, $monthFrom, $monthTo, $dayFrom, $dayTo, $statusFi
 }
 
 // ════════════════════════════════════════════════════
-// YEARLY — year range + month range + day range (applied to every year in range)
+// YEARLY — year range + chronological month/day range (applied to every year in range)
 // ════════════════════════════════════════════════════
 function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom = 1, $dayTo = 31, $statusFilter = 'all', $companyFilter = 'all', $sourceFilter = 'all') {
     $rows = [];
@@ -393,10 +393,8 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
             $params = [
                 'from'      => $yearFrom . '-01-01 00:00:00',
                 'to'        => ($yearTo + 1) . '-01-01 00:00:00',
-                'monthFrom' => $monthFrom,
-                'monthTo'   => $monthTo,
-                'dayFrom'   => $dayFrom,
-                'dayTo'     => $dayTo,
+                'startMonthDay' => ($monthFrom * 100) + $dayFrom,
+                'endMonthDay'   => ($monthTo * 100) + $dayTo,
             ];
             $clause = getFilterWhereClause($statusFilter, $companyFilter, $params);
             $sql = "SELECT YEAR(o.order_datetime) AS y,
@@ -406,8 +404,7 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
                  JOIN companies c ON c.id = o.company_id
                  WHERE o.order_datetime >= :from
                    AND o.order_datetime <  :to
-                   AND MONTH(o.order_datetime) BETWEEN :monthFrom AND :monthTo
-                   AND DAY(o.order_datetime) BETWEEN :dayFrom AND :dayTo" . $clause . "
+                   AND (MONTH(o.order_datetime) * 100 + DAY(o.order_datetime)) BETWEEN :startMonthDay AND :endMonthDay" . $clause . "
                  GROUP BY y, c.company_code";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
@@ -421,10 +418,8 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
             $mParams = [
                 'from'      => $yearFrom . '-01-01',
                 'to'        => $yearTo . '-12-31',
-                'monthFrom' => $monthFrom,
-                'monthTo'   => $monthTo,
-                'dayFrom'   => $dayFrom,
-                'dayTo'     => $dayTo,
+                'startMonthDay' => ($monthFrom * 100) + $dayFrom,
+                'endMonthDay'   => ($monthTo * 100) + $dayTo,
             ];
             $mClause = getManualFilterWhereClause($companyFilter, $mParams);
             $sql = "SELECT YEAR(ms.sales_date) AS y,
@@ -434,8 +429,7 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
                  JOIN companies c ON c.id = ms.company_id
                  WHERE ms.sales_date >= :from
                    AND ms.sales_date <= :to
-                   AND MONTH(ms.sales_date) BETWEEN :monthFrom AND :monthTo
-                   AND DAY(ms.sales_date) BETWEEN :dayFrom AND :dayTo" . $mClause . "
+                   AND (MONTH(ms.sales_date) * 100 + DAY(ms.sales_date)) BETWEEN :startMonthDay AND :endMonthDay" . $mClause . "
                  GROUP BY y, c.company_code";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($mParams);
@@ -528,6 +522,8 @@ if (isset($_GET['ajax'])) {
 $todayYmd    = date('Y-m-d');
 $currentYear = (int)date('Y');
 $currentYm   = date('Y-m');
+$previousYm  = date('Y-m', strtotime('-1 month'));
+$yesterdayDay = (int)date('d', strtotime('-1 day'));
 
 $statusFilter  = 'confirmed';
 $companyFilter = 'all';
@@ -536,17 +532,17 @@ $sourceFilter  = 'all';
 $dailyFrom = date('Y-m-d', strtotime('-6 days'));
 $dailyTo   = $todayYmd;
 
-$monthlyMonthFrom = date('Y-m', strtotime('-5 months'));
+$monthlyMonthFrom = $previousYm;
 $monthlyMonthTo   = $currentYm;
 $monthlyDayFrom   = 1;
-$monthlyDayTo     = 31;
+$monthlyDayTo     = $yesterdayDay;
 
 $yearlyYearFrom  = $currentYear - 4;
 $yearlyYearTo    = $currentYear;
 $yearlyMonthFrom = 1;
-$yearlyMonthTo   = 12;
+$yearlyMonthTo   = (int)date('n');
 $yearlyDayFrom   = 1;
-$yearlyDayTo     = 31;
+$yearlyDayTo     = $yesterdayDay;
 
 $dailyData    = getDailySales($pdo, $dailyFrom, $dailyTo, $statusFilter, $companyFilter, $sourceFilter);
 $dailyTotal   = array_sum($dailyData['values']);
@@ -895,7 +891,7 @@ svg{display:block;}
           </select>
         </div>
 
-        <div class="filter-panel-label spaced">Month Range (applied to each year)</div>
+        <div class="filter-panel-label spaced">Start Month – End Month (each year)</div>
         <div class="filter-inputs-row">
           <select id="yearlyMonthFrom">
             <?php foreach ($monthNames as $num => $name): ?>
@@ -910,7 +906,7 @@ svg{display:block;}
           </select>
         </div>
 
-        <div class="filter-panel-label spaced">Day Range (applied to each year)</div>
+        <div class="filter-panel-label spaced">Start Day – End Day (within the date range)</div>
         <div class="filter-inputs-row">
           <select id="yearlyDayFrom">
             <?php for ($d = 1; $d <= 31; $d++): ?>

@@ -378,9 +378,10 @@ if (isset($_GET['ajax'])) {
 // INITIAL PAGE LOAD — defaults only, rest happens via AJAX (URL never changes)
 // ════════════════════════════════════════════════════
 $todayYmd     = date('Y-m-d');
+$yesterdayYmd = date('Y-m-d', strtotime('-1 day'));
 $currentYear  = (int)date('Y');
 $statusFilter = 'confirmed';
-$reportDate   = $todayYmd;
+$reportDate   = $yesterdayYmd;
 $incrementYear = $currentYear;
 
 $summaryData   = getHubSummary($pdo, $reportDate, $statusFilter);
@@ -579,9 +580,10 @@ svg{display:block;}
         <div class="hub-pie-panel-sub" id="dailyPanelSub"></div>
         <div class="hub-pie-wrap"><canvas id="dailyPie"></canvas></div>
         <div class="hub-pie-grand" id="dailyGrand">RM 0.00</div>
-        <table class="hub-table" id="dailyHubTable">
+                <table class="hub-table" id="dailyHubTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th></tr></thead>
           <tbody></tbody>
+                    <tfoot><tr><td>Total Sales</td><td class="num"></td><td class="num"></td></tr></tfoot>
         </table>
       </div>
       <div class="hub-pie-panel">
@@ -589,9 +591,10 @@ svg{display:block;}
         <div class="hub-pie-panel-sub" id="monthlyPanelSub"></div>
         <div class="hub-pie-wrap"><canvas id="monthlyPie"></canvas></div>
         <div class="hub-pie-grand" id="monthlyGrand">RM 0.00</div>
-        <table class="hub-table" id="monthlyHubTable">
+                <table class="hub-table" id="monthlyHubTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th></tr></thead>
           <tbody></tbody>
+                    <tfoot><tr><td>Total Sales</td><td class="num"></td><td class="num"></td></tr></tfoot>
         </table>
       </div>
       <div class="hub-pie-panel">
@@ -599,9 +602,10 @@ svg{display:block;}
         <div class="hub-pie-panel-sub" id="yearlyPanelSub"></div>
         <div class="hub-pie-wrap"><canvas id="yearlyPie"></canvas></div>
         <div class="hub-pie-grand" id="yearlyGrand">RM 0.00</div>
-        <table class="hub-table" id="yearlyHubTable">
+                <table class="hub-table" id="yearlyHubTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th></tr></thead>
           <tbody></tbody>
+                    <tfoot><tr><td>Total Sales</td><td class="num"></td><td class="num"></td></tr></tfoot>
         </table>
       </div>
     </div>
@@ -664,6 +668,7 @@ svg{display:block;}
         <table class="hub-table target-table" id="dailyTargetTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th><th style="text-align:right">Target</th><th style="text-align:right">Different</th></tr></thead>
           <tbody></tbody>
+                    <tfoot><tr><td>Total</td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr></tfoot>
         </table>
       </div>
       <div class="target-panel">
@@ -673,6 +678,7 @@ svg{display:block;}
         <table class="hub-table target-table" id="monthlyTargetTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th><th style="text-align:right">Target</th><th style="text-align:right">Different</th></tr></thead>
           <tbody></tbody>
+                    <tfoot><tr><td>Total</td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr></tfoot>
         </table>
       </div>
     </div>
@@ -785,9 +791,11 @@ function renderHubPie(canvasId, hubsPayload){
 function renderHubTable(tableId, hubsPayload){
     const tbody = document.querySelector('#' + tableId + ' tbody');
     tbody.innerHTML = '';
+    let total = 0;
     HUB_KEYS.forEach(k => {
         const meta = HUBS[k];
         const data = hubsPayload[k] || { total: 0, pct: 0 };
+        total += Number(data.total || 0);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><span class="hub-name-cell"><span class="hub-dot" style="background:${meta.color}"></span>${meta.label}</span></td>
@@ -795,6 +803,11 @@ function renderHubTable(tableId, hubsPayload){
             <td class="num">${formatPct(data.pct, false)}</td>`;
         tbody.appendChild(tr);
     });
+    const totalRow = document.querySelector('#' + tableId + ' tfoot tr');
+    if (totalRow) {
+        totalRow.cells[1].textContent = formatRM(total);
+        totalRow.cells[2].textContent = formatPct(total > 0 ? 100 : 0, false);
+    }
 }
 
 function applySummaryResult(json){
@@ -849,10 +862,12 @@ function renderTargetTable(period){
     const tbody = document.querySelector('#' + period + 'TargetTable tbody');
     tbody.innerHTML = '';
     const overall = period === 'daily' ? targetState.dailyNew : targetState.monthlyNew;
+    let totalActual = 0;
     HUB_KEYS.forEach(k => {
         const meta = HUBS[k];
         const actual = (latestActuals[period][k] || { total: 0, pct: 0 });
         const target = overall > 0 ? overall * Number(actual.pct || 0) / 100 : null;
+        totalActual += Number(actual.total || 0);
         const diff = computeDifferent(actual.total, Number(target));
         const diffClass = diff === null ? '' : (diff >= 0 ? 'diff-pos' : 'diff-neg');
         const tr = document.createElement('tr');
@@ -864,6 +879,16 @@ function renderTargetTable(period){
             <td class="num ${diffClass}">${diff === null ? '—' : formatPct(diff, true)}</td>`;
         tbody.appendChild(tr);
     });
+    const totalTarget = overall > 0 ? overall : null;
+    const totalDiff = computeDifferent(totalActual, totalTarget);
+    const totalRow = document.querySelector('#' + period + 'TargetTable tfoot tr');
+    if (totalRow) {
+        totalRow.cells[1].textContent = formatRM(totalActual);
+        totalRow.cells[2].textContent = formatPct(totalActual > 0 ? 100 : 0, false);
+        totalRow.cells[3].textContent = formatRM(totalTarget || 0);
+        totalRow.cells[4].textContent = totalDiff === null ? '—' : formatPct(totalDiff, true);
+        totalRow.cells[4].className = 'num ' + (totalDiff === null ? '' : (totalDiff >= 0 ? 'diff-pos' : 'diff-neg'));
+    }
 }
 
 function renderTargetChart(period){

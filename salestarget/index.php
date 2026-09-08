@@ -267,7 +267,7 @@ if (isset($_GET['ajax'])) {
     if ($action === 'month_data') {
         $year  = normalizeYear($_GET['year'] ?? '');
         $month = normalizeMonth($_GET['month'] ?? '');
-        $statusFilter = normalizeStatus($_GET['status_filter'] ?? 'all');
+        $statusFilter = normalizeStatus($_GET['status_filter'] ?? 'confirmed');
         $reportDate = clampReportDate($_GET['report_date'] ?? '');
 
         $targetMap = getMonthlyTargetMap($pdo, $year, $month);
@@ -288,7 +288,7 @@ if (isset($_GET['ajax'])) {
 
         // return the freshly recalculated month so the UI updates immediately
         $targetMap = getMonthlyTargetMap($pdo, $year, $month);
-        $statusFilter = normalizeStatus($raw['status_filter'] ?? 'all');
+        $statusFilter = normalizeStatus($raw['status_filter'] ?? 'confirmed');
         $reportDate = clampReportDate($raw['report_date'] ?? '');
         $actualMap = getDailyActualMap($pdo, $year, $month, $statusFilter);
         $data = buildEstimation($targetMap, $actualMap, $year, $month, $reportDate);
@@ -307,7 +307,7 @@ if (isset($_GET['ajax'])) {
 // ════════════════════════════════════════════════════
 $currentYear  = (int)date('Y');
 $currentMonth = (int)date('n');
-$statusFilter = 'all';
+$statusFilter = 'confirmed';
 $todayYmd     = date('Y-m-d');
 
 $targetMap = getMonthlyTargetMap($pdo, $currentYear, $currentMonth);
@@ -459,8 +459,8 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;}
       <div class="filter-group">
         <label for="statusSelect">Status</label>
         <select id="statusSelect">
-          <option value="all" selected>All</option>
-          <option value="confirmed">Confirmed</option>
+          <option value="all">All</option>
+          <option value="confirmed" selected>Confirmed</option>
           <option value="void">Void</option>
         </select>
       </div>
