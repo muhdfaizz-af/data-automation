@@ -886,7 +886,7 @@ include __DIR__ . '/../includes/sidebar.php';
             Select the period, region and one Nafesa product type.
         </div>
 
-        <form method="get" action="top_bottom.php">
+        <form method="get" action="nafesa_products.php">
             <div class="filter-grid">
 
                 <div class="field">

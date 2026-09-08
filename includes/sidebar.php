@@ -24,7 +24,7 @@ $salesPerformancePages = [
   'sales_estimation.php',
   'asd_comparison.php',
   'top_product.php',
-  'top_bottom.php',
+  'nafesa_products.php',
   'reqruitment.php',
 ];
 
@@ -111,7 +111,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/top_product.php', $icoSales, 'Overall Products', $currentPage === 'top_product.php', $navBasePath) ?>
-      <?= navItem('salesperformance/top_bottom.php', $icoSales, 'Nafesa Products', $currentPage === 'top_bottom.php', $navBasePath) ?>
+      <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
       <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Recruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
     </div>
   </div>
@@ -160,7 +160,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/top_product.php', $icoSales, 'Top Upper Product', $currentPage === 'top_product.php', $navBasePath) ?>
-      <?= navItem('salesperformance/top_bottom.php', $icoSales, 'Top Bottom Product', $currentPage === 'top_bottom.php', $navBasePath) ?>
+      <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Top Bottom Product', $currentPage === 'nafesa_products.php', $navBasePath) ?>
       <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Reqruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
     </div>
   </div>
