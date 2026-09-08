@@ -529,15 +529,15 @@ $statusFilter  = 'confirmed';
 $companyFilter = 'all';
 $sourceFilter  = 'all';
 
-$dailyFrom = date('Y-m-d', strtotime('-6 days'));
-$dailyTo   = $todayYmd;
+$dailyFrom = date('Y-m-d', strtotime('-2 days'));
+$dailyTo   = date('Y-m-d', strtotime('-1 day'));
 
 $monthlyMonthFrom = $previousYm;
 $monthlyMonthTo   = $currentYm;
 $monthlyDayFrom   = 1;
 $monthlyDayTo     = $yesterdayDay;
 
-$yearlyYearFrom  = $currentYear - 4;
+$yearlyYearFrom  = $currentYear - 1;
 $yearlyYearTo    = $currentYear;
 $yearlyMonthFrom = 1;
 $yearlyMonthTo   = (int)date('n');
