@@ -14,7 +14,7 @@
  *
  * Sales:
  * - Uses orders.sub_total
- * - Singapore sales are converted to MYR using SGD_TO_MYR_RATE
+ * - Singapore sales are converted to MYR
  */
 
 session_start();
@@ -26,15 +26,8 @@ require_once __DIR__ . '/../config/db.php';
 // Defines the SG conversion rate and permitted order types
 define('SGD_TO_MYR_RATE', 3.27);
 
-define('ALLOWED_ORDER_TYPES', [
-    'Repurchase Order',
-    'On Behalf Repurchase Order',
-    'On Behalf Register Order',
-    'Registration Order',
-    'SPC Upgrade Order',
-]);
-
-define('DEFAULT_ORDER_TYPES', [
+// Fixed report rules. These order types are not selected by the user.
+define('QUALIFYING_ORDER_TYPES', [
     'Repurchase Order',
     'On Behalf Repurchase Order',
 ]);
@@ -65,9 +58,7 @@ $adminUsername = $_SESSION['admin_username'] ?? '';
 $activeNav = 'asd_comparison';
 $navBasePath = '../';
 
-/**
- * Create the PDO database connection.
- */
+// Create the PDO database connection.
 function getDBConnection(): ?PDO
 {
     try {
@@ -90,9 +81,7 @@ function getDBConnection(): ?PDO
     }
 }
 
-/**
- * Validate a date in Y-m-d format.
- */
+// Validate a date in Y-m-d format.
 function isValidDate(string $date): bool
 {
     $parsed = DateTime::createFromFormat('!Y-m-d', $date);
@@ -101,9 +90,7 @@ function isValidDate(string $date): bool
         $parsed->format('Y-m-d') === $date;
 }
 
-/**
- * Validate a reporting period.
- */
+// Validate a reporting period.
 function validatePeriod(
     string $from,
     string $to,
@@ -140,9 +127,7 @@ function validatePeriod(
     ];
 }
 
-/**
- * Allow only supported company filters.
- */
+// Allow only supported company filters.
 function normalizeCompany(string $company): string
 {
     return in_array($company, ['all', 'MY', 'SG'], true)
@@ -150,27 +135,7 @@ function normalizeCompany(string $company): string
         : 'all';
 }
 
-/**
- * Validate submitted order types against the allowed list.
- */
-function normalizeOrderTypes($orderTypes): array
-{
-    if(!is_array($orderTypes)) {
-        return[];
-    }
-
-    $validOrderTypes = array_intersect(
-        ALLOWED_ORDER_TYPES,
-        $orderTypes
-    );
-
-    return
-    array_values(array_unique($validOrderTypes));
-}
-
-/**
- * Return ASD statistics for one reporting period.
- */
+// Return ASD statistics for one reporting period.
 function getAsdMetrics(
     PDO $pdo,
     string $from,
@@ -199,7 +164,27 @@ function getAsdMetrics(
 
     $companyCondition = '';
 
-    if ($companyFilter !== 'all') {
+    /*
+     * Business country rules:
+     * - Brunei: Order ID starts with MYB OR Member ID starts with BN.
+     */
+    if ($companyFilter === 'BN_COUNTRY') {
+        $companyCondition = "
+            AND c.company_code = 'MY'
+            AND (
+                UPPER(TRIM(COALESCE(o.order_id, ''))) LIKE 'MYB%'
+                OR UPPER(TRIM(COALESCE(o.member_code, ''))) LIKE 'BN%'
+            )
+        ";
+    } elseif ($companyFilter === 'MY_COUNTRY') {
+        $companyCondition = "
+            AND c.company_code = 'MY'
+            AND NOT (
+                UPPER(TRIM(COALESCE(o.order_id, ''))) LIKE 'MYB%'
+                OR UPPER(TRIM(COALESCE(o.member_code, ''))) LIKE 'BN%'
+            )
+        ";
+    } elseif ($companyFilter !== 'all') {
         $companyCondition = ' AND c.company_code = :company_code';
         $params['company_code'] = $companyFilter;
     }
@@ -253,11 +238,13 @@ function getAsdMetrics(
 
     $row = $statement->fetch();
 
+    // Formula involved
     $totalSales = round((float)($row['total_sales'] ?? 0), 2);
     $activeAgents = (int)($row['active_agents'] ?? 0);
     $qualifyingOrders = (int)($row['qualifying_orders'] ?? 0);
 
     $asd = $activeAgents > 0
+        // ASD = Qualifying Total Sales ÷ Unique Active Agents
         ? round($totalSales / $activeAgents, 2)
         : 0.00;
 
@@ -269,24 +256,18 @@ function getAsdMetrics(
     ];
 }
 
-/**
- * Calculate percentage change from Period A to Period B.
- *
- * Returns null when Period A is zero because a percentage comparison
- * cannot be calculated safely.
- */
+// Calculate percentage change from Last Month to Current Month.
 function percentageChange(float $periodA, float $periodB): ?float
 {
     if ($periodA == 0.0) {
         return null;
     }
 
+    // Percentage Change = ((Current Month − Last Month) ÷ |Last Month|) × 100
     return round((($periodB - $periodA) / abs($periodA)) * 100, 2);
 }
 
-/**
- * Format a percentage change for display.
- */
+// Format a percentage change for display.
 function formatChange(?float $change): string
 {
     if ($change === null) {
@@ -298,9 +279,36 @@ function formatChange(?float $change): string
     return $prefix . number_format($change, 2) . '%';
 }
 
-/**
- * Determine the CSS class for a change value.
- */
+function formatMetricDifference(
+    float $previousValue,
+    float $currentValue,
+    bool $isCurrency = false,
+    int $decimals = 2
+): string {
+    $difference = $currentValue - $previousValue;
+
+    if ($isCurrency) {
+        $absoluteDifference =
+            ($difference < 0 ? '-RM' : 'RM') .
+            number_format(abs($difference), $decimals);
+    } else {
+        $absoluteDifference =
+            ($difference > 0 ? '+' : ($difference < 0 ? '-' : '')) .
+            number_format(abs($difference), $decimals);
+    }
+
+    $percentage = percentageChange(
+        $previousValue,
+        $currentValue
+    );
+
+    return $absoluteDifference .
+        ' (' .
+        formatChange($percentage) .
+        ')';
+}
+
+// Determine the CSS class for a change value.
 function changeClass(?float $change): string
 {
     if ($change === null || $change === 0.0) {
@@ -310,14 +318,49 @@ function changeClass(?float $change): string
     return $change > 0 ? 'positive' : 'negative';
 }
 
-// Default comparison:
-// Period A = previous calendar month
-// Period B = current month until today
-$defaultPeriodAFrom = date('Y-m-01', strtotime('first day of last month'));
-$defaultPeriodATo = date('Y-m-t', strtotime('last month'));
+/**
+ * Default comparison periods:
+ *
+ * Last Month:
+ * - First day of the previous month
+ * - Same elapsed day range as the current month
+ *
+ * Current Month:
+ * - First day of the current month
+ * - Yesterday
+ */
+$today = new DateTimeImmutable('today');
+$currentMonthStart = $today->modify('first day of this month');
+$yesterday = $today->modify('-1 day');
 
-$defaultPeriodBFrom = date('Y-m-01');
-$defaultPeriodBTo = date('Y-m-d');
+$lastMonthStart = $today->modify('first day of last month');
+
+/*
+ * On the first day of a month, yesterday belongs to the previous month.
+ * Use today temporarily to prevent the Current Month start date from
+ * being later than its end date.
+ */
+$currentPeriodEnd = $yesterday < $currentMonthStart
+    ? $today
+    : $yesterday;
+
+/*
+ * Give Last Month the same number of elapsed calendar days.
+ * The minimum protects shorter months, such as February.
+ */
+$matchingDay = min(
+    (int)$currentPeriodEnd->format('j'),
+    (int)$lastMonthStart->format('t')
+);
+
+$lastMonthEnd = $lastMonthStart->modify(
+    '+' . ($matchingDay - 1) . ' days'
+);
+
+$defaultPeriodAFrom = $lastMonthStart->format('Y-m-d');
+$defaultPeriodATo = $lastMonthEnd->format('Y-m-d');
+$defaultPeriodBFrom = $currentMonthStart->format('Y-m-d');
+$defaultPeriodBTo = $currentPeriodEnd->format('Y-m-d');
 
 $periodAFrom = $_GET['period_a_from'] ?? $defaultPeriodAFrom;
 $periodATo = $_GET['period_a_to'] ?? $defaultPeriodATo;
@@ -325,26 +368,20 @@ $periodBFrom = $_GET['period_b_from'] ?? $defaultPeriodBFrom;
 $periodBTo = $_GET['period_b_to'] ?? $defaultPeriodBTo;
 $companyFilter = normalizeCompany($_GET['company'] ?? 'all');
 
-$isFilterSubmitted = isset($_GET['apply']);
-
-$selectedOrderTypes = normalizeOrderTypes($_GET['order_types'] ?? ($isFilterSubmitted ? [] : DEFAULT_ORDER_TYPES));
+$selectedOrderTypes = QUALIFYING_ORDER_TYPES;
 
 $errors = [];
-
-if (empty($selectedOrderTypes)) {
-    $errors[] = 'Please select at least one order type.';
-}
 
 $periodAValidation = validatePeriod(
     $periodAFrom,
     $periodATo,
-    'Period A'
+    'Last Month'
 );
 
 $periodBValidation = validatePeriod(
     $periodBFrom,
     $periodBTo,
-    'Period B'
+    'Current Month'
 );
 
 if (!$periodAValidation['valid']) {
@@ -364,6 +401,16 @@ $emptyMetrics = [
 
 $periodA = $emptyMetrics;
 $periodB = $emptyMetrics;
+
+// Company codes displayed in the country calculation breakdown.
+$breakdownCountries = [
+    'overall' => ['label' => 'Overall', 'filter' => 'all'],
+    'malaysia' => ['label' => 'Malaysia', 'filter' => 'MY_COUNTRY'],
+    'brunei' => ['label' => 'Brunei', 'filter' => 'BN_COUNTRY'],
+    'singapore' => ['label' => 'Singapore', 'filter' => 'SG'],
+];
+
+$countryBreakdown = [];
 
 $pdo = getDBConnection();
 
@@ -388,6 +435,38 @@ if (empty($errors) && $pdo) {
             $companyFilter,
             $selectedOrderTypes
         );
+
+        foreach ($breakdownCountries as $countryKey => $country) {
+            $countryPeriodA = getAsdMetrics(
+                $pdo,
+                $periodAFrom,
+                $periodATo,
+                $country['filter'],
+                QUALIFYING_ORDER_TYPES
+            );
+
+            $countryPeriodB = getAsdMetrics(
+                $pdo,
+                $periodBFrom,
+                $periodBTo,
+                $country['filter'],
+                QUALIFYING_ORDER_TYPES
+            );
+
+            $countryBreakdown[$countryKey] = [
+                'label' => $country['label'],
+                'period_a' => $countryPeriodA,
+                'period_b' => $countryPeriodB,
+                'agent_change' => percentageChange(
+                    (float)$countryPeriodA['active_agents'],
+                    (float)$countryPeriodB['active_agents']
+                ),
+                'asd_change' => percentageChange(
+                    $countryPeriodA['asd'],
+                    $countryPeriodB['asd']
+                ),
+            ];
+        }
     } catch (Throwable $e) {
         error_log('ASD report query failed: ' . $e->getMessage());
         $errors[] = 'Unable to load the ASD report data.';
@@ -421,6 +500,14 @@ $periodALabel = date('d M Y', strtotime($periodAFrom)) .
 $periodBLabel = date('d M Y', strtotime($periodBFrom)) .
     ' – ' .
     date('d M Y', strtotime($periodBTo));
+
+$periodAMonthName = strtoupper(
+    date('F', strtotime($periodAFrom))
+);
+
+$periodBMonthName = strtoupper(
+    date('F', strtotime($periodBFrom))
+);
 ?>
 
 <!DOCTYPE html>
@@ -476,42 +563,37 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .apply-button:hover {background: var(--red-dark);}
 .error-box {margin-bottom: 20px;padding: 13px 15px;border: 1px solid #FECACA;border-radius: 10px;background: var(--red-soft);color: #991B1B;font-size: 13px;font-weight: 600;}
 .error-box ul {padding-left: 18px;}
-.definition {display: flex;gap: 12px;align-items: center;margin-bottom: 24px;padding: 15px 18px;border-left: 4px solid var(--red);border-radius: 10px;background: var(--white);box-shadow: var(--shadow-card);color: var(--gray-700);font-size: 13px;}
+.definition {display: flex;gap: 12px;align-items: center;margin-bottom: 24px;padding: 15px 18px;border-radius: 10px;background: var(--white);box-shadow: var(--shadow-card);color: var(--gray-700);font-size: 13px;}
 .definition strong {color: var(--ink);}
 
 /* ── PERIOD STYLING ── */
 .period-heading-grid {display: grid;grid-template-columns: 1fr 1fr;gap: 20px;margin-bottom: 16px;}
 .period-heading {padding: 15px 18px;border-radius: var(--radius-md);background: var(--white);box-shadow: var(--shadow-card);}
-.period-heading.a {border-top: 4px solid var(--blue);}
-.period-heading.b {border-top: 4px solid var(--red);}
 .period-heading-name {margin-bottom: 4px;font-size: 14px;font-weight: 800;}
 .period-heading-date {color: var(--gray-500);font-size: 12px;font-weight: 600;}
-.metric-grid {display: grid;grid-template-columns: repeat(4, minmax(0, 1fr));gap: 16px;margin-bottom: 24px;}
-.metric-card {padding: 19px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
-.metric-name {margin-bottom: 14px;color: var(--gray-500);font-size: 10.5px;font-weight: 800;letter-spacing: .4px;text-transform: uppercase;}
-.metric-values {display: grid;grid-template-columns: 1fr 1fr;gap: 10px;}
-.metric-period {font-size: 10px;font-weight: 700;color: var(--gray-500);}
-.metric-value {margin-top: 4px;font-size: 19px;font-weight: 800;}
+.metric-grid {display: grid;grid-template-columns: repeat(3, minmax(0, 1fr));gap: 18px;}
+.metric-card {min-width: 0;padding: 19px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);margin-bottom: 20px;}
+.metric-name {margin-bottom: 14px;color: var(--gray-500);font-size: 10px;font-weight: 800;letter-spacing: .4px;text-transform: uppercase;}
+.metric-values {display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 16px;}
+.metric-period {font-size: 10px;font-weight: 700;color: var(--black-500);}
+.metric-value {max-width: 100%;font-size: 20;font-weight: 700;line-height: 1.25;overflow-wrap: anywhere;}
 .metric-change {margin-top: 14px;padding-top: 12px;border-top: 1px solid var(--gray-100);font-size: 12px;font-weight: 800;}
 .metric-change.positive {color: var(--green);}
 .metric-change.negative {color: var(--red);}
 .metric-change.neutral {color: var(--gray-500);}
-.asd-card {border-color: #FDE68A;background: var(--gold-soft);}
-.asd-card .metric-value {color: var(--gold);}
 .table-wrap {overflow-x: auto;}
 
 /* ── COMPARISON TABLE ── */
 .comparison-table {width: 100%;border-collapse: collapse;}
-.comparison-table th,.comparison-table td {padding: 13px 15px;border-bottom: 1px solid var(--gray-100);text-align: right;font-size: 13px;}
+.comparison-table th,.comparison-table td {padding: 13px 15px;border-bottom: 1px solid var(--black-100);text-align: right;font-size: 13px;}
 .comparison-table th:first-child,.comparison-table td:first-child {text-align: left;}
-.comparison-table th {color: var(--gray-500);font-size: 10.5px;letter-spacing: .35px;text-transform: uppercase;}
+.comparison-table th {color: var(--black-500);font-size: 10.5px;letter-spacing: .35px;text-transform: uppercase;}
 .comparison-table td {font-weight: 700;}
-.note {margin-top: 16px;color: var(--gray-500);font-size: 11.5px;line-height: 1.7;}
+.note {margin-top: 16px;color: var(--black-500);font-size: 11.5px;line-height: 1.7;}
 .order-type-option:hover {border-color: var(--red);}
 .order-type-option input {width: 16px;height: 16px;accent-color: var(--red);}
-.order-type-help {margin-top: 7px;color: var(--gray-500);font-size: 11px;}
-@media (max-width: 1100px) {.form-grid {grid-template-columns: 1fr 1fr;}
-.metric-grid {grid-template-columns: 1fr 1fr;}}
+.order-type-help {margin-top: 7px;color: var(--black-500);font-size: 11px;}
+@media (max-width: 1100px) {.form-grid {grid-template-columns: 1fr 1fr;}}
 @media (max-width: 900px) {.main,body.sidebar-collapsed .main {margin-left: 0;padding: 20px;}}
 @media (max-width: 650px) {.form-grid,.period-heading-grid,.metric-grid {grid-template-columns: 1fr;}
 .date-grid {grid-template-columns: 1fr;}}
@@ -523,8 +605,6 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .company-field select {min-height:46px;font-size:14px;font-weight:700;}
 .period-filter-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-bottom:18px;}
 .period-box {padding:18px;border:1px solid var(--gray-100);border-radius:var(--radius-md);background:var(--gray-100);}
-.period-box.period-a {border-top:4px solid var(--blue);}
-.period-box.period-b {border-top:4px solid var(--red);}
 .period-title {margin-bottom:14px;font-size:14px;font-weight:800;}
 .date-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
 
@@ -533,12 +613,9 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .order-type-header {display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:16px;}
 .order-type-header legend {margin-bottom:4px;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;}
 .order-type-header p {color:var(--gray-500);font-size:11.5px;line-height:1.5;}
-.checkbox-actions {display:flex;gap:8px;flex-shrink:0;}
-.checkbox-actions button {padding:7px 11px;border:1px solid var(--gray-300);border-radius:7px;background:var(--white);color:var(--gray-700);cursor:pointer;font-size:11px;font-weight:700;}
-.checkbox-actions button:hover {border-color:var(--red);color:var(--red);}
-.order-type-groups {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
-.order-type-group {display:flex;flex-direction:column;gap:9px;padding:14px;border-radius:10px;background:var(--gray-100);}
-.order-group-title {margin-bottom:2px;color:var(--gray-700);font-size:11px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;}
+.order-type-groups {display:block;}
+.order-type-group {display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px;padding:14px;border-radius:10px;background:var(--gray-100);}
+.order-group-title {grid-column:1 / -1;margin-bottom:2px;color:var(--gray-700);font-size:11px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;}
 .order-type-option {position:relative;display:flex;align-items:flex-start;gap:10px;min-height:62px;padding:11px 12px;border:1.5px solid var(--gray-300);border-radius:9px;background:var(--white);cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s;}
 .order-type-option:hover {border-color:var(--red);}
 .order-type-option:has(input:checked) {border-color:var(--red);background:#fff5f5;box-shadow:0 0 0 2px rgba(224,32,46,.06);}
@@ -550,20 +627,25 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .order-type-text {display:flex;min-width:0;flex-direction:column;gap:3px;}
 .order-type-text strong {color:var(--ink);font-size:12px;line-height:1.35;}
 .order-type-text small {color:var(--gray-500);font-size:10.5px;line-height:1.4;}
-.filter-footer {display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;}
+.filter-footer {display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-top:18px;}
 .selection-status {color:var(--gray-500);font-size:12px;font-weight:600;}
 .apply-button {min-width:180px;}
-.metric-grid {grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);}
 .metric-card,.metric-values,.metric-values > div {min-width:0;}
 .metric-values {grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
 .metric-value {max-width:100%;line-height:1.25;overflow-wrap:anywhere;}
-.sales-metric-card .metric-value {font-size:clamp(18px,2vw,26px);}
-@media (max-width:800px) {
-  .period-filter-grid,.order-type-groups,.metric-grid {grid-template-columns:1fr;}
-  .order-type-header,.filter-footer {flex-direction:column;align-items:stretch;}
-  .checkbox-actions {align-self:flex-start;}
-  .apply-button {width:100%;}
-}
+
+/* ── COUNTRY BREAKDOWN TABLE ── */
+.country-breakdown-table {width: 100%;table-layout: fixed;}
+.country-breakdown-table th,.country-breakdown-table td {padding: 14px 10px;text-align: center;vertical-align: middle;}
+.country-breakdown-table th:first-child,.country-breakdown-table td:first-child {width: 14%;text-align: left;font-weight: 800;}
+.country-breakdown-table th:nth-child(2),.country-breakdown-table td:nth-child(2) 
+.country-breakdown-table th:nth-child(3),.country-breakdown-table td:nth-child(3) 
+.country-breakdown-table th:nth-child(5),.country-breakdown-table td:nth-child(5) 
+.country-breakdown-table th:nth-child(6),.country-breakdown-table td:nth-child(6) 
+.country-breakdown-table td:nth-child(5),.country-breakdown-table td:nth-child(6) {white-space:nowrap;}
+.country-breakdown-table tbody tr:first-child td {font-weight: 800;}
+@media (max-width: 900px) {.table-wrap {overflow-x: auto;}.country-breakdown-table {min-width: 850px;}}
+@media (max-width:800px) {.period-filter-grid,.order-type-groups,.metric-grid {grid-template-columns:1fr;}.order-type-header,.filter-footer {flex-direction:column;align-items:stretch;}.checkbox-actions {align-self:flex-start;}.apply-button {width:100%;}}
 @media (max-width:500px) {.date-grid {grid-template-columns:1fr;}.company-field {width:100%;}}
 </style>
 </head>
@@ -605,10 +687,12 @@ include __DIR__ . '/../includes/sidebar.php';
 
     <div class="definition">
         <div>
-            <strong>ASD formula:</strong> Qualifying Total Sales &divide; Unique Active Agents.
+            <strong>ASD formula:</strong>
+            Qualifying Total Sales &divide; Unique Active Agents.
+
             <div class="order-type-help">
-                <strong>Currently included:</strong>
-                <?= htmlspecialchars(implode(', ', $selectedOrderTypes)) ?>
+                <strong>Qualifying order types:</strong>
+                Repurchase Order and On Behalf Repurchase Order
             </div>
         </div>
     </div>
@@ -616,176 +700,60 @@ include __DIR__ . '/../includes/sidebar.php';
     <section class="card">
         <div class="card-title">Comparison Filters</div>
         <div class="card-subtitle">
-            Choose two independent reporting periods and an optional company.
+            Compare matching month-to-date ranges ending on the same day number.
         </div>
 
         <form method="get" action="asd_comparison.php" id="asdFilterForm">
-        <!-- Company filter -->
-        <div class="company-filter-row">
-            <div class="field company-field">
-                <label for="company">Company</label>
-
-                <select id="company" name="company">
-                    <option
-                        value="all" <?= $companyFilter === 'all' ? 'selected' : '' ?>>
-                        All Companies
-                    </option>
-
-                    <option
-                        value="MY" <?= $companyFilter === 'MY' ? 'selected' : '' ?>>
-                        Malaysia
-                    </option>
-
-                    <option value="SG" <?= $companyFilter === 'SG' ? 'selected' : '' ?>>
-                        Singapore
-                    </option>
-                </select>
-            </div>
-        </div>
-
-        <!-- Reporting periods -->
-        <div class="period-filter-grid">
-            <div class="period-box period-a">
-                <div class="period-title">Period A</div>
-
-                <div class="date-grid">
-                    <div class="field">
-                        <label for="period_a_from">From</label>
-                        <input type="date" id="period_a_from" name="period_a_from" value="<?= htmlspecialchars($periodAFrom) ?>" required>
+            <div class="period-filter-grid">
+                <div class="period-box period-a">
+                    <div class="period-title">Last Month</div>
+                    <div class="date-grid">
+                        <div class="field">
+                            <label for="period_a_from">From</label>
+                            <input type="date" id="period_a_from" name="period_a_from" value="<?= htmlspecialchars($periodAFrom) ?>" required>
+                        </div>
+                        <div class="field">
+                            <label for="period_a_to">To</label>
+                            <input type="date" id="period_a_to" name="period_a_to" value="<?= htmlspecialchars($periodATo) ?>" required>
+                        </div>
                     </div>
+                </div>
 
-                    <div class="field">
-                        <label for="period_a_to">To</label>
-                        <input type="date" id="period_a_to" name="period_a_to" value="<?= htmlspecialchars($periodATo) ?>" required>
+                <div class="period-box period-b">
+                    <div class="period-title">Current Month</div>
+                    <div class="date-grid">
+                        <div class="field">
+                            <label for="period_b_from">From</label>
+                            <input type="date" id="period_b_from" name="period_b_from" value="<?= htmlspecialchars($periodBFrom) ?>" required>
+                        </div>
+                        <div class="field">
+                            <label for="period_b_to">To</label>
+                            <input type="date" id="period_b_to" name="period_b_to" value="<?= htmlspecialchars($periodBTo) ?>" required>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div class="period-box period-b">
-                <div class="period-title">Period B</div>
-
-                <div class="date-grid">
-                    <div class="field">
-                        <label for="period_b_from">From</label>
-                        <input type="date" id="period_b_from" name="period_b_from" value="<?= htmlspecialchars($periodBFrom) ?>" required>
-                    </div>
-
-                    <div class="field">
-                        <label for="period_b_to">To</label>
-                        <input type="date" id="period_b_to" name="period_b_to" value="<?= htmlspecialchars($periodBTo) ?>" required>
-                    </div>
-                </div>
+            <div class="filter-footer">
+                <button type="submit" name="apply" value="1" class="apply-button">
+                    Compare Periods
+                </button>
             </div>
-
-        </div>
-
-        <!-- Order-type filter -->
-        <fieldset class="order-type-field">
-            <div class="order-type-header">
-                <div>
-                    <legend>Included Order Types</legend>
-                    <p>
-                        Select the order types that should be included in
-                        Total Sales, Active Agents and ASD.
-                    </p>
-                </div>
-
-                <div class="checkbox-actions">
-                    <button type="button" id="selectAllOrderTypes">
-                        Select all
-                    </button>
-                    <button type="button" id="clearAllOrderTypes">
-                        Clear all
-                    </button>
-                </div>
-            </div>
-
-            <div class="order-type-groups">
-                <div class="order-type-group">
-                    <div class="order-group-title">Repurchase Orders</div>
-
-                    <label class="order-type-option">
-                        <input type="checkbox" name="order_types[]" value="Repurchase Order"<?= in_array('Repurchase Order',$selectedOrderTypes,true) ? 'checked' : '' ?>>
-                        <span class="custom-checkbox" aria-hidden="true"></span>
-                        <span class="order-type-text">
-                            <strong>Repurchase Order</strong>
-                            <small>Direct repurchase made by an agent.</small>
-                        </span>
-                    </label>
-
-                    <label class="order-type-option">
-                        <input type="checkbox" name="order_types[]" value="On Behalf Repurchase Order"<?= in_array('On Behalf Repurchase Order',$selectedOrderTypes,true) ? 'checked' : '' ?>>
-                        <span class="custom-checkbox" aria-hidden="true"></span>
-                        <span class="order-type-text">
-                            <strong>On Behalf Repurchase Order</strong>
-                            <small>
-                                Repurchase submitted on behalf of an agent.
-                            </small>
-                        </span>
-                    </label>
-                </div>
-
-                <div class="order-type-group">
-                    <div class="order-group-title">
-                        Registration and Upgrade Orders
-                    </div>
-
-                    <label class="order-type-option">
-                        <input type="checkbox" name="order_types[]" value="Registration Order" <?= in_array('Registration Order',$selectedOrderTypes,true) ? 'checked' : '' ?>>
-                        <span class="custom-checkbox" aria-hidden="true"></span>
-                        <span class="order-type-text">
-                            <strong>Registration Order</strong>
-                            <small>Standard agent registration order.</small>
-                        </span>
-                    </label>
-
-                    <label class="order-type-option">
-                        <input type="checkbox" name="order_types[]" value="On Behalf Register Order" <?= in_array('On Behalf Register Order',$selectedOrderTypes,true) ? 'checked' : '' ?>>
-                        <span class="custom-checkbox" aria-hidden="true"></span>
-                        <span class="order-type-text">
-                            <strong>On Behalf Register Order</strong>
-                            <small>
-                                Registration submitted on behalf of an agent.
-                            </small>
-                        </span>
-                    </label>
-
-                    <label class="order-type-option">
-                        <input type="checkbox" name="order_types[]" value="SPC Upgrade Order" <?= in_array('SPC Upgrade Order',$selectedOrderTypes,true) ? 'checked' : '' ?>>
-                        <span class="custom-checkbox" aria-hidden="true"></span>
-                        <span class="order-type-text">
-                            <strong>SPC Upgrade Order</strong>
-                            <small>Order created for an SPC upgrade.</small>
-                        </span>
-                    </label>
-                </div>
-
-            </div>
-        </fieldset>
-
-        <div class="filter-footer">
-            <div class="selection-status" id="selectionStatus"></div>
-
-            <button type="submit" name="apply" value="1" class="apply-button">
-                Compare Periods
-            </button>
-        </div>
-
-    </form>
+        </form>
     </section>
 
             <?php if (empty($errors)): ?>
 
             <div class="period-heading-grid">
                 <div class="period-heading a">
-                    <div class="period-heading-name">Period A</div>
+                    <div class="period-heading-name">Last Month</div>
                     <div class="period-heading-date">
                         <?= htmlspecialchars($periodALabel) ?>
                     </div>
                 </div>
 
                 <div class="period-heading b">
-                    <div class="period-heading-name">Period B</div>
+                    <div class="period-heading-name">Current Month</div>
                     <div class="period-heading-date">
                         <?= htmlspecialchars($periodBLabel) ?>
                     </div>
@@ -794,19 +762,19 @@ include __DIR__ . '/../includes/sidebar.php';
 
             <section class="metric-grid">
 
-            <article class="metric-card sales-metric-card">
-                <div class="metric-name">Qualifying Total Sales</div>
+            <article class="metric-card">
+                <div class="metric-name">Total Sales</div>
 
                 <div class="metric-values">
                     <div>
-                        <div class="metric-period">Period A</div>
+                        <div class="metric-period">Last Month</div>
                         <div class="metric-value">
                             RM<?= number_format($periodA['total_sales'], 2) ?>
                         </div>
                     </div>
 
                     <div>
-                        <div class="metric-period">Period B</div>
+                        <div class="metric-period">Current Month</div>
                         <div class="metric-value">
                             RM<?= number_format($periodB['total_sales'], 2) ?>
                         </div>
@@ -814,23 +782,28 @@ include __DIR__ . '/../includes/sidebar.php';
                 </div>
 
                 <div class="metric-change <?= changeClass($salesChange) ?>">
-                    <?= formatChange($salesChange) ?> from Period A
-                </div>
+                <?= htmlspecialchars(formatMetricDifference(
+                    $periodA['total_sales'],
+                    $periodB['total_sales'],
+                    true,
+                    2
+                )) ?>
+            </div>
             </article>
 
             <article class="metric-card">
-                <div class="metric-name">Unique Active Agents</div>
+                <div class="metric-name">Active Agents</div>
 
                 <div class="metric-values">
                     <div>
-                        <div class="metric-period">Period A</div>
+                        <div class="metric-period">Last Month</div>
                         <div class="metric-value">
                             <?= number_format($periodA['active_agents']) ?>
                         </div>
                     </div>
 
                     <div>
-                        <div class="metric-period">Period B</div>
+                        <div class="metric-period">Current Month</div>
                         <div class="metric-value">
                             <?= number_format($periodB['active_agents']) ?>
                         </div>
@@ -838,7 +811,43 @@ include __DIR__ . '/../includes/sidebar.php';
                 </div>
 
                 <div class="metric-change <?= changeClass($agentsChange) ?>">
-                    <?= formatChange($agentsChange) ?> from Period A
+                    <?= htmlspecialchars(formatMetricDifference(
+                        (float)$periodA['active_agents'],
+                        (float)$periodB['active_agents'],
+                        false,
+                        0
+                    )) ?>
+                </div>
+            </article>
+
+            <article class="metric-card">
+                <div class="metric-name">Average Sales per Agent (ASD)</div>
+
+                <div class="metric-values">
+                    <div>
+                        <div class="metric-period">Last Month</div>
+
+                        <div class="metric-value">
+                            RM<?= number_format($periodA['asd'], 2) ?>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="metric-period">Current Month</div>
+
+                        <div class="metric-value">
+                            RM<?= number_format($periodB['asd'], 2) ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-change <?= changeClass($asdChange) ?>">
+                    <?= htmlspecialchars(formatMetricDifference(
+                        $periodA['asd'],
+                        $periodB['asd'],
+                        true,
+                        2
+                    )) ?>
                 </div>
             </article>
 
@@ -847,88 +856,38 @@ include __DIR__ . '/../includes/sidebar.php';
         <section class="card">
             <div class="card-title">Calculation Breakdown</div>
             <div class="card-subtitle">
-                Values shown in MYR after applying the project’s Singapore
-                currency conversion.
+                Active Agents and ASD by country. Singapore sales are converted
+                to MYR before ASD is calculated.
             </div>
 
             <div class="table-wrap">
-                <table class="comparison-table">
+                <table class="comparison-table country-breakdown-table">
                     <thead>
                         <tr>
-                            <th>Metric</th>
-                            <th>Period A</th>
-                            <th>Period B</th>
-                            <th>Change</th>
+                            <th>Country</th>
+                            <th>Active Agent <?= htmlspecialchars($periodAMonthName) ?></th>
+                            <th>Active Agent <?= htmlspecialchars($periodBMonthName) ?></th>
+                            <th>Difference (%)</th>
+                            <th>ASD <?= htmlspecialchars($periodAMonthName) ?></th>
+                            <th>ASD <?= htmlspecialchars($periodBMonthName) ?></th>
+                            <th>Difference (%)</th>
                         </tr>
                     </thead>
 
                     <tbody>
-                        <tr>
-                            <td>Qualifying Total Sales</td>
-                            <td>
-                                RM<?= number_format($periodA['total_sales'], 2) ?>
-                            </td>
-                            <td>
-                                RM<?= number_format($periodB['total_sales'], 2) ?>
-                            </td>
-                            <td class="<?= changeClass($salesChange) ?>">
-                                <?= formatChange($salesChange) ?>
-                            </td>
-                        </tr>
-
-                        <tr>
-                            <td>Unique Active Agents</td>
-                            <td>
-                                <?= number_format($periodA['active_agents']) ?>
-                            </td>
-                            <td>
-                                <?= number_format($periodB['active_agents']) ?>
-                            </td>
-                            <td class="<?= changeClass($agentsChange) ?>">
-                                <?= formatChange($agentsChange) ?>
-                            </td>
-                        </tr>
-
-                        <tr>
-                            <td>Qualifying Orders</td>
-                            <td>
-                                <?= number_format($periodA['qualifying_orders']) ?>
-                            </td>
-                            <td>
-                                <?= number_format($periodB['qualifying_orders']) ?>
-                            </td>
-                            <td class="<?= changeClass($ordersChange) ?>">
-                                <?= formatChange($ordersChange) ?>
-                            </td>
-                        </tr>
-
-                        <tr>
-                            <td>ASD</td>
-                            <td>
-                                RM<?= number_format($periodA['asd'], 2) ?>
-                            </td>
-                            <td>
-                                RM<?= number_format($periodB['asd'], 2) ?>
-                            </td>
-                            <td class="<?= changeClass($asdChange) ?>">
-                                <?= formatChange($asdChange) ?>
-                            </td>
-                        </tr>
+                        <?php foreach ($countryBreakdown as $country): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($country['label']) ?></td>
+                                <td><?= number_format($country['period_a']['active_agents']) ?></td>
+                                <td><?= number_format($country['period_b']['active_agents']) ?></td>
+                                <td class="<?= changeClass($country['agent_change']) ?>"><?= formatChange($country['agent_change']) ?></td>
+                                <td>RM<?= number_format($country['period_a']['asd'], 2) ?></td>
+                                <td>RM<?= number_format($country['period_b']['asd'], 2) ?></td>
+                                <td class="<?= changeClass($country['asd_change']) ?>"><?= formatChange($country['asd_change']) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
                     </tbody>
                 </table>
-            </div>
-
-            <div class="note">
-                Period A ASD:
-                RM<?= number_format($periodA['total_sales'], 2) ?>
-                ÷ <?= number_format($periodA['active_agents']) ?> agents
-                = RM<?= number_format($periodA['asd'], 2) ?> per agent.
-                <br>
-
-                Period B ASD:
-                RM<?= number_format($periodB['total_sales'], 2) ?>
-                ÷ <?= number_format($periodB['active_agents']) ?> agents
-                = RM<?= number_format($periodB['asd'], 2) ?> per agent.
             </div>
         </section>
 
@@ -937,47 +896,5 @@ include __DIR__ . '/../includes/sidebar.php';
 </main>
 </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const checkboxes = Array.from(document.querySelectorAll('input[name="order_types[]"]'));
-    const selectAllButton = document.getElementById('selectAllOrderTypes');
-    const clearAllButton = document.getElementById('clearAllOrderTypes');
-    const selectionStatus = document.getElementById('selectionStatus');
-    const filterForm = document.getElementById('asdFilterForm');
-
-    function updateSelectionStatus() {
-        const selectedCount = checkboxes.filter(function (checkbox) {
-            return checkbox.checked;
-        }).length;
-        selectionStatus.textContent = selectedCount + ' of ' + checkboxes.length + ' order types selected';
-    }
-
-    selectAllButton.addEventListener('click', function () {
-        checkboxes.forEach(function (checkbox) { checkbox.checked = true; });
-        updateSelectionStatus();
-    });
-
-    clearAllButton.addEventListener('click', function () {
-        checkboxes.forEach(function (checkbox) { checkbox.checked = false; });
-        updateSelectionStatus();
-    });
-
-    checkboxes.forEach(function (checkbox) {
-        checkbox.addEventListener('change', updateSelectionStatus);
-    });
-
-    filterForm.addEventListener('submit', function (event) {
-        const hasSelection = checkboxes.some(function (checkbox) { return checkbox.checked; });
-        if (!hasSelection) {
-            event.preventDefault();
-            alert('Please select at least one order type.');
-            checkboxes[0].focus();
-        }
-    });
-
-    updateSelectionStatus();
-
-});
-</script>
 </body>
 </html>
