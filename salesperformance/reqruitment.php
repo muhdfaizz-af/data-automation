@@ -284,7 +284,6 @@ function getRecruitmentMetrics(
     }
 
     // Convert the order-ID sets into numeric counts
-
     foreach (STARTER_KITS as $starterKitCode => $brand) {
         foreach (['MY', 'SG'] as $company) {
             $newRegistrationCount = count(
@@ -329,54 +328,93 @@ function getRecruitmentMetrics(
                 $kitMetrics['spc_upgrade']['SG'];
     }
 
+    // Starter kit formula
     $metrics['totals']['overall'] =
         $metrics['totals']['new_registration']['MY'] +
         $metrics['totals']['new_registration']['SG'] +
         $metrics['totals']['spc_upgrade']['MY'] +
         $metrics['totals']['spc_upgrade']['SG'];
 
-    /*
-     * Purchase Agent:
-     *
-     * A distinct member with at least one confirmed Repurchase Order
-     * or On Behalf Repurchase Order during the reporting period.
-     */
+  /*
+    * Purchase Agent:
+    *
+    * Daily:
+    * The agent must register and make a Repurchase Order or
+    * On Behalf Repurchase Order on the same day.
+    *
+    * Monthly:
+    * The agent must register and make a Repurchase Order or
+    * On Behalf Repurchase Order within the same monthly period.
+    *
+    * The $fromDate and $toExclusive values determine whether
+    * this function is calculating Daily or Monthly results.
+    */
     $purchaseAgentSql = "
         SELECT
-            c.company_code,
+            registration_company.company_code,
 
             COUNT(
-                DISTINCT CASE
-                    WHEN o.member_code IS NOT NULL
-                        AND TRIM(o.member_code) <> ''
-                    THEN UPPER(TRIM(o.member_code))
-                    ELSE NULL
-                END
+                DISTINCT UPPER(TRIM(registration.member_code))
             ) AS purchase_agents
 
-            FROM orders o
+        FROM orders registration
 
-            INNER JOIN companies c
-                ON c.id = o.company_id
+        INNER JOIN companies registration_company
+            ON registration_company.id = registration.company_id
 
-            WHERE o.order_datetime >= :from_date
-                AND o.order_datetime < :to_exclusive
-                AND o.order_status = 'Confirmed'
-                AND c.company_code IN ('MY', 'SG')
+        WHERE registration.order_datetime >= :registration_from
+            AND registration.order_datetime < :registration_to_exclusive
+            AND registration.order_status = 'Confirmed'
 
-                AND o.order_type IN (
-                    'Repurchase Order',
-                    'On Behalf Repurchase Order'
+            AND registration.order_type IN (
+                'Registration Order',
+                'On Behalf Register Order'
+            )
+
+            AND registration.member_code IS NOT NULL
+            AND TRIM(registration.member_code) <> ''
+
+            AND registration_company.company_code IN ('MY', 'SG')
+
+            AND EXISTS (
+                SELECT 1
+
+                FROM orders purchase
+
+                WHERE purchase.member_code IS NOT NULL
+                    AND TRIM(purchase.member_code) <> ''
+
+                    AND UPPER(TRIM(purchase.member_code)) =
+                        UPPER(TRIM(registration.member_code))
+
+                    AND purchase.order_datetime >= :purchase_from
+                    AND purchase.order_datetime < :purchase_to_exclusive
+
+                    AND purchase.order_status = 'Confirmed'
+
+                    AND purchase.order_type IN (
+                        'Repurchase Order',
+                        'On Behalf Repurchase Order'
+                    )
                 )
 
-            GROUP BY c.company_code
+                GROUP BY registration_company.company_code
     ";
 
     $statement = $pdo->prepare($purchaseAgentSql);
 
     $statement->execute([
-        'from_date' => $fromDate,
-        'to_exclusive' => $toExclusive
+        'registration_from' =>
+            $fromDate,
+
+        'registration_to_exclusive' =>
+            $toExclusive,
+
+        'purchase_from' =>
+            $fromDate,
+
+        'purchase_to_exclusive' =>
+            $toExclusive,
     ]);
 
     while ($row = $statement->fetch()) {
@@ -384,7 +422,7 @@ function getRecruitmentMetrics(
             trim((string)$row['company_code'])
         );
 
-        if (isset($metrics['purchase_agents'][$company])) {
+        if(isset($metrics['purchase_agents'][$company])) {
             $metrics['purchase_agents'][$company] =
                 (int)$row['purchase_agents'];
         }
@@ -426,15 +464,10 @@ function renderRecruitmentTable(
                 <tbody>
                     <?php
                     $rowNumber = 0;
-                    $starterKitCount = count(
-                        $metrics['starter_kits']
-                    );
+                    $starterKitCount = count($metrics['starter_kits']);
                     ?>
 
-                    <?php foreach (
-                        $metrics['starter_kits']
-                        as $code => $starterKit
-                    ): ?>
+                    <?php foreach ($metrics['starter_kits']as $code => $starterKit): ?>
                         <tr>
                             <td>
                                 <strong><?= htmlspecialchars($code) ?></strong>
@@ -473,8 +506,7 @@ function renderRecruitmentTable(
                     <tr class="total-row">
                         <td>Total</td>
                         <td>
-                            <?= number_format(
-                                $metrics['totals']['new_registration']['MY']) ?>
+                            <?= number_format($metrics['totals']['new_registration']['MY']) ?>
                         </td>
                         <td>
                             <?= number_format($metrics['totals']['new_registration']['SG']) ?>
@@ -517,7 +549,7 @@ if(!isValidDate($reportDate)) {
     $errors[] = 'Please select a valid report date.';
 }
 
-// Daily range contains one day; monthly range contains the complete calendar month.
+// Daily range contains one day, monthly range contains the complete calendar month.
 $dailyFrom = $reportDate;
 $dailyTo = $reportDate;
 
@@ -527,13 +559,12 @@ $monthlyTo = '';
 if (empty($errors)) {
     $selectedDate = new DateTimeImmutable($reportDate);
 
+    // The monthly range uses the complete selected calendar month
     $monthlyFrom = $selectedDate
         ->modify('first day of this month')
         ->format('Y-m-d');
 
-    $monthlyTo = $selectedDate
-        ->modify('last day of this month')
-        ->format('Y-m-d');
+    $monthlyTo = $selectedDate->format('Y-m-d');
 }
 
 $dailyMetrics = emptyRecruitmentMetrics();
@@ -604,38 +635,58 @@ $monthlyHeading = empty($errors)
 }
 *,*::before,*::after {box-sizing: border-box;margin: 0;padding: 0;}
 body {background: var(--bg);color: var(--ink);font-family: "Plus Jakarta Sans", sans-serif;}
+
+/* ── LAYOUT ── */
 .layout {display:flex;min-height:calc(100vh - var(--topbar-h));margin-top:var(--topbar-h);}
 .main {min-width:0;flex:1;margin-left:var(--sidebar-w);padding:28px 32px 48px;transition:margin-left .25s ease;}
 body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
+
+/* ── PAGE HEADER ── */
 .page-header {margin-bottom: 24px;}
 .page-header h1 {margin-bottom: 5px;font-size: 25px;font-weight: 800;}
 .page-header p {color: var(--gray-500);font-size: 13px;}
+
+/* ── CARD SECTION ── */
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
 .card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
 .card-subtitle {color: var(--gray-500);font-size: 12px;}
+
+/* ── FILTER FORM ── */
 .filter-form {display: flex;gap: 16px;align-items: flex-end;margin-top: 20px;}
 .field {display: flex;width: min(100%, 340px);flex-direction: column;gap: 7px;}
 .field label {color: var(--gray-700);font-size: 11px;font-weight: 800;text-transform: uppercase;}
 .field input {min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;background: var(--white);color: var(--ink);font: inherit;font-size: 13px;}
+
+/* ── APPLY BUTTON ── */
 .apply-button {min-height: 44px;padding: 10px 22px;border: 0;border-radius: 9px;background: var(--red);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
+
+/* ── DEFINITION SECTION ── */
 .definition,
 .error-box {margin-bottom: 20px;padding: 14px 17px;border-radius: 10px;font-size: 12px;line-height: 1.7;}
 .definition {border-left: 4px solid var(--red);background: var(--white);box-shadow: var(--shadow-card);}
 .error-box {border: 1px solid #FECACA;background: #FEF2F2;color: #991B1B;}
 .error-box ul {padding-left: 18px;}
+
+/* ── REPORT CARD ── */
 .report-card {min-width:0;padding:26px;overflow:hidden;}
 .report-title {margin-bottom: 6px;text-align: center;font-size: 26px;font-weight: 800;letter-spacing: .5px;text-transform: uppercase;}
 .report-subtitle {margin-bottom: 26px;color: var(--gray-500);text-align: center;font-size: 12px;}
 .report-block + .report-block {margin-top: 38px;}
 .report-block h2 {margin-bottom: 17px;text-align: center;font-size: 21px;font-weight: 800;text-transform: uppercase;}
-.table-wrap {width:100%;min-width:0;overflow-x:auto;}
-.recruitment-table {width: 100%;min-width: 850px;border-collapse: collapse;}
-.recruitment-table th,.recruitment-table td {padding: 12px 10px;border: 1px solid var(--gray-300);text-align: center;vertical-align: middle;font-size: 12px;}
-.recruitment-table th {background: var(--gray-100);color: var(--gray-700);font-size: 10.5px;font-weight: 800;letter-spacing: .25px;text-transform: uppercase;}
+
+/* ── TABLE SECTION ── */
+.table-wrap {width:100%;min-width:0;overflow-x:auto;border:1px solid #E6E6EA;border-radius:12px;background:var(--white);}
+.recruitment-table {width:100%;min-width:850px;border-collapse:separate;border-spacing:0;}
+.recruitment-table th,.recruitment-table td {padding:13px 14px;border:0;border-bottom:1px solid #ECECF0;text-align:center;vertical-align:middle;font-size:12px;}
+.recruitment-table th {background:#F7F7F9;color:var(--gray-700);font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;}
+.recruitment-table thead tr:first-child th {border-bottom:1px solid #DEDEE4;}
+.recruitment-table tbody tr {transition:background-color .15s ease;}
+.recruitment-table tbody tr:not(.total-row):hover td {background:#FAFAFB;}
+.recruitment-table tbody tr:last-child td {border-bottom:0;}
 .recruitment-table td:first-child {text-align: left;}
 .recruitment-table td:first-child small {display: block;margin-top: 3px;color: var(--gray-500);font-size: 9.5px;}
-.total-row td {background: var(--gray-100) !important;font-weight: 800;}
+.total-row td {background:#F7F7F9 !important;font-weight:800;}
 @media (max-width: 900px) {.main,body.sidebar-collapsed .main {margin-left: 0;padding: 20px;}}
 @media (max-width: 600px) {.filter-form {flex-direction: column;align-items: stretch;}.field {width: 100%;}.apply-button {width: 100%;}}
 </style>
