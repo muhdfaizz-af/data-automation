@@ -29,8 +29,9 @@
  *   Previously this page ran up to ~17 separate SUM() queries against
  *   `orders` on a single load (3 overlapping range-scans for 3.4/3.5, 1
  *   redundant re-scan inside getSalesTargetNewTarget, and up to 13 per-month
- *   scans for 3.6). That's now down to 2 queries total:
+ *   scans for 3.6). That's now down to 3 sales queries total:
  *     - getHubDailyTotals()     -> 1 query, feeds Daily/Monthly/Yearly (3.4/3.5)
+ *     - getHubTotals()           -> 1 query, feeds previous-month target allocation
  *     - getHubMonthTotalsRange()-> 1 query, feeds the whole 3.6 increment table
  *   Both group in SQL (DATE()/YEAR()/MONTH()) instead of running one query
  *   per bucket, then bucket further in PHP. getSalesTargetNewTarget() no
@@ -344,6 +345,8 @@ function getHubSummary($pdo, $reportDate, $statusFilter) {
 
     $dayTo     = (clone $dt)->modify('+1 day')->format('Y-m-d 00:00:00');
     $yearFrom  = $dt->format('Y') . '-01-01 00:00:00';
+    $previousMonthStart = (clone $dt)->modify('first day of previous month')->format('Y-m-d 00:00:00');
+    $previousMonthEnd   = (clone $dt)->modify('first day of this month')->format('Y-m-d 00:00:00');
 
     // One query for the whole year up to reportDate+1, grouped by day+hub.
     // Daily / Monthly / Yearly totals are then bucketed from this in PHP —
@@ -367,6 +370,7 @@ function getHubSummary($pdo, $reportDate, $statusFilter) {
 
     $dailyGrand   = array_sum($daily);
     $monthlyGrand = array_sum($monthly);
+    $previousMonth = getHubTotals($pdo, $previousMonthStart, $previousMonthEnd, $statusFilter);
     // MTD through reportDate inclusive, minus reportDate itself, = sales strictly
     // before reportDate. Reuses totals we already have instead of re-querying.
     $salesBeforeDate = $monthlyGrand - $dailyGrand;
@@ -375,6 +379,7 @@ function getHubSummary($pdo, $reportDate, $statusFilter) {
         'report_date' => $reportDate,
         'daily_target_new' => getSalesTargetNewTarget($pdo, $reportDate, $salesBeforeDate),
         'monthly_target_mtd' => getSalesTargetMonthToDate($pdo, $reportDate),
+        'previous_month' => buildPeriodPayload($previousMonth),
         'daily'       => buildPeriodPayload($daily),
         'monthly'     => buildPeriodPayload($monthly),
         'yearly'      => buildPeriodPayload($yearly),
@@ -765,7 +770,7 @@ svg{display:block;}
       <div class="report-icon ri-gold"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></div>
       <div>
         <div class="report-card-title">Sales and Target by Hub</div>
-        <div class="report-card-sub">Daily &amp; Monthly targets are auto-allocated by each region's sales percentage, sourced from Sales Target (Daily = New Target for the reporting date, Monthly = MTD Target up to the reporting date).</div>
+        <div class="report-card-sub">Daily &amp; Monthly targets are auto-allocated by each region's previous-calendar-month sales percentage, sourced from Sales Target (Daily = New Target for the reporting date, Monthly = MTD Target up to the reporting date).</div>
       </div>
     </div>
     <div class="target-grid" id="targetGrid">
@@ -931,6 +936,7 @@ function applySummaryResult(json){
     document.getElementById('yearlyPanelSub').textContent = 'Jan 1 – ' + dateLabel;
     targetState.dailyNew = Number(json.daily_target_new) || 0;
     targetState.monthlyNew = Number(json.monthly_target_mtd) || 0;
+    targetState.allocation = json.previous_month ? json.previous_month.hubs : {};
     document.getElementById('dailyTargetSource').textContent = 'New Target from Sales Target: ' + formatRM(targetState.dailyNew);
     document.getElementById('monthlyTargetSource').textContent = 'MTD Target from Sales Target: ' + formatRM(targetState.monthlyNew);
 
@@ -949,7 +955,7 @@ function applySummaryResult(json){
 // ════════════════════════════════════════════════════
 // 3.5 — TARGET (client-side only, NOT persisted to DB)
 // ════════════════════════════════════════════════════
-const targetState = { dailyNew: 0, monthlyNew: 0 }; // both sourced from Sales Target, auto-allocated by hub %
+const targetState = { dailyNew: 0, monthlyNew: 0, allocation: {} }; // targets are allocated by the previous month's hub contribution
 const targetInstances = {};
 let latestActuals = { daily: {}, monthly: {} };
 
@@ -974,7 +980,8 @@ function renderTargetTable(period){
     HUB_KEYS.forEach(k => {
         const meta = HUBS[k];
         const actual = (latestActuals[period][k] || { total: 0, pct: 0 });
-        const target = overall > 0 ? overall * Number(actual.pct || 0) / 100 : null;
+        const allocationPct = Number((targetState.allocation[k] || {}).pct || 0);
+        const target = overall > 0 ? overall * allocationPct / 100 : null;
         totalActual += Number(actual.total || 0);
         const diff = computeDifferent(actual.total, Number(target));
         const diffClass = diff === null ? '' : (diff >= 0 ? 'diff-pos' : 'diff-neg');
@@ -1005,7 +1012,7 @@ function renderTargetChart(period){
     const overall = period === 'daily' ? targetState.dailyNew : targetState.monthlyNew;
     const labels = HUB_KEYS.map(k => HUBS[k].label);
     const actualValues = HUB_KEYS.map(k => (latestActuals[period][k] || {}).total || 0);
-    const targetValues = HUB_KEYS.map(k => overall > 0 ? overall * Number((latestActuals[period][k] || {}).pct || 0) / 100 : 0);
+    const targetValues = HUB_KEYS.map(k => overall > 0 ? overall * Number((targetState.allocation[k] || {}).pct || 0) / 100 : 0);
 
     if (targetInstances[canvasId]) targetInstances[canvasId].destroy();
     const ctx = document.getElementById(canvasId).getContext('2d');

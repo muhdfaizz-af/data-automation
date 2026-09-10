@@ -368,7 +368,8 @@ function getRecruitmentMetrics(
 
             AND registration.order_type IN (
                 'Registration Order',
-                'On Behalf Register Order'
+                'On Behalf Register Order',
+                'SPC Upgrade Order'
             )
 
             AND registration.member_code IS NOT NULL

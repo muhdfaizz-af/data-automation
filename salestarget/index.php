@@ -309,10 +309,11 @@ $currentYear  = (int)date('Y');
 $currentMonth = (int)date('n');
 $statusFilter = 'confirmed';
 $todayYmd     = date('Y-m-d');
+$yesterdayYmd = date('Y-m-d', strtotime('-1 day'));
 
 $targetMap = getMonthlyTargetMap($pdo, $currentYear, $currentMonth);
 $actualMap = getDailyActualMap($pdo, $currentYear, $currentMonth, $statusFilter);
-$estimation = buildEstimation($targetMap, $actualMap, $currentYear, $currentMonth, $todayYmd);
+$estimation = buildEstimation($targetMap, $actualMap, $currentYear, $currentMonth, $yesterdayYmd);
 
 $monthNames = [1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',7=>'July',8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'];
 $yearOptionsStart = $currentYear - 3;
@@ -465,8 +466,8 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;}
         </select>
       </div>
       <div class="filter-group">
-        <label for="reportDateInput">Reporting Date <span style="text-transform:none;font-weight:500;color:var(--gray-500);">(treat as "today")</span></label>
-        <input type="date" id="reportDateInput" value="<?= htmlspecialchars($todayYmd) ?>">
+        <label for="reportDateInput">Reporting Date</label>
+        <input type="date" id="reportDateInput" value="<?= htmlspecialchars($yesterdayYmd) ?>">
       </div>
       <button type="button" class="btn-apply" id="btnLoad">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
