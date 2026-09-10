@@ -26,7 +26,7 @@ $salesPerformancePages = [
   'sales_brand.php',
   'overall_products.php',
   'nafesa_products.php',
-  'reqruitment.php',
+  'recruitment.php',
 ];
 
 function navItem($href, $icon, $label, $active = false, $basePath = '') {
@@ -114,7 +114,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
       <?= navItem('salesperformance/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
       <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
-      <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Recruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
+      <?= navItem('salesperformance/recruitment.php', $icoSales, 'Recruitment', $currentPage === 'recruitment.php', $navBasePath) ?>
     </div>
   </div>
   <div class="nav-divider"></div>
@@ -162,7 +162,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
       <?= navItem('salesperformance/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
       <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
-      <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Recruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
+      <?= navItem('salesperformance/recruitment.php', $icoSales, 'Recruitment', $currentPage === 'recruitment.php', $navBasePath) ?>
     </div>
   </div>
   
