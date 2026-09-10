@@ -23,6 +23,7 @@ $salesPerformancePages = [
   'hub_comparison.php',
   'sales_estimation.php',
   'asd_comparison.php',
+  'sales_brand.php',
   'top_product.php',
   'nafesa_products.php',
   'reqruitment.php',
@@ -110,13 +111,12 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
       <?= navItem('salesperformance/top_product.php', $icoSales, 'Overall Products', $currentPage === 'top_product.php', $navBasePath) ?>
       <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
       <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Recruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
     </div>
   </div>
-  <?= navItem('products.php', $icoBox, 'Products', $activeNav === 'products', $navBasePath) ?>
-  
   <div class="nav-divider"></div>
   <div class="sidebar-section-label">Tools</div>
   <?= navItem('upload_reports/index.php', $icoUpload, 'Upload Reports', $activeNav === 'upload', $navBasePath) ?>
@@ -159,18 +159,17 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
-      <?= navItem('salesperformance/top_product.php', $icoSales, 'Top Upper Product', $currentPage === 'top_product.php', $navBasePath) ?>
-      <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Top Bottom Product', $currentPage === 'nafesa_products.php', $navBasePath) ?>
-      <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Reqruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
+      <?= navItem('salesperformance/top_product.php', $icoSales, 'Overall Products', $currentPage === 'top_product.php', $navBasePath) ?>
+      <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
+      <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Recruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
     </div>
   </div>
-  <?= navItem('product-bundles.php', $icoBundle, 'Product Bundles', $activeNav === 'bundles', $navBasePath) ?>
-  <?= navItem('sales.php', $icoSales, 'Sales Upload', $activeNav === 'sales', $navBasePath) ?>
-  <?= navItem('members.php', $icoMembers, 'Members Upload', $activeNav === 'members', $navBasePath) ?>
   
   <div class="nav-divider"></div>
   <div class="sidebar-section-label">Tools</div>
   <?= navItem('upload_reports/index.php', $icoUpload, 'Upload Reports', $activeNav === 'upload', $navBasePath) ?>
+  <?= navItem('salestarget/', $icoUpload, 'Sales Target', $activeNav === 'salestarget', $navBasePath) ?>
   <?= navItem('upload_reports/manual_sales.php', $icoSales, 'Manual Sales', $activeNav === 'manual_sales', $navBasePath) ?>
   
   <div class="nav-divider"></div>
