@@ -24,7 +24,7 @@ $salesPerformancePages = [
   'sales_estimation.php',
   'asd_comparison.php',
   'sales_brand.php',
-  'top_product.php',
+  'overall_products.php',
   'nafesa_products.php',
   'reqruitment.php',
 ];
@@ -112,7 +112,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
-      <?= navItem('salesperformance/top_product.php', $icoSales, 'Overall Products', $currentPage === 'top_product.php', $navBasePath) ?>
+      <?= navItem('salesperformance/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
       <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
       <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Recruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
     </div>
@@ -160,7 +160,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
-      <?= navItem('salesperformance/top_product.php', $icoSales, 'Overall Products', $currentPage === 'top_product.php', $navBasePath) ?>
+      <?= navItem('salesperformance/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
       <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
       <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Recruitment', $currentPage === 'reqruitment.php', $navBasePath) ?>
     </div>
