@@ -768,4 +768,8 @@ include __DIR__ . '/../includes/sidebar.php';
 </div>
 
 </body>
+<<<<<<< HEAD
 </html>
+=======
+</html>
+>>>>>>> 7d6e9552b20c66a8e620fb357121e80046589f91
