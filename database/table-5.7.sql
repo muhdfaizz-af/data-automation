@@ -209,7 +209,7 @@ CREATE TABLE `manual_sales` (
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_manual_sales_company_channel_date` (`company_id`, `sales_channel_id`, `sales_date`),
+  UNIQUE KEY `uq_manual_sales_company_channel_date` (`company_id`, `sales_channel_id`, `sales_date`, `brand`),
   KEY `idx_manual_sales_sales_date` (`sales_date`),
   KEY `idx_manual_sales_brand` (`brand`),
   KEY `idx_manual_sales_company_id` (`company_id`),
