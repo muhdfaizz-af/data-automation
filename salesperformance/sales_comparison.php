@@ -13,6 +13,14 @@
  *          applied to EVERY year in the range, so you can fairly compare
  *          partial years like "2025 vs 2026, Jan 1 - Aug 25 only".
  *
+ * PERFORMANCE NOTE: the initial page load used to run all 3 report queries
+ * (Daily/Monthly/Yearly, each up to 2 sub-queries for System + Manual = up to
+ * 6 queries) synchronously in PHP before any HTML was sent. That blocked the
+ * very first paint even though every *filter change* was already AJAX-based.
+ * The page now sends the shell immediately with empty charts, then fires the
+ * same fetchSection() calls used by "Apply Filter" on DOMContentLoaded, so
+ * the 3 sections load in parallel in the browser instead of serially in PHP.
+ *
  * Data source: `orders` (join `companies` for company_code) = "System" sales,
  *   PLUS `manual_sales` (join `companies` for company_code) = "Manual" sales
  *   entered for channels not available in Solucis (Modern Trade, TikTok, Shopee, etc).
@@ -465,7 +473,9 @@ $pdo = getDBConnection();
 
 // ════════════════════════════════════════════════════
 // AJAX ENDPOINT — all filters (status/company/source/date) go through here,
-// no page reload, no URL change.
+// no page reload, no URL change. The initial page load ALSO goes through
+// here now (fired by JS on DOMContentLoaded) instead of running queries
+// directly in the HTML-rendering branch below.
 // ════════════════════════════════════════════════════
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json; charset=utf-8');
@@ -521,9 +531,10 @@ if (isset($_GET['ajax'])) {
 }
 
 // ════════════════════════════════════════════════════
-// INITIAL PAGE LOAD — defaults only. This page no longer reads the query
-// string for its initial render; every filter afterwards runs via AJAX,
-// so the URL stays the same.
+// INITIAL PAGE LOAD — defaults ONLY. No DB queries happen here anymore.
+// The three sections are populated by JS calling the same AJAX endpoint
+// above right after the shell renders, so the first byte the browser gets
+// is not blocked on any report calculation.
 // ════════════════════════════════════════════════════
 $todayYmd    = date('Y-m-d');
 $currentYear = (int)date('Y');
@@ -549,21 +560,6 @@ $yearlyMonthFrom = 1;
 $yearlyMonthTo   = (int)date('n');
 $yearlyDayFrom   = 1;
 $yearlyDayTo     = $yesterdayDay;
-
-$dailyData    = getDailySales($pdo, $dailyFrom, $dailyTo, $statusFilter, $companyFilter, $sourceFilter);
-$dailyTotal   = array_sum($dailyData['values']);
-$dailyCount   = count($dailyData['values']);
-$dailyAverage = $dailyCount > 0 ? $dailyTotal / $dailyCount : 0;
-
-$monthlyData    = getMonthlySales($pdo, $monthlyMonthFrom, $monthlyMonthTo, $monthlyDayFrom, $monthlyDayTo, $statusFilter, $companyFilter, $sourceFilter);
-$monthlyTotal   = array_sum($monthlyData['values']);
-$monthlyCount   = count($monthlyData['values']);
-$monthlyAverage = $monthlyCount > 0 ? $monthlyTotal / $monthlyCount : 0;
-
-$yearlyData    = getYearlySales($pdo, $yearlyYearFrom, $yearlyYearTo, $yearlyMonthFrom, $yearlyMonthTo, $yearlyDayFrom, $yearlyDayTo, $statusFilter, $companyFilter, $sourceFilter);
-$yearlyTotal   = array_sum($yearlyData['values']);
-$yearlyCount   = count($yearlyData['values']);
-$yearlyAverage = $yearlyCount > 0 ? $yearlyTotal / $yearlyCount : 0;
 
 $yearOptionsStart = $currentYear - 15;
 $yearOptionsEnd   = $currentYear + 1;
@@ -797,11 +793,11 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
           <div class="stats-group">
             <div class="stat-block stat-total">
               <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="dailyTotalValue">RM <?= number_format($dailyTotal, 2) ?></div>
+              <div class="stat-value" id="dailyTotalValue">—</div>
             </div>
             <div class="stat-block stat-average">
               <div class="stat-label">Average Daily Sales</div>
-              <div class="stat-value" id="dailyAverageValue">RM <?= number_format($dailyAverage, 2) ?></div>
+              <div class="stat-value" id="dailyAverageValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="daily">
@@ -877,11 +873,11 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
           <div class="stats-group">
             <div class="stat-block stat-total">
               <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="monthlyTotalValue">RM <?= number_format($monthlyTotal, 2) ?></div>
+              <div class="stat-value" id="monthlyTotalValue">—</div>
             </div>
             <div class="stat-block stat-average">
               <div class="stat-label">Average Monthly Sales</div>
-              <div class="stat-value" id="monthlyAverageValue">RM <?= number_format($monthlyAverage, 2) ?></div>
+              <div class="stat-value" id="monthlyAverageValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="monthly">
@@ -980,11 +976,11 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
           <div class="stats-group">
             <div class="stat-block stat-total">
               <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="yearlyTotalValue">RM <?= number_format($yearlyTotal, 2) ?></div>
+              <div class="stat-value" id="yearlyTotalValue">—</div>
             </div>
             <div class="stat-block stat-average">
               <div class="stat-label">Average Yearly Sales</div>
-              <div class="stat-value" id="yearlyAverageValue">RM <?= number_format($yearlyAverage, 2) ?></div>
+              <div class="stat-value" id="yearlyAverageValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="yearly">
@@ -1092,11 +1088,13 @@ function makeDataset(type, label, data, color, hoverColor, ctx){
     return { label, data, backgroundColor:color, hoverBackgroundColor:hoverColor, borderRadius:6, maxBarThickness:46 };
 }
 
-// ── Initial data rendered from PHP — everything after this is updated via AJAX ──
+// ── Chart data now starts EMPTY. PHP no longer runs any report query on
+//    page load — fetchSection() below fills each of these right after the
+//    shell is visible, in parallel, instead of PHP blocking on them first. ──
 const chartData = {
-    daily:   { labels: <?= json_encode($dailyData['labels']) ?>,   values: <?= json_encode($dailyData['values']) ?>,   keys: [],                                        label:'Daily Sales',   color:'#E0202E', hover:'#8E1620' },
-    monthly: { labels: <?= json_encode($monthlyData['labels']) ?>, values: <?= json_encode($monthlyData['values']) ?>, keys: <?= json_encode($monthlyData['keys']) ?>, label:'Monthly Sales', color:'#00B4B4', hover:'#008A8A' },
-    yearly:  { labels: <?= json_encode($yearlyData['labels']) ?>,  values: <?= json_encode($yearlyData['values']) ?>,  keys: <?= json_encode($yearlyData['keys']) ?>,  label:'Yearly Sales',  color:'#F5A623', hover:'#c97e0e' }
+    daily:   { labels: [], values: [], keys: [], label:'Daily Sales',   color:'#E0202E', hover:'#8E1620' },
+    monthly: { labels: [], values: [], keys: [], label:'Monthly Sales', color:'#00B4B4', hover:'#008A8A' },
+    yearly:  { labels: [], values: [], keys: [], label:'Yearly Sales',  color:'#F5A623', hover:'#c97e0e' }
 };
 
 // ── Current day/month sub-range for each section (so the breakdown table can
@@ -1336,11 +1334,6 @@ document.addEventListener('DOMContentLoaded', function(){
         return;
     }
 
-    ['daily','monthly','yearly'].forEach(function(key){
-        renderChart(key, 'line');
-        renderTable(key);
-    });
-
     document.querySelectorAll('.chart-type-select').forEach(function(select){
         select.addEventListener('change', function(){
             renderChart(this.dataset.chart, this.value);
@@ -1360,6 +1353,13 @@ document.addEventListener('DOMContentLoaded', function(){
         fetchSection('daily');
         fetchSection('monthly');
         fetchSection('yearly');
+    });
+
+    // ── Initial load: fire all 3 sections via the SAME AJAX endpoint used by
+    //    the filters above, in parallel, instead of PHP computing them first.
+    //    This is what actually removes the up-front DB blocking on page load. ──
+    ['daily','monthly','yearly'].forEach(function(key){
+        fetchSection(key);
     });
 });
 </script>
