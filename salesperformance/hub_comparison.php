@@ -24,6 +24,24 @@
  *   "Sources" column for every hub is "Order History MY/SG", not manual_sales.
  *   Status filter (Confirmed/Void/All) applies globally, same as
  *   sales-performance.php.
+ *
+ * ── PERFORMANCE NOTES (this revision) ───────────────────────────────────
+ *   Previously this page ran up to ~17 separate SUM() queries against
+ *   `orders` on a single load (3 overlapping range-scans for 3.4/3.5, 1
+ *   redundant re-scan inside getSalesTargetNewTarget, and up to 13 per-month
+ *   scans for 3.6). That's now down to 2 queries total:
+ *     - getHubDailyTotals()     -> 1 query, feeds Daily/Monthly/Yearly (3.4/3.5)
+ *     - getHubMonthTotalsRange()-> 1 query, feeds the whole 3.6 increment table
+ *   Both group in SQL (DATE()/YEAR()/MONTH()) instead of running one query
+ *   per bucket, then bucket further in PHP. getSalesTargetNewTarget() no
+ *   longer re-queries `orders` at all — it reuses (monthlyGrand - dailyGrand)
+ *   which is already computed by getHubSummary().
+ *
+ *   Recommended indexes (check these exist, add if not):
+ *     ALTER TABLE orders ADD INDEX idx_orders_datetime_status (order_datetime, order_status, company_id);
+ *     ALTER TABLE orders ADD INDEX idx_orders_order_id (order_id);       -- supports LIKE 'MYH%' / 'MYB%'
+ *     ALTER TABLE orders ADD INDEX idx_orders_member_code (member_code); -- supports LIKE 'BN%'
+ *     ALTER TABLE sales_target ADD INDEX idx_sales_target_date (target_date);
  */
 
 session_start();
@@ -103,6 +121,10 @@ function hubClassifyExpr() {
  * Sum `sub_total` (converted to MYR) per hub, for orders with
  * order_datetime in [$fromDt, $toExclusiveDt).
  * Returns assoc array keyed by hub -> float total (always has all 4 keys).
+ *
+ * NOTE: kept as a small standalone helper (e.g. for future ad-hoc lookups),
+ * but the main 3.4/3.5/3.6 sections below no longer call this in a loop —
+ * see getHubDailyTotals() / getHubMonthTotalsRange() instead.
  */
 function getHubTotals($pdo, $fromDt, $toExclusiveDt, $statusFilter = 'all') {
     $totals = array_fill_keys(array_keys(HUBS), 0.0);
@@ -133,15 +155,97 @@ function getHubTotals($pdo, $fromDt, $toExclusiveDt, $statusFilter = 'all') {
 }
 
 /**
- * MTD totals per hub for a given year/month, cut off at min(cutoffDay, days-in-month).
+ * Single query covering a whole date range, grouped by calendar day AND hub.
+ * Returns ['Y-m-d' => ['west'=>float, 'east'=>float, 'brunei'=>float, 'singapore'=>float], ...]
+ *
+ * This replaces what used to be 3 separate full-range queries (daily / monthly /
+ * yearly) in getHubSummary(), which overlapped each other (yearly ⊇ monthly ⊇ daily).
+ * Bucketing into day/month/year totals now happens in PHP from this single result set.
  */
-function getHubMonthlyMTD($pdo, $year, $month, $cutoffDay, $statusFilter = 'all') {
-    $daysInMonth = (int)date('t', mktime(0, 0, 0, $month, 1, $year));
-    $day = min($cutoffDay, $daysInMonth);
-    $from = sprintf('%04d-%02d-01 00:00:00', $year, $month);
-    $toDt = new DateTime(sprintf('%04d-%02d-%02d', $year, $month, $day));
-    $toDt->modify('+1 day');
-    return getHubTotals($pdo, $from, $toDt->format('Y-m-d H:i:s'), $statusFilter);
+function getHubDailyTotals($pdo, $fromDt, $toExclusiveDt, $statusFilter = 'all') {
+    $buckets = [];
+    if (!$pdo) return $buckets;
+    try {
+        $params = ['from' => $fromDt, 'to' => $toExclusiveDt];
+        $statusClause = '';
+        if ($statusFilter !== 'all') {
+            $statusClause = " AND o.order_status = :status";
+            $params['status'] = $statusFilter === 'confirmed' ? 'Confirmed' : 'Void';
+        }
+        $hubExpr = hubClassifyExpr();
+        $sql = "SELECT DATE(o.order_datetime) AS d, $hubExpr AS hub, c.company_code, SUM(o.sub_total) AS total
+                FROM orders o
+                JOIN companies c ON c.id = o.company_id
+                WHERE o.order_datetime >= :from
+                  AND o.order_datetime <  :to" . $statusClause . "
+                GROUP BY d, hub, c.company_code";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        foreach ($stmt->fetchAll() as $r) {
+            $hub = $r['hub'];
+            if (!$hub || !array_key_exists($hub, HUBS)) continue; // ignore unclassified rows
+            $d = $r['d'];
+            if (!isset($buckets[$d])) $buckets[$d] = array_fill_keys(array_keys(HUBS), 0.0);
+            $buckets[$d][$hub] += toMyr($r['total'], $r['company_code']);
+        }
+    } catch (Exception $e) { /* return whatever was gathered before the failure */ }
+    return $buckets;
+}
+
+/**
+ * Single query covering Dec of ($year-1) [baseline] through month $endMonth of
+ * $year, grouped by YEAR/MONTH/hub and pre-filtered to the same day-of-month
+ * cutoff used everywhere else on this page (DAY(order_datetime) <= $cutoffDay
+ * self-caps for short months, same behaviour as the old min($cutoffDay,
+ * $daysInMonth) logic).
+ *
+ * Returns [year => [month => ['west'=>float, ...]]] — only the months actually
+ * needed (the Dec baseline + months 1..$endMonth of $year) are populated.
+ *
+ * This replaces what used to be ($endMonth + 1) separate queries inside
+ * getHubIncrement()'s per-month loop (up to 13 queries for a full year).
+ */
+function getHubMonthTotalsRange($pdo, $year, $endMonth, $cutoffDay, $statusFilter = 'all') {
+    $result = [];
+    $result[$year - 1][12] = array_fill_keys(array_keys(HUBS), 0.0);
+    for ($m = 1; $m <= $endMonth; $m++) {
+        $result[$year][$m] = array_fill_keys(array_keys(HUBS), 0.0);
+    }
+
+    if (!$pdo) return $result;
+    try {
+        $from = sprintf('%04d-12-01 00:00:00', $year - 1);
+        $to   = ($endMonth === 12)
+            ? sprintf('%04d-01-01 00:00:00', $year + 1)
+            : sprintf('%04d-%02d-01 00:00:00', $year, $endMonth + 1);
+
+        $params = ['from' => $from, 'to' => $to, 'cutoff' => $cutoffDay];
+        $statusClause = '';
+        if ($statusFilter !== 'all') {
+            $statusClause = " AND o.order_status = :status";
+            $params['status'] = $statusFilter === 'confirmed' ? 'Confirmed' : 'Void';
+        }
+        $hubExpr = hubClassifyExpr();
+        $sql = "SELECT YEAR(o.order_datetime) AS yr, MONTH(o.order_datetime) AS mo,
+                       $hubExpr AS hub, c.company_code, SUM(o.sub_total) AS total
+                FROM orders o
+                JOIN companies c ON c.id = o.company_id
+                WHERE o.order_datetime >= :from
+                  AND o.order_datetime <  :to
+                  AND DAY(o.order_datetime) <= :cutoff" . $statusClause . "
+                GROUP BY yr, mo, hub, c.company_code";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        foreach ($stmt->fetchAll() as $r) {
+            $hub = $r['hub'];
+            if (!$hub || !array_key_exists($hub, HUBS)) continue;
+            $yr = (int)$r['yr'];
+            $mo = (int)$r['mo'];
+            if (!isset($result[$yr][$mo])) continue; // outside the range we asked for, skip
+            $result[$yr][$mo][$hub] += toMyr($r['total'], $r['company_code']);
+        }
+    } catch (Exception $e) { /* keep zeros */ }
+    return $result;
 }
 
 /**
@@ -176,7 +280,13 @@ function clampYear($v) {
     return [$v, ''];
 }
 
-function getSalesTargetNewTarget($pdo, $reportDate, $statusFilter = 'all') {
+/**
+ * "New Target" reforecast for the reporting date (section 3.5, Daily panel).
+ * $salesBeforeDate is now passed in by the caller (derived from totals it
+ * already computed) instead of this function re-querying `orders` itself —
+ * that used to duplicate the monthly-total query getHubSummary() already runs.
+ */
+function getSalesTargetNewTarget($pdo, $reportDate, $salesBeforeDate) {
     if (!$pdo) return 0.0;
 
     try {
@@ -186,30 +296,6 @@ function getSalesTargetNewTarget($pdo, $reportDate, $statusFilter = 'all') {
         $targetStmt = $pdo->prepare('SELECT target_amount FROM sales_target WHERE target_date = :target_date');
         $targetStmt->execute(['target_date' => $reportDate]);
         $targetAmount = (float)($targetStmt->fetchColumn() ?: 0);
-
-        // NOTE: must join companies and convert on company_code (not orders.currency_code,
-        // which stores 'MYR'/'SGD' — toMyr() checks company_code 'MY'/'SG'). Using
-        // currency_code directly here previously meant SG orders never got the
-        // SGD->MYR conversion applied.
-        $salesSql = 'SELECT c.company_code, SUM(o.sub_total) AS total
-                     FROM orders o
-                     JOIN companies c ON c.id = o.company_id
-                     WHERE o.order_datetime >= :from_dt AND o.order_datetime < :to_dt';
-        $salesParams = [
-            'from_dt' => $monthStart . ' 00:00:00',
-            'to_dt' => $reportDate . ' 00:00:00',
-        ];
-        if ($statusFilter !== 'all') {
-            $salesSql .= ' AND o.order_status = :status';
-            $salesParams['status'] = $statusFilter === 'confirmed' ? 'Confirmed' : 'Void';
-        }
-        $salesSql .= ' GROUP BY c.company_code';
-        $salesStmt = $pdo->prepare($salesSql);
-        $salesStmt->execute($salesParams);
-        $salesBeforeDate = 0.0;
-        foreach ($salesStmt->fetchAll() as $row) {
-            $salesBeforeDate += toMyr($row['total'], $row['company_code']);
-        }
 
         $previousTargetsStmt = $pdo->prepare(
             'SELECT COALESCE(SUM(target_amount), 0) FROM sales_target
@@ -256,20 +342,38 @@ function getSalesTargetMonthToDate($pdo, $reportDate) {
 function getHubSummary($pdo, $reportDate, $statusFilter) {
     $dt = new DateTime($reportDate);
 
-    $dayFrom = (clone $dt)->format('Y-m-d 00:00:00');
-    $dayTo   = (clone $dt)->modify('+1 day')->format('Y-m-d 00:00:00');
+    $dayTo     = (clone $dt)->modify('+1 day')->format('Y-m-d 00:00:00');
+    $yearFrom  = $dt->format('Y') . '-01-01 00:00:00';
 
-    $monthFrom = (clone $dt)->modify('first day of this month')->format('Y-m-d 00:00:00');
+    // One query for the whole year up to reportDate+1, grouped by day+hub.
+    // Daily / Monthly / Yearly totals are then bucketed from this in PHP —
+    // no more separate overlapping range-scans for each of the 3 panels.
+    $dailyBuckets = getHubDailyTotals($pdo, $yearFrom, $dayTo, $statusFilter);
 
-    $yearFrom = $dt->format('Y') . '-01-01 00:00:00';
+    $reportYmd   = $dt->format('Y-m-d');
+    $monthPrefix = $dt->format('Y-m');
 
-    $daily   = getHubTotals($pdo, $dayFrom, $dayTo, $statusFilter);
-    $monthly = getHubTotals($pdo, $monthFrom, $dayTo, $statusFilter);
-    $yearly  = getHubTotals($pdo, $yearFrom, $dayTo, $statusFilter);
+    $daily   = $dailyBuckets[$reportYmd] ?? array_fill_keys(array_keys(HUBS), 0.0);
+    $monthly = array_fill_keys(array_keys(HUBS), 0.0);
+    $yearly  = array_fill_keys(array_keys(HUBS), 0.0);
+
+    foreach ($dailyBuckets as $ymd => $hubTotals) {
+        $isThisMonth = (strncmp($ymd, $monthPrefix, 7) === 0);
+        foreach ($hubTotals as $hub => $val) {
+            $yearly[$hub] += $val;
+            if ($isThisMonth) $monthly[$hub] += $val;
+        }
+    }
+
+    $dailyGrand   = array_sum($daily);
+    $monthlyGrand = array_sum($monthly);
+    // MTD through reportDate inclusive, minus reportDate itself, = sales strictly
+    // before reportDate. Reuses totals we already have instead of re-querying.
+    $salesBeforeDate = $monthlyGrand - $dailyGrand;
 
     return [
         'report_date' => $reportDate,
-        'daily_target_new' => getSalesTargetNewTarget($pdo, $reportDate, $statusFilter),
+        'daily_target_new' => getSalesTargetNewTarget($pdo, $reportDate, $salesBeforeDate),
         'monthly_target_mtd' => getSalesTargetMonthToDate($pdo, $reportDate),
         'daily'       => buildPeriodPayload($daily),
         'monthly'     => buildPeriodPayload($monthly),
@@ -285,8 +389,12 @@ function getHubIncrement($pdo, $year, $cutoffDay, $statusFilter) {
     $currentMonth = (int)date('n');
     $endMonth = ($year == $currentYear) ? $currentMonth : 12;
 
+    // One query for every month we need (Dec baseline + months 1..endMonth),
+    // instead of (endMonth + 1) separate per-month queries.
+    $monthTotals = getHubMonthTotalsRange($pdo, $year, $endMonth, $cutoffDay, $statusFilter);
+
     // Baseline for January's increment = December of the previous year, same cutoff day.
-    $prevTotals = getHubMonthlyMTD($pdo, $year - 1, 12, $cutoffDay, $statusFilter);
+    $prevTotals = $monthTotals[$year - 1][12] ?? array_fill_keys(array_keys(HUBS), 0.0);
 
     $rows = [];
     $sums = array_fill_keys(array_keys(HUBS), 0.0);
@@ -294,7 +402,7 @@ function getHubIncrement($pdo, $year, $cutoffDay, $statusFilter) {
     $monthCount = 0;
 
     for ($m = 1; $m <= $endMonth; $m++) {
-        $totals = getHubMonthlyMTD($pdo, $year, $m, $cutoffDay, $statusFilter);
+        $totals = $monthTotals[$year][$m] ?? array_fill_keys(array_keys(HUBS), 0.0);
         $grand = array_sum($totals);
 
         $hubRows = [];
