@@ -344,10 +344,6 @@ $currentPeriodEnd = $yesterday < $currentMonthStart
     ? $today
     : $yesterday;
 
-/*
- * Give Last Month the same number of elapsed calendar days.
- * The minimum protects shorter months, such as February.
- */
 $matchingDay = min(
     (int)$currentPeriodEnd->format('j'),
     (int)$lastMonthStart->format('t')
@@ -549,7 +545,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .page-header p {color: var(--gray-500);font-size: 13.5px;}
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
 .card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
-.card-subtitle {color: var(--gray-500);font-size: 12px;}
+.card-subtitle {color: var(--gray-500);font-size: 12px;margin-bottom: 10px;}
 .form-grid {display: grid;grid-template-columns: 1fr 1fr 190px auto;gap: 18px;align-items: end;margin-top: 20px;}
 .period-box {padding: 16px;border-radius: var(--radius-md);background: var(--gray-100);}
 .period-title {margin-bottom: 12px;font-size: 13px;font-weight: 800;}
@@ -575,20 +571,25 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .metric-card {min-width: 0;padding: 19px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);margin-bottom: 20px;}
 .metric-name {margin-bottom: 14px;color: var(--gray-500);font-size: 10px;font-weight: 800;letter-spacing: .4px;text-transform: uppercase;}
 .metric-values {display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 16px;}
-.metric-period {font-size: 10px;font-weight: 700;color: var(--black-500);}
+.metric-period {font-size: 16px;font-weight: 800;color: var(--black);}
 .metric-value {max-width: 100%;font-size: 20;font-weight: 700;line-height: 1.25;overflow-wrap: anywhere;}
 .metric-change {margin-top: 14px;padding-top: 12px;border-top: 1px solid var(--gray-100);font-size: 12px;font-weight: 800;}
 .metric-change.positive {color: var(--green);}
 .metric-change.negative {color: var(--red);}
 .metric-change.neutral {color: var(--gray-500);}
-.table-wrap {overflow-x: auto;}
+.table-wrap {width:100%;min-width:0;overflow-x:auto;border:1px solid #E6E6EA;border-radius:12px;background:var(--white);}
 
-/* ── COMPARISON TABLE ── */
-.comparison-table {width: 100%;border-collapse: collapse;}
-.comparison-table th,.comparison-table td {padding: 13px 15px;border-bottom: 1px solid var(--black-100);text-align: right;font-size: 13px;}
-.comparison-table th:first-child,.comparison-table td:first-child {text-align: left;}
-.comparison-table th {color: var(--black-500);font-size: 10.5px;letter-spacing: .35px;text-transform: uppercase;}
-.comparison-table td {font-weight: 700;}
+/* Calculation Breakdown table grid */
+.country-breakdown-table {width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;}
+.country-breakdown-table th,.country-breakdown-table td {padding:13px 14px;border:0;border-bottom:1px solid #ECECF0;text-align:center;vertical-align:middle;}
+.country-breakdown-table th {background:#F7F7F9;color:var(--gray-700);font-size:10.5px;font-weight:800;line-height:1.4;letter-spacing:.3px;text-transform:uppercase;}
+.country-breakdown-table td {background:var(--white);font-size:12px;font-weight:700;}
+.country-breakdown-table th:first-child,.country-breakdown-table td:first-child {width: 14%;text-align: left;}
+.country-breakdown-table tbody tr:first-child td {font-weight: 800;}
+.country-breakdown-table tbody tr {transition:background-color .15s ease;}
+.country-breakdown-table tbody tr:hover td {background:#FAFAFB;}
+.country-breakdown-table tbody tr:last-child td {border-bottom:0;}
+
 .note {margin-top: 16px;color: var(--black-500);font-size: 11.5px;line-height: 1.7;}
 .order-type-option:hover {border-color: var(--red);}
 .order-type-option input {width: 16px;height: 16px;accent-color: var(--red);}
@@ -635,15 +636,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .metric-value {max-width:100%;line-height:1.25;overflow-wrap:anywhere;}
 
 /* ── COUNTRY BREAKDOWN TABLE ── */
-.country-breakdown-table {width: 100%;table-layout: fixed;}
-.country-breakdown-table th,.country-breakdown-table td {padding: 14px 10px;text-align: center;vertical-align: middle;}
-.country-breakdown-table th:first-child,.country-breakdown-table td:first-child {width: 14%;text-align: left;font-weight: 800;}
-.country-breakdown-table th:nth-child(2),.country-breakdown-table td:nth-child(2) 
-.country-breakdown-table th:nth-child(3),.country-breakdown-table td:nth-child(3) 
-.country-breakdown-table th:nth-child(5),.country-breakdown-table td:nth-child(5) 
-.country-breakdown-table th:nth-child(6),.country-breakdown-table td:nth-child(6) 
 .country-breakdown-table td:nth-child(5),.country-breakdown-table td:nth-child(6) {white-space:nowrap;}
-.country-breakdown-table tbody tr:first-child td {font-weight: 800;}
 @media (max-width: 900px) {.table-wrap {overflow-x: auto;}.country-breakdown-table {min-width: 850px;}}
 @media (max-width:800px) {.period-filter-grid,.order-type-groups,.metric-grid {grid-template-columns:1fr;}.order-type-header,.filter-footer {flex-direction:column;align-items:stretch;}.checkbox-actions {align-self:flex-start;}.apply-button {width:100%;}}
 @media (max-width:500px) {.date-grid {grid-template-columns:1fr;}.company-field {width:100%;}}
@@ -685,25 +678,13 @@ include __DIR__ . '/../includes/sidebar.php';
         </div>
     <?php endif; ?>
 
-    <div class="definition">
-        <div>
-            <strong>ASD formula:</strong>
-            Qualifying Total Sales &divide; Unique Active Agents.
-
-            <div class="order-type-help">
-                <strong>Qualifying order types:</strong>
-                Repurchase Order and On Behalf Repurchase Order
-            </div>
-        </div>
-    </div>
-
     <section class="card">
         <div class="card-title">Comparison Filters</div>
         <div class="card-subtitle">
             Compare matching month-to-date ranges ending on the same day number.
         </div>
 
-        <form method="get" action="asd_comparison.php" id="asdFilterForm">
+        <form method="get" action="asd_comparison.php" id="asdFilterForm" data-ajax-report-form>
             <div class="period-filter-grid">
                 <div class="period-box period-a">
                     <div class="period-title">Last Month</div>
@@ -895,6 +876,79 @@ include __DIR__ . '/../includes/sidebar.php';
 
 </main>
 </div>
+
+<script>
+(function () {
+    const mainSelector = '.main';
+
+    async function loadReport(url, updateHistory) {
+        const main = document.querySelector(mainSelector);
+        const button = main ? main.querySelector('.apply-button') : null;
+        const originalText = button ? button.textContent : '';
+
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Loading...';
+        }
+
+        try {
+            const response = await fetch(url, {
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            });
+
+            if (!response.ok) {
+                throw new Error('Request failed with status ' + response.status);
+            }
+
+            const html = await response.text();
+            const documentResult = new DOMParser().parseFromString(
+                html,
+                'text/html'
+            );
+            const nextMain = documentResult.querySelector(mainSelector);
+
+            if (!main || !nextMain) {
+                throw new Error('The report response is incomplete.');
+            }
+
+            main.innerHTML = nextMain.innerHTML;
+            document.title = documentResult.title;
+
+            if (updateHistory) {
+                history.pushState({}, '', url);
+            }
+        } catch (error) {
+            console.error('Unable to update the ASD report:', error);
+            alert('Unable to update the report. Please try again.');
+
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+    }
+
+    document.addEventListener('submit', function (event) {
+        const form = event.target.closest('[data-ajax-report-form]');
+
+        if (!form) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const parameters = new URLSearchParams(new FormData(form));
+        parameters.set('apply', '1');
+
+        const url = form.action + '?' + parameters.toString();
+        loadReport(url, true);
+    });
+
+    window.addEventListener('popstate', function () {
+        loadReport(window.location.href, false);
+    });
+})();
+</script>
 
 </body>
 </html>

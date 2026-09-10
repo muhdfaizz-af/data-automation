@@ -80,9 +80,7 @@ $adminUsername = $_SESSION['admin_username'] ?? '';
 $activeNav = 'top_bottom';
 $navBasePath = '../';
 
-/**
- * Create the PDO database connection.
- */
+// Create the PDO database connection.
 function getDBConnection(): ?PDO
 {
     try {
@@ -759,7 +757,7 @@ button, input, select {font:inherit;}
 .layout {display:flex;margin-top:var(--topbar-h);}
 .main {min-width:0;flex:1;margin-left:var(--sidebar-w);padding:28px 32px 48px;transition:margin-left .25s ease;}
 
-/* ── LAYOUT ── */
+/* ── SIDEBAR ── */
 body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 
 /* ── HEADER ── */
@@ -793,12 +791,10 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .filter-footer {display:flex;justify-content:flex-end;margin-top:18px;}
 
 /* ── APPLY BUTTON ── */
-.apply-button {min-width:180px;padding:11px 20px;border:0;border-radius:9px;background:var(--red);color:var(--white);cursor:pointer;font-size:13px;font-weight:800;}
-.apply-button:hover {background:var(--red-dark);}
-.error-box,
-.info-box {margin-bottom:20px;padding:13px 15px;border-radius:10px;font-size:12px;line-height:1.6;}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
+.apply-button:hover {background: var(--red-dark);}
+.error-box {margin-bottom:20px;padding:13px 15px;border-radius:10px;font-size:12px;line-height:1.6;}
 .error-box {border:1px solid #FECACA;background:#FEF2F2;color:#991B1B;}
-.info-box {border:1px solid #BFDBFE;background:#EFF6FF;color:#1E3A8A;}
 
 /* ── SUMMARY SECTION ── */
 .summary-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px;}
@@ -809,10 +805,13 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 /* ── RANKING SECTION ── */
 .ranking-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
 .ranking-card {min-width:0;}
-.table-wrap {width:100%;min-width:0;margin-top:18px;overflow-x:hidden;}
-.ranking-table {width:100%;table-layout:fixed;border-collapse:collapse;}
-.ranking-table th, .ranking-table td {padding:12px 8px;border-bottom:1px solid var(--black-100);text-align:left;vertical-align:top;font-size:11px;overflow-wrap:anywhere;}
-.ranking-table th {color:var(--black-500);font-size:10px;letter-spacing:.3px;text-transform:uppercase;}
+.table-wrap {width:100%;min-width:0;margin-top:18px;overflow-x:hidden;border:1px solid #E6E6EA;border-radius:12px;background:var(--white);}
+.ranking-table {width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;}
+.ranking-table th,.ranking-table td {padding:13px 10px;border:0;border-bottom:1px solid #ECECF0;text-align:left;vertical-align:middle;font-size:11px;overflow-wrap:anywhere;}
+.ranking-table th {background:#F7F7F9;color:var(--black-500);font-size:9px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;}
+.ranking-table tbody tr {transition:background-color .15s ease;}
+.ranking-table tbody tr:hover td {background:#FAFAFB;}
+.ranking-table tbody tr:last-child td {border-bottom:0;}
 .ranking-table th:nth-child(1),.ranking-table td:nth-child(1) {width:10%;}
 .ranking-table th:nth-child(2),.ranking-table td:nth-child(2) {width:39%;}
 .ranking-table th:nth-child(3),.ranking-table td:nth-child(3) {width:16%;}
@@ -871,14 +870,6 @@ include __DIR__ . '/../includes/sidebar.php';
         </div>
     <?php endif; ?>
 
-    <div class="info-box">
-        This report includes Nafesa products only. Rankings are based
-        on Total Sales after converting Singapore sales to MYR.
-        Bottom 10 includes products with at least one sold unit and
-        positive sales during the selected period. Results are limited
-        to the selected region.
-    </div>
-
     <section class="card">
         <div class="card-title">Report Filters</div>
 
@@ -886,7 +877,7 @@ include __DIR__ . '/../includes/sidebar.php';
             Select the period, region and one Nafesa product type.
         </div>
 
-        <form method="get" action="top_bottom.php">
+        <form method="get" action="top_bottom.php" data-ajax-report-form>
             <div class="filter-grid">
 
                 <div class="field">
@@ -1062,27 +1053,76 @@ include __DIR__ . '/../includes/sidebar.php';
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    const typeRadios = document.querySelectorAll(
-        'input[name="type"]'
-    );
+(function () {
+    const mainSelector = '.main';
 
-    typeRadios.forEach(function (radio) {
-        radio.addEventListener('change', function () {
-            document.querySelectorAll('.brand-option').forEach(
-                function (option) {
-                    option.classList.remove('selected');
-                }
-            );
+    async function loadReport(url, updateHistory) {
+        const main = document.querySelector(mainSelector);
+        const button = main ? main.querySelector('.apply-button') : null;
+        const originalText = button ? button.textContent : '';
 
-            const selectedOption = radio.closest('.brand-option');
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Loading...';
+        }
 
-            if (selectedOption) {
-                selectedOption.classList.add('selected');
+        try {
+            const response = await fetch(url, {
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            });
+
+            if (!response.ok) {
+                throw new Error('Request failed with status ' + response.status);
             }
-        });
+
+            const html = await response.text();
+            const documentResult = new DOMParser().parseFromString(
+                html,
+                'text/html'
+            );
+            const nextMain = documentResult.querySelector(mainSelector);
+
+            if (!main || !nextMain) {
+                throw new Error('The report response is incomplete.');
+            }
+
+            main.innerHTML = nextMain.innerHTML;
+            document.title = documentResult.title;
+
+            if (updateHistory) {
+                history.pushState({}, '', url);
+            }
+        } catch (error) {
+            console.error('Unable to update the ranking report:', error);
+            alert('Unable to update the report. Please try again.');
+
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+    }
+
+    document.addEventListener('submit', function (event) {
+        const form = event.target.closest('[data-ajax-report-form]');
+
+        if (!form) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const parameters = new URLSearchParams(new FormData(form));
+        parameters.set('apply', '1');
+
+        const url = form.action + '?' + parameters.toString();
+        loadReport(url, true);
     });
-});
+
+    window.addEventListener('popstate', function () {
+        loadReport(window.location.href, false);
+    });
+})();
 </script>
 
 </body>
