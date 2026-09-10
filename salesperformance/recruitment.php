@@ -614,15 +614,10 @@ $monthlyHeading = empty($errors)
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>Recruitment Report — S ASIA SALES REPORT</title>
-
 <link rel="icon" href="../images/icon-sasia.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link
-    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-    rel="stylesheet"
->
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
 :root {
@@ -688,23 +683,29 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .recruitment-table td:first-child {text-align: left;}
 .recruitment-table td:first-child small {display: block;margin-top: 3px;color: var(--gray-500);font-size: 9.5px;}
 .total-row td {background:#F7F7F9 !important;font-weight:800;}
-@media (max-width: 900px) {.main,body.sidebar-collapsed .main {margin-left: 0;padding: 20px;}}
-@media (max-width: 600px) {.filter-form {flex-direction: column;align-items: stretch;}.field {width: 100%;}.apply-button {width: 100%;}}
+@media (max-width: 1150px) {.ranking-grid {grid-template-columns: 1fr;}}
+@media (max-width: 900px) {.main, body.sidebar-collapsed .main {margin-left: 0; padding: 20px;}}
+@media (max-width: 650px) {.filter-grid,.summary-grid {grid-template-columns: 1fr;}.table-wrap {overflow-x: auto;}.ranking-table {min-width: 650px;}}
 </style>
 </head>
 
+<body>
+
 <script>
-    (function() {
-        try {
-            if (
-                window.innerWidth >= 900 &&
-                localStorage.getItem('adminSidebarCollapsed') === '1'
-            ) {
-                document.body.classList.add('sidebar-collapsed');
-            }
-        } catch (error) {
-            // The report still works if localStorage is unavailable.
+(function () {
+    try {
+        const sidebarWasCollapsed =
+            localStorage.getItem('adminSidebarCollapsed') === '1';
+
+        if (
+            window.innerWidth >= 900 &&
+            sidebarWasCollapsed
+        ) {
+            document.body.classList.add('sidebar-collapsed');
         }
+    } catch (error) {
+        // Continue without restoring the saved sidebar state.
+    }
 })();
 </script>
 
@@ -769,8 +770,4 @@ include __DIR__ . '/../includes/sidebar.php';
 </div>
 
 </body>
-<<<<<<< HEAD
 </html>
-=======
-</html>
->>>>>>> 7d6e9552b20c66a8e620fb357121e80046589f91
