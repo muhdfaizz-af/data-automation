@@ -124,13 +124,26 @@ CREATE TABLE `orders` (
   KEY `idx_orders_member_code` (`member_code`),
   KEY `idx_orders_import_batch_id` (`import_batch_id`),
   KEY `idx_orders_invoice_prefix` (`invoice_prefix`),
+  -- Covering index for Daily Sales Report / Hub sales query
+  KEY `idx_orders_hub_cover` (
+    `company_id`,
+    `order_datetime`,
+    `order_status`,
+    `sub_total`
+  ),
   CONSTRAINT `fk_orders_company`
-    FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`)
-    ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (`company_id`)
+    REFERENCES `companies` (`id`)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT,
   CONSTRAINT `fk_orders_import_batch`
-    FOREIGN KEY (`import_batch_id`) REFERENCES `import_batches` (`id`)
-    ON UPDATE CASCADE ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    FOREIGN KEY (`import_batch_id`)
+    REFERENCES `import_batches` (`id`)
+    ON UPDATE CASCADE
+    ON DELETE SET NULL
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci
 COMMENT='Stores Order History - satu row = satu order';
 
 -- ============================================================

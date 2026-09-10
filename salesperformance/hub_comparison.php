@@ -38,8 +38,8 @@
  *   longer re-queries `orders` at all — it reuses (monthlyGrand - dailyGrand)
  *   which is already computed by getHubSummary().
  *
- *   Recommended indexes (check these exist, add if not):
- *     ALTER TABLE orders ADD INDEX idx_orders_datetime_status (order_datetime, order_status, company_id);
+ *   Recommended covering index (check this exists, add if not):
+ *     ALTER TABLE orders ADD INDEX idx_orders_hub_cover (order_datetime, order_status, company_id, order_id, member_code, sub_total);
  *     ALTER TABLE orders ADD INDEX idx_orders_order_id (order_id);       -- supports LIKE 'MYH%' / 'MYB%'
  *     ALTER TABLE orders ADD INDEX idx_orders_member_code (member_code); -- supports LIKE 'BN%'
  *     ALTER TABLE sales_target ADD INDEX idx_sales_target_date (target_date);
@@ -103,6 +103,18 @@ const HUBS = [
     'brunei'    => ['label' => 'Brunei',         'color' => '#E0202E', 'hover' => '#8E1620'],
     'singapore' => ['label' => 'Singapore',      'color' => '#F5A623', 'hover' => '#c97e0e'],
 ];
+
+$GLOBALS['__prevMonthCache'] = [];
+
+function getHubTotalsCached($pdo, $fromDt, $toExclusiveDt, $statusFilter, $cacheKey) {
+    if (isset($GLOBALS['__prevMonthCache'][$cacheKey])) {
+        return $GLOBALS['__prevMonthCache'][$cacheKey];
+    }
+
+    $result = getHubTotals($pdo, $fromDt, $toExclusiveDt, $statusFilter);
+    $GLOBALS['__prevMonthCache'][$cacheKey] = $result;
+    return $result;
+}
 
 /**
  * SQL CASE expression that classifies each order row into a hub key.
@@ -370,7 +382,8 @@ function getHubSummary($pdo, $reportDate, $statusFilter) {
 
     $dailyGrand   = array_sum($daily);
     $monthlyGrand = array_sum($monthly);
-    $previousMonth = getHubTotals($pdo, $previousMonthStart, $previousMonthEnd, $statusFilter);
+    $cacheKey = $previousMonthStart . '|' . $previousMonthEnd . '|' . $statusFilter;
+    $previousMonth = getHubTotalsCached($pdo, $previousMonthStart, $previousMonthEnd, $statusFilter, $cacheKey);
     // MTD through reportDate inclusive, minus reportDate itself, = sales strictly
     // before reportDate. Reuses totals we already have instead of re-querying.
     $salesBeforeDate = $monthlyGrand - $dailyGrand;
@@ -464,6 +477,21 @@ if (isset($_GET['ajax'])) {
 
     $section      = $_GET['ajax'];
     $statusFilter = normalizeStatus($_GET['status_filter'] ?? 'confirmed');
+
+    if ($section === 'all') {
+        [$reportDate, $errDate] = clampReportDate($_GET['report_date'] ?? '');
+        [$year, $errYear] = clampYear($_GET['year'] ?? '');
+        $cutoffDay = (int)date('d', strtotime($reportDate));
+
+        $summary = getHubSummary($pdo, $reportDate, $statusFilter);
+        $increment = getHubIncrement($pdo, $year, $cutoffDay, $statusFilter);
+
+        echo json_encode([
+            'summary' => $summary + ['error' => $errDate],
+            'increment' => $increment + ['error' => $errYear],
+        ]);
+        exit;
+    }
 
     if ($section === 'summary') {
         [$reportDate, $err] = clampReportDate($_GET['report_date'] ?? '');
@@ -1159,6 +1187,36 @@ async function fetchIncrement(){
     }
 }
 
+async function fetchAll(){
+    const status = document.getElementById('globalStatus').value;
+    const reportDate = document.getElementById('globalReportDate').value;
+    const year = document.getElementById('incrementYear').value;
+    const params = new URLSearchParams({ ajax:'all', status_filter: status, report_date: reportDate, year });
+
+    setLoading(document.getElementById('hubPieGrid'), true);
+    setLoading(document.getElementById('targetGrid'), true);
+    setLoading(document.getElementById('incrementTableWrap'), true);
+    document.getElementById('btnApplyGlobal').disabled = true;
+    document.getElementById('btnApplyIncrement').disabled = true;
+    try {
+        const res = await fetch(AJAX_URL + '?' + params.toString(), { headers: { 'X-Requested-With':'XMLHttpRequest' } });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const json = await res.json();
+        applySummaryResult(json.summary);
+        applyIncrementResult(json.increment);
+    } catch (err) {
+        const e = document.getElementById('summaryErrorMsg');
+        e.textContent = 'Failed to load data. Please try again.';
+        e.style.display = 'block';
+    } finally {
+        setLoading(document.getElementById('hubPieGrid'), false);
+        setLoading(document.getElementById('targetGrid'), false);
+        setLoading(document.getElementById('incrementTableWrap'), false);
+        document.getElementById('btnApplyGlobal').disabled = false;
+        document.getElementById('btnApplyIncrement').disabled = false;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function(){
     buildIncrementHead();
 
@@ -1166,10 +1224,7 @@ document.addEventListener('DOMContentLoaded', function(){
     applySummaryResult(<?= json_encode($summaryData) ?>);
     applyIncrementResult(<?= json_encode($incrementData) ?>);
 
-    document.getElementById('btnApplyGlobal').addEventListener('click', function(){
-        fetchSummary();
-        fetchIncrement(); // status + report_date (cutoff day) are shared with 3.6 too
-    });
+    document.getElementById('btnApplyGlobal').addEventListener('click', fetchAll);
 
     document.getElementById('btnApplyIncrement').addEventListener('click', fetchIncrement);
 });
