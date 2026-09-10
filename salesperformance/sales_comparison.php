@@ -9,9 +9,17 @@
  * Daily:   date range (day to day).
  * Monthly: Month range (e.g. Jan 2026 - Mar 2026) + Day-of-month range (1-31),
  *          e.g. only count the 1st-15th of every month in the range.
- * Yearly:  Year range (e.g. 2025 - 2026) + Month range (e.g. Jan - Aug) + Day range (e.g. 1-25),
+ * Yearly:  Year range (e.g. 2025 - 2026) + chronological date range (e.g. Jan 1 - Aug 25),
  *          applied to EVERY year in the range, so you can fairly compare
  *          partial years like "2025 vs 2026, Jan 1 - Aug 25 only".
+ *
+ * PERFORMANCE NOTE: the initial page load used to run all 3 report queries
+ * (Daily/Monthly/Yearly, each up to 2 sub-queries for System + Manual = up to
+ * 6 queries) synchronously in PHP before any HTML was sent. That blocked the
+ * very first paint even though every *filter change* was already AJAX-based.
+ * The page now sends the shell immediately with empty charts, then fires the
+ * same fetchSection() calls used by "Apply Filter" on DOMContentLoaded, so
+ * the 3 sections load in parallel in the browser instead of serially in PHP.
  *
  * Data source: `orders` (join `companies` for company_code) = "System" sales,
  *   PLUS `manual_sales` (join `companies` for company_code) = "Manual" sales
@@ -51,7 +59,7 @@ if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) 
 $_SESSION['last_activity'] = time();
 
 $adminUsername = $_SESSION['admin_username'] ?? '';
-$activeNav = 'salesperformance';
+$activeNav = 'salescomparison';
 $navBasePath = '../';
 
 function getDBConnection() {
@@ -132,7 +140,7 @@ function buildSectionResponse($data, $error, $from, $to) {
     $total = array_sum($data['values']);
     $count = count($data['values']);
     $avg   = $count > 0 ? $total / $count : 0;
-    return [
+    $resp = [
         'labels'  => $data['labels'],
         'values'  => $data['values'],
         'total'   => round($total, 2),
@@ -141,6 +149,10 @@ function buildSectionResponse($data, $error, $from, $to) {
         'from'    => $from,
         'to'      => $to,
     ];
+    if (isset($data['keys'])) {
+        $resp['keys'] = $data['keys'];
+    }
+    return $resp;
 }
 
 // ════════════════════════════════════════════════════
@@ -228,7 +240,7 @@ function clampYearlyRange($yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom, $d
 
     $dayFrom = normalizeDay($dayFrom, $defDayFrom);
     $dayTo   = normalizeDay($dayTo, $defDayTo);
-    if ($dayFrom > $dayTo) {
+    if ($monthFrom === $monthTo && $dayFrom > $dayTo) {
         [$dayFrom, $dayTo] = [$dayTo, $dayFrom];
     }
 
@@ -370,7 +382,7 @@ function getMonthlySales($pdo, $monthFrom, $monthTo, $dayFrom, $dayTo, $statusFi
     }
 
     // ── Fill every month touched by the range (Jul -> Aug, etc) ──
-    $labels = []; $values = [];
+    $labels = []; $values = []; $keys = [];
     $cursor = new DateTime($monthFrom . '-01');
     $end    = new DateTime($monthTo . '-01');
     $end->modify('+1 month');
@@ -378,13 +390,14 @@ function getMonthlySales($pdo, $monthFrom, $monthTo, $dayFrom, $dayTo, $statusFi
         $key = $cursor->format('Y-m');
         $labels[] = $cursor->format('M Y');
         $values[] = round($totalsByYm[$key] ?? 0, 2);
+        $keys[]   = $key;
         $cursor->modify('+1 month');
     }
-    return ['labels' => $labels, 'values' => $values];
+    return ['labels' => $labels, 'values' => $values, 'keys' => $keys];
 }
 
 // ════════════════════════════════════════════════════
-// YEARLY — year range + month range + day range (applied to every year in range)
+// YEARLY — year range + chronological month/day range (applied to every year in range)
 // ════════════════════════════════════════════════════
 function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom = 1, $dayTo = 31, $statusFilter = 'all', $companyFilter = 'all', $sourceFilter = 'all') {
     $rows = [];
@@ -393,10 +406,8 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
             $params = [
                 'from'      => $yearFrom . '-01-01 00:00:00',
                 'to'        => ($yearTo + 1) . '-01-01 00:00:00',
-                'monthFrom' => $monthFrom,
-                'monthTo'   => $monthTo,
-                'dayFrom'   => $dayFrom,
-                'dayTo'     => $dayTo,
+                'startMonthDay' => ($monthFrom * 100) + $dayFrom,
+                'endMonthDay'   => ($monthTo * 100) + $dayTo,
             ];
             $clause = getFilterWhereClause($statusFilter, $companyFilter, $params);
             $sql = "SELECT YEAR(o.order_datetime) AS y,
@@ -406,8 +417,7 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
                  JOIN companies c ON c.id = o.company_id
                  WHERE o.order_datetime >= :from
                    AND o.order_datetime <  :to
-                   AND MONTH(o.order_datetime) BETWEEN :monthFrom AND :monthTo
-                   AND DAY(o.order_datetime) BETWEEN :dayFrom AND :dayTo" . $clause . "
+                   AND (MONTH(o.order_datetime) * 100 + DAY(o.order_datetime)) BETWEEN :startMonthDay AND :endMonthDay" . $clause . "
                  GROUP BY y, c.company_code";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
@@ -421,10 +431,8 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
             $mParams = [
                 'from'      => $yearFrom . '-01-01',
                 'to'        => $yearTo . '-12-31',
-                'monthFrom' => $monthFrom,
-                'monthTo'   => $monthTo,
-                'dayFrom'   => $dayFrom,
-                'dayTo'     => $dayTo,
+                'startMonthDay' => ($monthFrom * 100) + $dayFrom,
+                'endMonthDay'   => ($monthTo * 100) + $dayTo,
             ];
             $mClause = getManualFilterWhereClause($companyFilter, $mParams);
             $sql = "SELECT YEAR(ms.sales_date) AS y,
@@ -434,8 +442,7 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
                  JOIN companies c ON c.id = ms.company_id
                  WHERE ms.sales_date >= :from
                    AND ms.sales_date <= :to
-                   AND MONTH(ms.sales_date) BETWEEN :monthFrom AND :monthTo
-                   AND DAY(ms.sales_date) BETWEEN :dayFrom AND :dayTo" . $mClause . "
+                   AND (MONTH(ms.sales_date) * 100 + DAY(ms.sales_date)) BETWEEN :startMonthDay AND :endMonthDay" . $mClause . "
                  GROUP BY y, c.company_code";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($mParams);
@@ -453,19 +460,22 @@ function getYearlySales($pdo, $yearFrom, $yearTo, $monthFrom, $monthTo, $dayFrom
         $totalsByYear[$y] = ($totalsByYear[$y] ?? 0) + toMyr($r['total'], $r['company_code']);
     }
 
-    $labels = []; $values = [];
+    $labels = []; $values = []; $keys = [];
     for ($y = $yearFrom; $y <= $yearTo; $y++) {
         $labels[] = (string)$y;
         $values[] = round($totalsByYear[$y] ?? 0, 2);
+        $keys[]   = $y;
     }
-    return ['labels' => $labels, 'values' => $values];
+    return ['labels' => $labels, 'values' => $values, 'keys' => $keys];
 }
 
 $pdo = getDBConnection();
 
 // ════════════════════════════════════════════════════
 // AJAX ENDPOINT — all filters (status/company/source/date) go through here,
-// no page reload, no URL change.
+// no page reload, no URL change. The initial page load ALSO goes through
+// here now (fired by JS on DOMContentLoaded) instead of running queries
+// directly in the HTML-rendering branch below.
 // ════════════════════════════════════════════════════
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json; charset=utf-8');
@@ -521,47 +531,35 @@ if (isset($_GET['ajax'])) {
 }
 
 // ════════════════════════════════════════════════════
-// INITIAL PAGE LOAD — defaults only. This page no longer reads the query
-// string for its initial render; every filter afterwards runs via AJAX,
-// so the URL stays the same.
+// INITIAL PAGE LOAD — defaults ONLY. No DB queries happen here anymore.
+// The three sections are populated by JS calling the same AJAX endpoint
+// above right after the shell renders, so the first byte the browser gets
+// is not blocked on any report calculation.
 // ════════════════════════════════════════════════════
 $todayYmd    = date('Y-m-d');
 $currentYear = (int)date('Y');
 $currentYm   = date('Y-m');
+$previousYm  = date('Y-m', strtotime('-1 month'));
+$yesterdayDay = (int)date('d', strtotime('-1 day'));
 
-$statusFilter  = 'all';
+$statusFilter  = 'confirmed';
 $companyFilter = 'all';
 $sourceFilter  = 'all';
 
-$dailyFrom = date('Y-m-d', strtotime('-6 days'));
-$dailyTo   = $todayYmd;
+$dailyFrom = date('Y-m-d', strtotime('-2 days'));
+$dailyTo   = date('Y-m-d', strtotime('-1 day'));
 
-$monthlyMonthFrom = date('Y-m', strtotime('-5 months'));
+$monthlyMonthFrom = $previousYm;
 $monthlyMonthTo   = $currentYm;
 $monthlyDayFrom   = 1;
-$monthlyDayTo     = 31;
+$monthlyDayTo     = $yesterdayDay;
 
-$yearlyYearFrom  = $currentYear - 4;
+$yearlyYearFrom  = $currentYear - 1;
 $yearlyYearTo    = $currentYear;
 $yearlyMonthFrom = 1;
-$yearlyMonthTo   = 12;
+$yearlyMonthTo   = (int)date('n');
 $yearlyDayFrom   = 1;
-$yearlyDayTo     = 31;
-
-$dailyData    = getDailySales($pdo, $dailyFrom, $dailyTo, $statusFilter, $companyFilter, $sourceFilter);
-$dailyTotal   = array_sum($dailyData['values']);
-$dailyCount   = count($dailyData['values']);
-$dailyAverage = $dailyCount > 0 ? $dailyTotal / $dailyCount : 0;
-
-$monthlyData    = getMonthlySales($pdo, $monthlyMonthFrom, $monthlyMonthTo, $monthlyDayFrom, $monthlyDayTo, $statusFilter, $companyFilter, $sourceFilter);
-$monthlyTotal   = array_sum($monthlyData['values']);
-$monthlyCount   = count($monthlyData['values']);
-$monthlyAverage = $monthlyCount > 0 ? $monthlyTotal / $monthlyCount : 0;
-
-$yearlyData    = getYearlySales($pdo, $yearlyYearFrom, $yearlyYearTo, $yearlyMonthFrom, $yearlyMonthTo, $yearlyDayFrom, $yearlyDayTo, $statusFilter, $companyFilter, $sourceFilter);
-$yearlyTotal   = array_sum($yearlyData['values']);
-$yearlyCount   = count($yearlyData['values']);
-$yearlyAverage = $yearlyCount > 0 ? $yearlyTotal / $yearlyCount : 0;
+$yearlyDayTo     = $yesterdayDay;
 
 $yearOptionsStart = $currentYear - 15;
 $yearOptionsEnd   = $currentYear + 1;
@@ -599,8 +597,9 @@ svg{display:block;}
 
 /* ── LAYOUT ── */
 .layout{display:flex;margin-top:var(--topbar-h);}
-.main{margin-left:var(--sidebar-w);flex:1;padding:28px 32px 48px;min-width:0;transition:margin-left .25s ease;}
-@media(max-width:900px){.main{margin-left:0;padding:20px;} body.sidebar-collapsed .main{margin-left:0;}}
+.main{margin-left:var(--sidebar-w);width:calc(100% - var(--sidebar-w));flex:1;padding:28px 32px 48px;min-width:0;box-sizing:border-box;overflow-x:hidden;transition:margin-left .25s ease,width .25s ease;}
+body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(100% - var(--sidebar-w-collapsed));}
+@media(max-width:900px){.main{margin-left:0;width:100%;padding:20px;} body.sidebar-collapsed .main{margin-left:0;width:100%;}}
 
 /* ── PAGE HEADER ── */
 .page-header{margin-bottom:24px;}
@@ -633,8 +632,9 @@ svg{display:block;}
 .global-filter-hint{font-size:11.5px;color:var(--gray-500);margin-left:auto;align-self:center;max-width:260px;}
 
 /* ── two-column body: filter panel (left) + stats & chart (right) ── */
-.report-card-body{display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:start;}
+.report-card-body{display:grid;grid-template-columns:300px minmax(0,1fr);gap:28px;align-items:start;}
 @media(max-width:860px){.report-card-body{grid-template-columns:1fr;}}
+.report-card-main{min-width:0;}
 
 .filter-panel{display:flex;flex-direction:column;gap:12px;background:var(--gray-100);border-radius:var(--radius-md);padding:16px;}
 .filter-panel-label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
@@ -680,6 +680,20 @@ svg{display:block;}
 .chart-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--gray-500);font-size:13px;font-weight:600;text-align:center;}
 .chart-empty.show{display:flex;}
 
+/* ── BREAKDOWN TABLE (per section, full card width, mirrors the chart's current filtered range) ── */
+.comparison-table-wrap{margin-top:20px;width:100%;}
+.comparison-table-wrap.is-loading{opacity:.35;pointer-events:none;}
+.comparison-table-title{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px;}
+.comparison-table-scroll{overflow-x:auto;border:1px solid var(--gray-100);border-radius:var(--radius-md);width:100%;}
+.comparison-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:auto;}
+.comparison-table thead th{background:var(--green);color:#fff;text-align:left;padding:12px 16px;font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.3px;white-space:nowrap;}
+.comparison-table tbody td{padding:11px 16px;border-top:1px solid var(--gray-100);white-space:nowrap;}
+.comparison-table tbody tr:hover{background:var(--gray-100);}
+.comparison-table td.col-total{font-weight:700;}
+.change-positive{color:var(--green);font-weight:700;}
+.change-negative{color:var(--red);font-weight:700;}
+.change-neutral{color:var(--gray-500);font-weight:600;}
+
 @media(max-width:600px){.main{padding:16px 14px 40px;} .stats-row{flex-direction:column;align-items:flex-start;} .global-filter-hint{margin-left:0;max-width:none;}}
 </style>
 </head>
@@ -719,8 +733,8 @@ svg{display:block;}
       <div class="global-filter-group">
         <label for="globalStatus">Status</label>
         <select id="globalStatus">
-          <option value="all" selected>All</option>
-          <option value="confirmed">Confirmed</option>
+          <option value="all">All</option>
+          <option value="confirmed" selected>Confirmed</option>
           <option value="void">Void</option>
         </select>
       </div>
@@ -774,16 +788,16 @@ svg{display:block;}
         </button>
       </form>
 
-      <div>
+      <div class="report-card-main">
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
               <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="dailyTotalValue">RM <?= number_format($dailyTotal, 2) ?></div>
+              <div class="stat-value" id="dailyTotalValue">—</div>
             </div>
             <div class="stat-block stat-average">
               <div class="stat-label">Average Daily Sales</div>
-              <div class="stat-value" id="dailyAverageValue">RM <?= number_format($dailyAverage, 2) ?></div>
+              <div class="stat-value" id="dailyAverageValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="daily">
@@ -795,6 +809,19 @@ svg{display:block;}
           <canvas id="dailyChart"></canvas>
           <div class="chart-empty" id="dailyEmpty">No sales data in this range.</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Breakdown table: full card width, mirrors dailyForm's current filtered range -->
+    <div class="comparison-table-wrap" id="dailyTableWrap">
+      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-scroll">
+        <table class="comparison-table">
+          <thead>
+            <tr><th>Date</th><th>Total Sales</th><th>Changes (%)</th></tr>
+          </thead>
+          <tbody id="dailyTableBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -841,16 +868,16 @@ svg{display:block;}
         </button>
       </form>
 
-      <div>
+      <div class="report-card-main">
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
               <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="monthlyTotalValue">RM <?= number_format($monthlyTotal, 2) ?></div>
+              <div class="stat-value" id="monthlyTotalValue">—</div>
             </div>
             <div class="stat-block stat-average">
               <div class="stat-label">Average Monthly Sales</div>
-              <div class="stat-value" id="monthlyAverageValue">RM <?= number_format($monthlyAverage, 2) ?></div>
+              <div class="stat-value" id="monthlyAverageValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="monthly">
@@ -862,6 +889,19 @@ svg{display:block;}
           <canvas id="monthlyChart"></canvas>
           <div class="chart-empty" id="monthlyEmpty">No sales data in this range.</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Breakdown table: full card width, mirrors monthlyForm's current filtered range -->
+    <div class="comparison-table-wrap" id="monthlyTableWrap">
+      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-scroll">
+        <table class="comparison-table">
+          <thead>
+            <tr><th>Month</th><th>Total Sales</th><th>Changes (%)</th></tr>
+          </thead>
+          <tbody id="monthlyTableBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -895,7 +935,7 @@ svg{display:block;}
           </select>
         </div>
 
-        <div class="filter-panel-label spaced">Month Range (applied to each year)</div>
+        <div class="filter-panel-label spaced">Start Month – End Month (each year)</div>
         <div class="filter-inputs-row">
           <select id="yearlyMonthFrom">
             <?php foreach ($monthNames as $num => $name): ?>
@@ -910,7 +950,7 @@ svg{display:block;}
           </select>
         </div>
 
-        <div class="filter-panel-label spaced">Day Range (applied to each year)</div>
+        <div class="filter-panel-label spaced">Start Day – End Day (within the date range)</div>
         <div class="filter-inputs-row">
           <select id="yearlyDayFrom">
             <?php for ($d = 1; $d <= 31; $d++): ?>
@@ -931,16 +971,16 @@ svg{display:block;}
         </button>
       </form>
 
-      <div>
+      <div class="report-card-main">
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
               <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="yearlyTotalValue">RM <?= number_format($yearlyTotal, 2) ?></div>
+              <div class="stat-value" id="yearlyTotalValue">—</div>
             </div>
             <div class="stat-block stat-average">
               <div class="stat-label">Average Yearly Sales</div>
-              <div class="stat-value" id="yearlyAverageValue">RM <?= number_format($yearlyAverage, 2) ?></div>
+              <div class="stat-value" id="yearlyAverageValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="yearly">
@@ -952,6 +992,19 @@ svg{display:block;}
           <canvas id="yearlyChart"></canvas>
           <div class="chart-empty" id="yearlyEmpty">No sales data in this range.</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Breakdown table: full card width, mirrors yearlyForm's current filtered range, with actual date detail -->
+    <div class="comparison-table-wrap" id="yearlyTableWrap">
+      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-scroll">
+        <table class="comparison-table">
+          <thead>
+            <tr><th>Year</th><th>Total Sales</th><th>Changes (%)</th></tr>
+          </thead>
+          <tbody id="yearlyTableBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -1035,11 +1088,21 @@ function makeDataset(type, label, data, color, hoverColor, ctx){
     return { label, data, backgroundColor:color, hoverBackgroundColor:hoverColor, borderRadius:6, maxBarThickness:46 };
 }
 
-// ── Initial data rendered from PHP — everything after this is updated via AJAX ──
+// ── Chart data now starts EMPTY. PHP no longer runs any report query on
+//    page load — fetchSection() below fills each of these right after the
+//    shell is visible, in parallel, instead of PHP blocking on them first. ──
 const chartData = {
-    daily:   { labels: <?= json_encode($dailyData['labels']) ?>,   values: <?= json_encode($dailyData['values']) ?>,   label:'Daily Sales',   color:'#E0202E', hover:'#8E1620' },
-    monthly: { labels: <?= json_encode($monthlyData['labels']) ?>, values: <?= json_encode($monthlyData['values']) ?>, label:'Monthly Sales', color:'#00B4B4', hover:'#008A8A' },
-    yearly:  { labels: <?= json_encode($yearlyData['labels']) ?>,  values: <?= json_encode($yearlyData['values']) ?>,  label:'Yearly Sales',  color:'#F5A623', hover:'#c97e0e' }
+    daily:   { labels: [], values: [], keys: [], label:'Daily Sales',   color:'#E0202E', hover:'#8E1620' },
+    monthly: { labels: [], values: [], keys: [], label:'Monthly Sales', color:'#00B4B4', hover:'#008A8A' },
+    yearly:  { labels: [], values: [], keys: [], label:'Yearly Sales',  color:'#F5A623', hover:'#c97e0e' }
+};
+
+// ── Current day/month sub-range for each section (so the breakdown table can
+//    show the actual date detail, e.g. "1 - 20 Aug 2026" instead of just "Aug 2026") ──
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const sectionMeta = {
+    monthly: { dayFrom: <?= (int)$monthlyDayFrom ?>, dayTo: <?= (int)$monthlyDayTo ?> },
+    yearly:  { monthFrom: <?= (int)$yearlyMonthFrom ?>, monthTo: <?= (int)$yearlyMonthTo ?>, dayFrom: <?= (int)$yearlyDayFrom ?>, dayTo: <?= (int)$yearlyDayTo ?> }
 };
 
 const chartInstances = {};
@@ -1070,12 +1133,92 @@ function renderChart(key, type){
 }
 
 // ════════════════════════════════════════════════════
+// Build the human-readable period label for a table row.
+// Daily: chart label is already a full date ("17 Aug") — use as-is.
+// Monthly: show the day-of-month range picked, e.g. "1 - 20 Aug 2026".
+// Yearly: show the month+day range picked, e.g. "1 Jan - 20 Aug 2025".
+// ════════════════════════════════════════════════════
+function buildPeriodLabel(key, label, rowKey){
+    if (key === 'monthly') {
+        const meta = sectionMeta.monthly;
+        if (!rowKey) return label;
+        const parts = rowKey.split('-');
+        const y = Number(parts[0]);
+        const m = Number(parts[1]);
+        const monthName = MONTH_NAMES[m - 1] || '';
+        return meta.dayFrom + ' - ' + meta.dayTo + ' ' + monthName + ' ' + y;
+    }
+    if (key === 'yearly') {
+        const meta = sectionMeta.yearly;
+        const y = Number(rowKey || label);
+        const fromName = MONTH_NAMES[meta.monthFrom - 1] || '';
+        const toName   = MONTH_NAMES[meta.monthTo - 1] || '';
+        if (meta.monthFrom === meta.monthTo) {
+            return meta.dayFrom + ' - ' + meta.dayTo + ' ' + fromName + ' ' + y;
+        }
+        return meta.dayFrom + ' ' + fromName + ' - ' + meta.dayTo + ' ' + toName + ' ' + y;
+    }
+    return label;
+}
+
+// ════════════════════════════════════════════════════
+// BREAKDOWN TABLE — mirrors chartData[key], one row per label,
+// "Changes (%)" compares each row to the row before it in the SAME range.
+// ════════════════════════════════════════════════════
+function renderTable(key){
+    const tbody = document.getElementById(key + 'TableBody');
+    if (!tbody) return;
+
+    const { labels, values, keys } = chartData[key];
+
+    if (!labels.length) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--gray-500);padding:16px;">No data in this range.</td></tr>';
+        return;
+    }
+
+    let rowsHtml = '';
+    let prevValue = null;
+
+    labels.forEach(function(label, i){
+        const value = Number(values[i]) || 0;
+        const rowKey = keys && keys[i] !== undefined ? keys[i] : null;
+        const periodLabel = buildPeriodLabel(key, label, rowKey);
+        let changeCell = '<span class="change-neutral">–</span>';
+
+        if (prevValue !== null) {
+            if (prevValue === 0) {
+                changeCell = value > 0
+                    ? '<span class="change-positive">New</span>'
+                    : '<span class="change-neutral">0.00%</span>';
+            } else {
+                const pct = ((value - prevValue) / prevValue) * 100;
+                const cls = pct > 0 ? 'change-positive' : (pct < 0 ? 'change-negative' : 'change-neutral');
+                const sign = pct > 0 ? '+' : '';
+                changeCell = '<span class="' + cls + '">' + sign + pct.toFixed(2) + '%</span>';
+            }
+        }
+
+        rowsHtml += '<tr>'
+            + '<td>' + periodLabel + '</td>'
+            + '<td class="col-total">' + formatRM(value) + '</td>'
+            + '<td>' + changeCell + '</td>'
+            + '</tr>';
+
+        prevValue = value;
+    });
+
+    tbody.innerHTML = rowsHtml;
+}
+
+// ════════════════════════════════════════════════════
 // AJAX FILTERING — the page URL never changes, everything goes through fetch()
 // ════════════════════════════════════════════════════
 const AJAX_URL = window.location.pathname;
 
 function setSectionLoading(key, isLoading){
     document.getElementById(key + 'ChartWrap').classList.toggle('is-loading', isLoading);
+    const tableWrap = document.getElementById(key + 'TableWrap');
+    if (tableWrap) tableWrap.classList.toggle('is-loading', isLoading);
     const form = document.getElementById(key + 'Form');
     if (form) {
         const btn = form.querySelector('.btn-apply');
@@ -1143,6 +1286,7 @@ async function fetchSection(key){
 function applySectionResult(key, json){
     chartData[key].labels = json.labels || [];
     chartData[key].values = json.values || [];
+    chartData[key].keys   = json.keys || [];
 
     document.getElementById(key + 'TotalValue').textContent   = formatRM(json.total);
     document.getElementById(key + 'AverageValue').textContent = formatRM(json.average);
@@ -1164,6 +1308,8 @@ function applySectionResult(key, json){
         if (json.to)   document.getElementById('monthlyMonthTo').value   = json.to;
         if (json.day_from) document.getElementById('monthlyDayFrom').value = json.day_from;
         if (json.day_to)   document.getElementById('monthlyDayTo').value   = json.day_to;
+        if (json.day_from) sectionMeta.monthly.dayFrom = Number(json.day_from);
+        if (json.day_to)   sectionMeta.monthly.dayTo   = Number(json.day_to);
     } else if (key === 'yearly') {
         if (json.from) document.getElementById('yearlyYearFrom').value = String(json.from);
         if (json.to)   document.getElementById('yearlyYearTo').value   = String(json.to);
@@ -1171,10 +1317,15 @@ function applySectionResult(key, json){
         if (json.month_to)   document.getElementById('yearlyMonthTo').value   = json.month_to;
         if (json.day_from)   document.getElementById('yearlyDayFrom').value   = json.day_from;
         if (json.day_to)     document.getElementById('yearlyDayTo').value     = json.day_to;
+        if (json.month_from) sectionMeta.yearly.monthFrom = Number(json.month_from);
+        if (json.month_to)   sectionMeta.yearly.monthTo   = Number(json.month_to);
+        if (json.day_from)   sectionMeta.yearly.dayFrom   = Number(json.day_from);
+        if (json.day_to)     sectionMeta.yearly.dayTo     = Number(json.day_to);
     }
 
     const typeSelect = document.querySelector('.chart-type-select[data-chart="' + key + '"]');
     renderChart(key, typeSelect ? typeSelect.value : 'line');
+    renderTable(key);
 }
 
 document.addEventListener('DOMContentLoaded', function(){
@@ -1182,10 +1333,6 @@ document.addEventListener('DOMContentLoaded', function(){
         console.error('Chart.js failed to load. Sales charts will not render.');
         return;
     }
-
-    ['daily','monthly','yearly'].forEach(function(key){
-        renderChart(key, 'line');
-    });
 
     document.querySelectorAll('.chart-type-select').forEach(function(select){
         select.addEventListener('change', function(){
@@ -1206,6 +1353,13 @@ document.addEventListener('DOMContentLoaded', function(){
         fetchSection('daily');
         fetchSection('monthly');
         fetchSection('yearly');
+    });
+
+    // ── Initial load: fire all 3 sections via the SAME AJAX endpoint used by
+    //    the filters above, in parallel, instead of PHP computing them first.
+    //    This is what actually removes the up-front DB blocking on page load. ──
+    ['daily','monthly','yearly'].forEach(function(key){
+        fetchSection(key);
     });
 });
 </script>

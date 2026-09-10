@@ -115,7 +115,9 @@ CREATE TABLE `orders` (
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_orders_company_order` (`company_id`, `order_id`),
+  KEY `idx_orders_order_id` (`order_id`),
   KEY `idx_orders_order_datetime` (`order_datetime`),
+  KEY `idx_orders_datetime_status` (`order_datetime`, `order_status`),
   KEY `idx_orders_company_datetime` (`company_id`, `order_datetime`),
   KEY `idx_orders_order_status` (`order_status`),
   KEY `idx_orders_order_type` (`order_type`),
@@ -209,7 +211,7 @@ CREATE TABLE `manual_sales` (
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_manual_sales_company_channel_date` (`company_id`, `sales_channel_id`, `sales_date`),
+  UNIQUE KEY `uq_manual_sales_company_channel_date` (`company_id`, `sales_channel_id`, `sales_date`, `brand`),
   KEY `idx_manual_sales_sales_date` (`sales_date`),
   KEY `idx_manual_sales_brand` (`brand`),
   KEY `idx_manual_sales_company_id` (`company_id`),
@@ -221,6 +223,28 @@ CREATE TABLE `manual_sales` (
     ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='Stores sales that are not available in Solucis';
+
+-- ============================================================
+-- Migration: sales_target
+-- Adds the admin-set daily overall sales target used by the
+-- "Sales Target" (estimation/reforecast) report page.
+-- ============================================================
+DROP TABLE IF EXISTS `sales_target`;
+CREATE TABLE `sales_target` (
+  `id`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `target_date`    DATE NOT NULL COMMENT 'Satu row = satu hari punya target (overall, semua hub/company)',
+  `target_amount`  DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  `created_by`     INT DEFAULT NULL COMMENT 'FK ke admin_users.id - admin yang set/edit target ni',
+  `created_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_target_date` (`target_date`),
+  KEY `idx_sales_target_created_by` (`created_by`),
+  CONSTRAINT `fk_sales_target_admin`
+    FOREIGN KEY (`created_by`) REFERENCES `admin_users` (`id`)
+    ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='Admin-set daily sales target (overall, all hubs/companies combined) - used for daily reforecast (New Target) calculation';
 
 -- ============================================================
 -- Table: exchange_rates

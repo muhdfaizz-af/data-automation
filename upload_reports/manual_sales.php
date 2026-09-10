@@ -59,14 +59,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 throw new Exception('Please fill in all required fields.');
             }
             
-            $stmt = $pdo->prepare('SELECT id FROM manual_sales WHERE company_id = ? AND sales_channel_id = ? AND sales_date = ?');
-            $stmt->execute([$companyId, $channelId, $salesDate]);
+            $stmt = $pdo->prepare('SELECT id FROM manual_sales WHERE company_id = ? AND sales_channel_id = ? AND sales_date = ? AND brand = ?');
+            $stmt->execute([$companyId, $channelId, $salesDate, $brand]);
             if ($stmt->fetch()) {
-                throw new Exception('Entry already exists for this company, channel and date.');
+              throw new Exception('Entry already exists for this company, channel, date and brand.');
             }
             
             $stmt = $pdo->prepare('INSERT INTO manual_sales (company_id, sales_channel_id, sales_date, amount, brand, remarks, entered_by) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$companyId, $channelId, $salesDate, $amount, $brand, $remarks, $userId]);
+            try {
+                $stmt->execute([$companyId, $channelId, $salesDate, $amount, $brand, $remarks, $userId]);
+            } catch (PDOException $e) {
+                if ((int)$e->errorInfo[1] === 1062) {
+                  throw new Exception('Entry already exists for this company, channel, date and brand.');
+                }
+                throw $e;
+            }
             
             $message = 'Manual sales saved successfully!';
             $messageType = 'success';
@@ -198,6 +205,20 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
 .alert-error{background:#fee2e2;border:1px solid #fecaca;color:#991b1b;}
 .alert-info{background:#dbeafe;border:1px solid #93c5fd;color:#1e40af;}
 .alert-warning{background:#fef3c7;border:1px solid #fcd34d;color:#92400e;}
+.modal-backdrop{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(27,27,31,.46);backdrop-filter:blur(4px);animation:modal-fade-in .2s ease-out;}
+.modal-card{position:relative;width:min(100%,420px);padding:32px 28px 26px;background:var(--white);border-radius:var(--radius-lg);box-shadow:0 24px 70px rgba(20,20,30,.22);text-align:center;animation:modal-pop-in .25s ease-out;}
+.modal-icon{width:58px;height:58px;margin:0 auto 16px;border-radius:50%;display:grid;place-items:center;}
+.modal-icon svg{width:28px;height:28px;}
+.modal-success .modal-icon{background:#d1fae5;color:#047857;}
+.modal-error .modal-icon{background:#fee2e2;color:#dc2626;}
+.modal-title{font-size:19px;font-weight:800;margin-bottom:8px;color:var(--ink);}
+.modal-message{font-size:13px;line-height:1.6;color:var(--gray-700);overflow-wrap:anywhere;}
+.modal-close{width:100%;margin-top:24px;padding:11px 18px;border-radius:var(--radius-md);background:var(--ink);color:var(--white);font-size:13px;font-weight:700;transition:background .15s;}
+.modal-close:hover{background:var(--gray-700);}
+.modal-dismiss{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;color:var(--gray-500);font-size:22px;line-height:1;}
+.modal-dismiss:hover{background:var(--gray-100);color:var(--ink);}
+@keyframes modal-fade-in{from{opacity:0;}to{opacity:1;}}
+@keyframes modal-pop-in{from{opacity:0;transform:translateY(8px) scale(.97);}to{opacity:1;transform:translateY(0) scale(1);}}
 
 /* ── TABLE ── */
 .table-wrap{overflow-x:auto;margin-top:16px;}
@@ -241,9 +262,23 @@ table tr:hover{background:var(--gray-50);}
     <p>Enter sales that are not available in Solucis system</p>
   </div>
 
-  <!-- STATUS MESSAGES -->
+  <!-- STATUS MESSAGE MODAL -->
   <?php if ($message): ?>
-    <div class="alert alert-<?= $messageType ?>"><?= htmlspecialchars($message) ?></div>
+    <div class="modal-backdrop" id="statusModal" role="dialog" aria-modal="true" aria-labelledby="statusModalTitle">
+      <div class="modal-card modal-<?= htmlspecialchars($messageType) ?>">
+        <button type="button" class="modal-dismiss" aria-label="Close message" onclick="closeStatusModal()">&times;</button>
+        <div class="modal-icon" aria-hidden="true">
+          <?php if ($messageType === 'success'): ?>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 4 4L19 6"/></svg>
+          <?php else: ?>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 8v4M12 16h.01"/><circle cx="12" cy="12" r="9"/></svg>
+          <?php endif; ?>
+        </div>
+        <h2 class="modal-title" id="statusModalTitle"><?= $messageType === 'success' ? 'Success' : 'Unable to save' ?></h2>
+        <p class="modal-message"><?= htmlspecialchars($message) ?></p>
+        <button type="button" class="modal-close" onclick="closeStatusModal()">Okay</button>
+      </div>
+    </div>
   <?php endif; ?>
 
   <!-- FORM -->
@@ -398,15 +433,23 @@ function closeDrawer() {
   document.getElementById('drawerOverlay').classList.remove('open');
 }
 
-// Auto clear success message after 5 seconds
-setTimeout(function() {
-  const alerts = document.querySelectorAll('.alert-success');
-  alerts.forEach(function(el) {
-    el.style.transition = 'opacity 0.5s';
-    el.style.opacity = '0';
-    setTimeout(function() { el.remove(); }, 500);
+function closeStatusModal() {
+  const modal = document.getElementById('statusModal');
+  if (modal) modal.remove();
+}
+
+const statusModal = document.getElementById('statusModal');
+if (statusModal) {
+  statusModal.addEventListener('click', function(event) {
+    if (event.target === statusModal) closeStatusModal();
   });
-}, 5000);
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') closeStatusModal();
+  });
+  if (statusModal.querySelector('.modal-success')) {
+    setTimeout(closeStatusModal, 4000);
+  }
+}
 </script>
 
 </body>
