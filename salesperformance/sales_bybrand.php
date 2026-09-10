@@ -436,7 +436,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 /* ── CARD ── */
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
 .card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
-.card-subtitle {color: var(--gray-500);font-size: 12px;}
+.card-subtitle {color: var(--gray-500);font-size: 12px;margin-bottom: 10px;}
 
 /* ── FILTER SECTION ── */
 .filter-grid {display: grid;grid-template-columns:repeat(2, minmax(180px, 1fr))minmax(180px, 240px)auto;gap: 16px;align-items: end;margin-top: 20px;}

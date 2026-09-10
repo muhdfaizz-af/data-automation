@@ -88,7 +88,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   
   <div class="sidebar-section-label">Reports</div>
   <div class="nav-group open" data-nav-id="salesperformance">
-    <button type="button" class="nav-parent <?= in_array($activeNav, ['salesperformance', 'sales_estimation', 'asd_comparison', 'top_product', 'top_bottom', 'recruitment'], true) ? 'active' : '' ?>" aria-expanded="true">
+    <button type="button" class="nav-parent <?= in_array($activeNav, ['salesperformance', 'sales_estimation', 'asd_comparison', 'top_product', 'top_bottom', 'recruitment', 'sales_by_brand'], true) ? 'active' : '' ?>" aria-expanded="true">
       <span class="nav-parent-content">
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
@@ -100,8 +100,9 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $activeNav === 'sales_estimation', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $activeNav === 'asd_comparison', $navBasePath) ?>
       <?= navItem('salesperformance/top_product.php', $icoSales, 'Top Upper Product', $activeNav === 'top_product', $navBasePath) ?>
-      <?= navItem('salesperformance/top_bottom.php', $icoSales, 'Top Bottom Product', $activeNav === 'top_bottom', $navBasePath) ?>
+      <?= navItem('salesperformance/top_bottom.php', $icoSales, 'Top Bottom Product Nafesa', $activeNav === 'top_bottom', $navBasePath) ?>
       <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Recruitment', $activeNav === 'recruitment', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_bybrand.php', $icoSales, 'Sales by Brand', $activeNav === 'sales_by_brand', $navBasePath) ?>
     </div>
   </div>
   <?= navItem('products.php', $icoBox, 'Products', $activeNav === 'products', $navBasePath) ?>
@@ -135,7 +136,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   
   <div class="sidebar-section-label">Reports</div>
   <div class="nav-group open" data-nav-id="salesperformance">
-    <button type="button" class="nav-parent <?= in_array($activeNav, ['salesperformance', 'sales_estimation', 'asd_comparison', 'top_product', 'top_bottom', 'recruitment'], true) ? 'active' : '' ?>" aria-expanded="true">
+    <button type="button" class="nav-parent <?= in_array($activeNav, ['salesperformance', 'sales_estimation', 'asd_comparison', 'top_product', 'top_bottom', 'recruitment', 'sales_by_brand'], true) ? 'active' : '' ?>" aria-expanded="true">
       <span class="nav-parent-content">
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
@@ -147,8 +148,9 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $activeNav === 'sales_estimation', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $activeNav === 'asd_comparison', $navBasePath) ?>
       <?= navItem('salesperformance/top_product.php', $icoSales, 'Top Upper Product', $activeNav === 'top_product', $navBasePath) ?>
-      <?= navItem('salesperformance/top_bottom.php', $icoSales, 'Top Bottom Product', $activeNav === 'top_bottom', $navBasePath) ?>
+      <?= navItem('salesperformance/top_bottom.php', $icoSales, 'Top Bottom Product Nafesa', $activeNav === 'top_bottom', $navBasePath) ?>
       <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Recruitment', $activeNav === 'recruitment', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_bybrand.php', $icoSales, 'Sales by Brand', $activeNav === 'sales_by_brand', $navBasePath) ?>
     </div>
   </div>
   <?= navItem('product-bundles.php', $icoBundle, 'Product Bundles', $activeNav === 'bundles', $navBasePath) ?>
