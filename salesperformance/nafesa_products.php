@@ -620,25 +620,30 @@ function splitRankings(array $products): array
 }
 
 
-$defaultFrom = date('Y-m-01');
-$defaultTo = date('Y-m-d');
+$yesterday = date('Y-m-d', strtotime('-1 day'));
+$defaultFrom = $yesterday;
+$defaultTo = $yesterday;
 
-$from = is_string($_GET['from'] ?? null)
-    ? $_GET['from']
+$requestData = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? $_POST
+    : $_GET;
+
+$from = is_string($requestData['from'] ?? null)
+    ? $requestData['from']
     : $defaultFrom;
 
-$to = is_string($_GET['to'] ?? null)
-    ? $_GET['to']
+$to = is_string($requestData['to'] ?? null)
+    ? $requestData['to']
     : $defaultTo;
 
 $regionFilter = normalizeRegion(
-    $_GET['region'] ?? 'all'
+    $requestData['region'] ?? 'all'
 );
 
-$isSubmitted = isset($_GET['apply']);
+$isSubmitted = isset($requestData['apply']);
 
 $selectedType = normalizeProductType(
-    $_GET['type'] ?? DEFAULT_PRODUCT_TYPE
+    $requestData['type'] ?? DEFAULT_PRODUCT_TYPE
 );
 
 $errors = [];
@@ -865,6 +870,7 @@ include __DIR__ . '/../includes/sidebar.php';
         <p>Rank Nafesa Scarf, Inner and Hand Socks products using converted Tax Invoice sales.</p>
     </div>
 
+    <div id="report-results">
     <?php if (!empty($errors)): ?>
         <div class="error-box">
             <ul>
@@ -874,15 +880,6 @@ include __DIR__ . '/../includes/sidebar.php';
             </ul>
         </div>
     <?php endif; ?>
-
-    <div class="info-box">
-        This report includes Nafesa products only. Rankings are based
-        on Total Sales after converting Singapore sales to MYR.
-        Bottom 10 includes products with at least one sold unit and
-        positive sales during the selected period. Results are limited
-        to the selected region.
-    </div>
-
     <section class="card">
         <div class="card-title">Report Filters</div>
 
@@ -890,7 +887,7 @@ include __DIR__ . '/../includes/sidebar.php';
             Select the period, region and one Nafesa product type.
         </div>
 
-        <form method="get" action="nafesa_products.php">
+        <form method="post" action="nafesa_products.php" id="report-filter">
             <div class="filter-grid">
 
                 <div class="field">
@@ -1062,29 +1059,52 @@ include __DIR__ . '/../includes/sidebar.php';
         </div>
     <?php endif; ?>
 
+    </div>
+
 </main>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const typeRadios = document.querySelectorAll(
-        'input[name="type"]'
-    );
+    const form = document.getElementById('report-filter');
+    const results = document.getElementById('report-results');
+    const button = form.querySelector('button[type="submit"]');
 
-    typeRadios.forEach(function (radio) {
-        radio.addEventListener('change', function () {
-            document.querySelectorAll('.brand-option').forEach(
-                function (option) {
-                    option.classList.remove('selected');
-                }
-            );
+    form.addEventListener('submit', async function (event) {
+        event.preventDefault();
 
-            const selectedOption = radio.closest('.brand-option');
+        const originalLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Loading...';
 
-            if (selectedOption) {
-                selectedOption.classList.add('selected');
+        try {
+            const response = await fetch(form.action || window.location.href, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+
+            if (!response.ok) {
+                throw new Error('Unable to load the report.');
             }
-        });
+
+            const html = await response.text();
+            const nextDocument = new DOMParser().parseFromString(html, 'text/html');
+            const nextResults = nextDocument.getElementById('report-results');
+
+            if (!nextResults) {
+                throw new Error('Invalid report response.');
+            }
+
+            results.replaceWith(nextResults);
+        } catch (error) {
+            results.innerHTML = '<div class="error-box" role="alert">' +
+                'Unable to load the report. Please try again.' +
+                '</div>';
+        } finally {
+            button.disabled = false;
+            button.textContent = originalLabel;
+        }
     });
 });
 </script>

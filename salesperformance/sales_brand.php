@@ -364,9 +364,13 @@ $yesterday = $today->modify('-1 day');
 $defaultFrom = $today->modify('-3 days')->format('Y-m-d');
 $defaultTo = $yesterday->format('Y-m-d');
 
-$from = is_string($_GET['from'] ?? null) ? $_GET['from'] : $defaultFrom;
-$to = is_string($_GET['to'] ?? null) ? $_GET['to'] : $defaultTo;
-$companyFilter = normalizeCompany($_GET['company'] ?? 'all');
+$requestData = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? $_POST
+    : $_GET;
+
+$from = is_string($requestData['from'] ?? null) ? $requestData['from'] : $defaultFrom;
+$to = is_string($requestData['to'] ?? null) ? $requestData['to'] : $defaultTo;
+$companyFilter = normalizeCompany($requestData['company'] ?? 'all');
 
 $errors = [];
 
@@ -605,7 +609,6 @@ include __DIR__ . '/../includes/sidebar.php';
 <script>
 // Same URL as the current page — no separate API file needed.
 const API_URL = window.location.pathname;
-const PAGE_URL = window.location.pathname;
 
 const form = document.getElementById('filterForm');
 const applyButton = document.getElementById('applyButton');
@@ -692,16 +695,19 @@ function renderReport(data) {
         `Event Ticket appears only when ticket transactions exist during the selected period.`;
 }
 
-async function loadReport(params, updateUrl) {
+async function loadReport(params) {
     const requestId = ++currentRequestId;
     setLoading(true);
     tableBody.innerHTML = '<tr class="report-loading"><td>Loading report…</td></tr>';
 
-    const query = new URLSearchParams(params).toString();
-
     try {
-        const response = await fetch(`${API_URL}?${query}`, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            body: new URLSearchParams(params),
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+            }
         });
 
         if (requestId !== currentRequestId) return;
@@ -727,11 +733,6 @@ async function loadReport(params, updateUrl) {
 
         renderErrors([]);
         renderReport(data);
-
-        if (updateUrl) {
-            const urlParams = new URLSearchParams(params);
-            history.replaceState(null, '', `${PAGE_URL}?${urlParams.toString()}`);
-        }
     } catch (err) {
         if (requestId !== currentRequestId) return;
         renderErrors(['Unable to load the report. Please check your connection and try again.']);
@@ -749,14 +750,14 @@ form.addEventListener('submit', function (e) {
         to: document.getElementById('to').value,
         company: document.getElementById('company').value,
     };
-    loadReport(params, true);
+    loadReport(params);
 });
 
 loadReport({
     from: document.getElementById('from').value,
     to: document.getElementById('to').value,
     company: document.getElementById('company').value,
-}, false);
+});
 </script>
 
 </body>

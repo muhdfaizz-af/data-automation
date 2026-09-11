@@ -921,18 +921,6 @@ include __DIR__ . '/../includes/sidebar.php';
         <?php renderErrorsBox($errors); ?>
     </div>
 
-    <div class="definition">
-        <div>
-            <strong>ASD formula:</strong>
-            Qualifying Total Sales &divide; Unique Active Agents.
-
-            <div class="order-type-help">
-                <strong>Qualifying order types:</strong>
-                Repurchase Order and On Behalf Repurchase Order
-            </div>
-        </div>
-    </div>
-
     <section class="card">
         <div class="card-title">Comparison Filters</div>
         <div class="card-subtitle">

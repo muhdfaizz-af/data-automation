@@ -807,15 +807,6 @@ include __DIR__ . '/../includes/sidebar.php';
         <?php renderErrorsBox($errors); ?>
     </div>
 
-    <div class="definition">
-        <strong>New Registration:</strong>
-        Registration Order + On Behalf Register Order.
-
-        <strong>Purchase Agent:</strong>
-        unique members with a Repurchase Order or
-        On Behalf Repurchase Order.
-    </div>
-
     <section class="card">
         <div class="card-title">Report Filter</div>
 
