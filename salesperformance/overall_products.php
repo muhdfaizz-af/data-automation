@@ -1,6 +1,6 @@
 <?php
 /**
- * Overall Top and Bottom 5 Loose Products
+ * Overall Top and Bottom 10 Consolidated Products
  *
  * Source:
  * - orders
@@ -28,7 +28,7 @@ ini_set('display_errors', '0');
 require_once __DIR__ . '/../config/db.php';
 
 define('SGD_TO_MYR_RATE', 3.27);
-define('RANKING_LIMIT', 5);
+define('RANKING_LIMIT', 10);
 
 /**
  * Codes confirmed to represent the same product can be mapped here.
@@ -65,7 +65,7 @@ if (
 $_SESSION['last_activity'] = time();
 
 $adminUsername = $_SESSION['admin_username'] ?? '';
-$activeNav = 'top_product';
+$activeNav = 'overall_products';
 $navBasePath = '../';
 
 // Create the database connection
@@ -127,83 +127,31 @@ function validatePeriod(string $from, string $to): string
     return '';
 }
 
-// Convert product-code variants to one master code.
-function canonicalizeItemCode(string $itemCode): string
-{
-    $itemCode = strtoupper(trim($itemCode));
-
-    if (isset(PRODUCT_CODE_MAP[$itemCode])) {
-        return PRODUCT_CODE_MAP[$itemCode];
-    }
-
-    // Remove common preorder prefixes
-    $itemCode = preg_replace(
-        '/^(?:PRE|PREORDER)-/i',
-        '',
-        $itemCode
-    );
-
-    return $itemCode !== '' ? $itemCode : 'UNKNOWN';
-}
-
-// Clean unnecessary wording from the displayed product name
+// Remove operational wording from a displayed product category name.
 function cleanProductName(string $description): string
 {
     $description = trim($description);
+    $description = preg_replace('/^\s*\(PREORDER\)\s*/i', '', $description);
+    $description = preg_replace('/\s*\(FULFILMENT[^)]*\)\s*/i', '', $description);
+    $description = preg_replace('/\s+/', ' ', $description);
 
-    $description = preg_replace(
-        '/^\s*\(PREORDER\)\s*/i',
-        '',
-        $description
-    );
-
-    $description = preg_replace(
-        '/\s+/',
-        ' ',
-        $description
-    );
-
-    return trim($description);
+    return trim((string)$description);
 }
 
-/**
- * Check whether the row represents a loose product.
- *
- * product_type = normal is the main database indicator.
- * Text checks provide additional protection against incorrectly
- * classified sets, bundles, cartons and Starter Kits.
- */
-function isLooseProduct(
-    string $productType,
+// Consolidate related product codes into one reporting category
+function identifyProductCategory(
+    string $brand,
     string $itemCode,
-    string $description
-): bool {
-    $productType = strtoupper(trim($productType));
+    string $description,
+    string $productType
+): ?string {
+    $brand = strtoupper(trim($brand));
     $itemCode = strtoupper(trim($itemCode));
     $description = strtoupper(trim($description));
+    $productType = strtoupper(trim($productType));
 
-    if ($productType !== 'NORMAL') {
-        return false;
-    }
-
-    if (
-        str_starts_with($itemCode, 'STK-') ||
-        $itemCode === 'STK'
-    ) {
-        return false;
-    }
-
+    // Exclude transactions that cannot represent product sales.
     $excludedTerms = [
-        'STARTER KIT',
-        'BUNDLE',
-        'COMBO',
-        'PACKAGE',
-        'PACKAGES',
-        'CARTON',
-        'SET A',
-        'SET B',
-        ' SET ',
-        'BOX SET',
         'PAPERBAG',
         'PAPER BAG',
         'BUNTING',
@@ -218,15 +166,187 @@ function isLooseProduct(
         'PLASTIC CUP',
         'TUMBLER',
         'WOVEN BAG',
+        'MENU BOARD',
+        ' BOARD ',
     ];
 
     foreach ($excludedTerms as $term) {
         if (str_contains($description, $term)) {
-            return false;
+            return null;
         }
     }
 
-    return true;
+    // Belgian Chocolate Drink family
+    if (
+        preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002)(?:-|$)/', $itemCode) ||
+        str_contains($description, '(BCDB) BOX BELGIAN CHOCOLATE DRINK')
+    ) {
+        return '(BCDB) BOX BELGIAN CHOCOLATE DRINK';
+    }
+
+    // Unicorn Strawberry Chocolate family
+    if (
+        in_array($itemCode, ['CA-6', 'CA-006'], true) ||
+        str_starts_with($itemCode, 'CAC-011') ||
+        str_starts_with($itemCode, 'STK-CA-6') ||
+        str_contains($description, 'UNICORN STRAWBERRY')
+    ) {
+        return 'UNICORN STRAWBERRY CHOCOLATE TUB';
+    }
+
+    if (str_contains($description, 'CUTIE MINI CHOCO CRUNCH')) {
+        return 'CUTIE MINI CHOCO CRUNCH TUB';
+    }
+
+    if (str_contains($description, 'BUTTERCREAM LATTE')) {
+        return 'BUTTERCREAM LATTE DRINK';
+    }
+
+    if (str_contains($description, 'CUTIE CHOCO BALL')) {
+        return 'CUTIE CHOCO BALL TUB';
+    }
+
+    if (str_contains($description, 'CUTIE MINI CHOCO DORAYAKI')) {
+        return 'CUTIE MINI CHOCO DORAYAKI TUB';
+    }
+
+    if (str_contains($description, 'CUTIE CHOCO RICE')) {
+        return 'CUTIE CHOCO RICE TUB';
+    }
+
+    if (str_contains($description, 'PISTACHIO DREAM')) {
+        return 'PISTACHIO DREAM TUB';
+    }
+
+    if (str_contains($description, 'COTTON CANDY CHOCOLATE')) {
+        return 'COTTON CANDY CHOCOLATE TUB';
+    }
+
+    // Brazilian Coffee family
+    if (
+        preg_match('/^(?:BRC|BRCC|STK-BRC)/', $itemCode) ||
+        str_contains($description, 'BRAZILIAN COFFEE')
+    ) {
+        return 'BRAZILIAN COFFEE DRINK';
+    }
+
+    // Belgian Mocha family
+    if (
+        preg_match('/^(?:BMD|BMDC)/', $itemCode) ||
+        str_contains($description, 'BELGIAN MOCHA')
+    ) {
+        return 'BELGIAN MOCHA DRINK';
+    }
+
+    // Blueberry Chocolate family
+    if (
+        preg_match('/^(?:BBC|BBCC)/', $itemCode) ||
+        str_contains($description, 'BLUEBERRY CHOCOLATE')
+    ) {
+        return 'BLUEBERRY CHOCOLATE DRINK';
+    }
+
+    // Zeky variants are consolidated into one category
+    if (
+        str_starts_with($itemCode, 'ZEKY-BH') ||
+        str_starts_with($itemCode, 'STK-ZEKY-BH') ||
+        str_contains($description, 'ZEKY BRAIN HERO')
+    ) {
+        return 'ZEKY BRAIN HERO';
+    }
+
+    // Free/component scarf codes inside a Nafesa Starter Kit.
+    if (
+        $brand === 'STK' &&
+        preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)
+    ) {
+        return 'SCARF';
+    }
+
+    // Consolidate all actual Nafesa scarves
+    // Inner products are kept as seperate category
+    if ($brand === 'NAFESA') {
+        if (
+            preg_match('/^(?:NCH|NTU|NST|NIN)/', $itemCode) ||
+            str_contains($description, 'INNER')
+        ) {
+            return 'INNER';
+        }
+
+        return 'SCARF';
+    }
+
+    // Other Choco Albab products are consolidate by cleaned name
+    if ($brand === 'CHOCO ALBAB') {
+        return $productType === 'NORMAL'
+            ? cleanProductName($description)
+            : null;
+    }
+
+    return null;
+}
+
+/**
+ * Decide whether an item row supplies the displayed loose quantity.
+ *
+ * Sales can come from cartons, sets and bundles, but the displayed
+ * quantity should come from their loose-product component code.
+ */
+function isCategoryQuantityRow(
+    string $category,
+    string $itemCode,
+    string $productType
+): bool {
+    $itemCode = strtoupper(trim($itemCode));
+    $productType = strtoupper(trim($productType));
+
+    return match ($category) {
+        // Reference quantity for BCDB comes from BCD-002
+        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' =>
+            $itemCode === 'BCD-002',
+
+        // CA-6 is the loose component generated from Unicorn cartons and packs. Not count CA-006/CAC-011
+        'UNICORN STRAWBERRY CHOCOLATE TUB' =>
+            $itemCode === 'CA-6',
+
+        'CUTIE MINI CHOCO CRUNCH TUB' =>
+            $itemCode === 'CA-9',
+
+        'CUTIE CHOCO BALL TUB' =>
+            $itemCode === 'CA-8',
+
+        'CUTIE MINI CHOCO DORAYAKI TUB' =>
+            $itemCode === 'CA-13',
+
+        'CUTIE CHOCO RICE TUB' =>
+            $itemCode === 'CA-12',
+
+        'PISTACHIO DREAM TUB' =>
+            $itemCode === 'CA-15',
+
+        'COTTON CANDY CHOCOLATE TUB' =>
+            $itemCode === 'CA-10',
+
+        // Reference Zeky quantity comes from its loose component
+        'ZEKY BRAIN HERO' =>
+            $itemCode === 'ZEKY-BH',
+
+        // Brazillian Coffee loose component
+        'BRAZILIAN COFFEE DRINK' =>
+            $itemCode === 'BRC-001',
+
+        // Nafesa scarves
+        'SCARF' =>
+            $productType === 'NORMAL' ||
+            (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode),
+
+        'INNER' =>
+            $productType === 'NORMAL',
+
+        // Other categories use normal/loose rows only
+        default =>
+            $productType === 'NORMAL',
+    };
 }
 
 // Load and consolidate loose products from Tax Invoice MY and SG
@@ -247,162 +367,154 @@ function getOverallProducts(
     ];
 
     $sql = "
-        SELECT
-            UPPER(TRIM(COALESCE(oi.brand, ''))) AS brand,
-            oi.product_type,
-            oi.item_code,
-            oi.item_description,
-            c.company_code,
+    SELECT
+        UPPER(TRIM(COALESCE(oi.brand, ''))) AS brand,
+        oi.product_type,
+        oi.item_code,
+        oi.item_description,
+        c.company_code,
 
-            SUM(COALESCE(oi.qty, 0)) AS total_quantity,
+        SUM(COALESCE(oi.qty, 0)) AS row_quantity,
 
-            SUM(
-                COALESCE(oi.invoice_amount, 0)
-            ) AS invoice_sales
+        SUM(
+            COALESCE(oi.invoice_amount, 0)
+        ) AS invoice_sales
 
-        FROM order_items oi
+            FROM order_items oi
 
-        INNER JOIN orders o
-            ON o.id = oi.order_id
+            INNER JOIN orders o
+                ON o.id = oi.order_id
 
-        INNER JOIN companies c
-            ON c.id = o.company_id
+            INNER JOIN companies c
+                ON c.id = o.company_id
 
-        WHERE o.order_datetime >= :from_date
+            WHERE o.order_datetime >= :from_date
             AND o.order_datetime < :to_exclusive
             AND o.order_status = :confirmed_status
+            AND c.company_code IN ('MY', 'SG')
 
-           /*
-           * MY includes West Malaysia, East Malaysia and Brunei.
-           * SG includes Singapore.
-           */
-           AND c.company_code IN ('MY', 'SG')
-
-           /*
-           * Main product brands only.
-           * STK and EVENTTICKET are excluded.
-           */
-           AND UPPER(TRIM(COALESCE(oi.brand, ''))) IN (
-               'CHOCO ALBAB',
-               'NAFESA',
-               'ZEKY'
+            AND UPPER(TRIM(COALESCE(oi.brand, ''))) IN (
+                'CHOCO ALBAB',
+                'NAFESA',
+                'ZEKY',
+                'STK'
             )
 
-        GROUP BY
-            UPPER(TRIM(COALESCE(oi.brand, ''))),
-            oi.product_type,
-            oi.item_code,
-            oi.item_description,
-            c.company_code
-
+            GROUP BY
+                UPPER(TRIM(COALESCE(oi.brand, ''))),
+                oi.product_type,
+                oi.item_code,
+                oi.item_description,
+                c.company_code
         ";
 
         $statement = $pdo->prepare($sql);
         $statement->execute($params);
 
-        $products = [];
+        $categories = [];
+        $overallSales = 0.00;
 
         while ($row = $statement->fetch()) {
-            $rawCode = (string)$row['item_code'];
+            $brand = (string)$row['brand'];
+            $itemCode = (string)$row['item_code'];
             $description = (string)($row['item_description'] ?? '');
             $productType = (string)($row['product_type'] ?? '');
 
-            if (
-                !isLooseProduct(
-                    $productType,
-                    $rawCode,
-                    $description
-                )
-            ) {
-                continue;
-            }
-
-            $masterCode = canonicalizeItemCode($rawCode);
-            $productKey = $masterCode;
-
             $sales = (float)$row['invoice_sales'];
 
-            // Convert Singapore Tax Invoice sales to MYR
             if ($row['company_code'] === 'SG') {
                 $sales *= SGD_TO_MYR_RATE;
             }
 
-            if (!isset($products[$productKey])) {
-                $products[$productKey] = [
-                    'item_code'      => $masterCode,
-                    'product_name'   => cleanProductName($description),
-                    'brands'         => [],
-                    'source_codes'   => [],
-                    'total_quantity' => 0,
-                    'total_sales'    => 0.00,
+            // Overall sales includes every MY/SG Tax Invoice line in scope.
+            $overallSales += $sales;
+
+            $upperDescription = strtoupper($description);
+
+            // Mixed cartons are divided equally between their two products.
+            if (str_contains($upperDescription, '30 MCC & 30 BALL')) {
+                $allocations = [
+                    'CUTIE MINI CHOCO CRUNCH TUB' => 0.5,
+                    'CUTIE CHOCO BALL TUB' => 0.5,
                 ];
+            } elseif (str_contains($upperDescription, '30 RICE & 30 DORAYAKI')) {
+                $allocations = [
+                    'CUTIE CHOCO RICE TUB' => 0.5,
+                    'CUTIE MINI CHOCO DORAYAKI TUB' => 0.5,
+                ];
+            } else {
+                $category = identifyProductCategory(
+                    $brand,
+                    $itemCode,
+                    $description,
+                    $productType
+                );
+
+                $allocations = $category === null
+                    ? []
+                    : [$category => 1.0];
             }
 
-            $products[$productKey]['total_quantity'] +=
-                (int)$row['total_quantity'];
+            foreach ($allocations as $category => $salesShare) {
+                if (!isset($categories[$category])) {
+                    $categories[$category] = [
+                        'category'       => $category,
+                        'total_quantity' => 0,
+                        'total_sales'    => 0.00,
+                        'source_codes'   => [],
+                    ];
+                }
 
-            $products[$productKey]['total_sales'] += $sales;
+                $categories[$category]['total_sales'] +=
+                    $sales * $salesShare;
 
-            $products[$productKey]['brands'][
-                (string)$row['brand']
-            ] = true;
+                if (
+                    $salesShare === 1.0 &&
+                    isCategoryQuantityRow(
+                        $category,
+                        $itemCode,
+                        $productType
+                    )
+                ) {
+                    $categories[$category]['total_quantity'] +=
+                        (int)$row['row_quantity'];
+                }
 
-            $products[$productKey]['source_codes'][
-                strtoupper(trim($rawCode))
-            ] = true;
-
-            if (
-                $products[$productKey]['product_name'] === '' &&
-                $description !== ''
-            ) {
-                $products[$productKey]['product_name'] =
-                    cleanProductName($description);
+                $categories[$category]['source_codes'][
+                    strtoupper(trim($itemCode))
+                ] = true;
             }
         }
 
         $result = [];
 
-        foreach ($products as $product) {
-            /*
-            * Bottom 5 normally means products with at least one
-            * positive sale during the selected period.
-            */
-            if (
-                $product['total_quantity'] <= 0 ||
-                $product['total_sales'] <= 0
-            ) {
+        foreach ($categories as $category) {
+            if ($category['total_sales'] <= 0) {
                 continue;
             }
 
-            $product['total_sales'] = round(
-                $product['total_sales'],
+            $category['total_sales'] = round(
+                $category['total_sales'],
                 2
             );
 
-            $product['brands'] = array_keys(
-                $product['brands']
+            $category['source_codes'] = array_keys(
+                $category['source_codes']
             );
 
-            $product['source_codes'] = array_keys(
-                $product['source_codes']
-            );
+            sort($category['source_codes']);
 
-            sort($product['brands']);
-            sort($product['source_codes']);
-
-            if ($product['product_name'] === '') {
-                $product['product_name'] =
-                    $product['item_code'];
-            }
-
-            $result[] = $product;
+            $result[] = $category;
         }
 
-        return $result;
+        return [
+            'products' => $result,
+            'overall_sales' => round($overallSales, 2),
+        ];
 }
 
 /**
- * Rank products and return the Top 5 and Bottom 5.
+ * Rank products and return the Top 10 and Bottom 10.
  */
 function splitRankings(array $products): array
 {
@@ -421,8 +533,8 @@ function splitRankings(array $products): array
             }
 
             return strcasecmp(
-                $a['product_name'],
-                $b['product_name']
+                $a['category'],
+                $b['category']
             );
         }
     );
@@ -440,11 +552,13 @@ function splitRankings(array $products): array
     );
 
     /*
-     * Keep overall rank numbering for the Bottom 5.
+     * Keep overall rank numbering for the Bottom 10.
      * The lowest product appears first.
      */
+    $remainingProducts = array_slice($products, RANKING_LIMIT);
+
     $bottom = array_reverse(
-        array_slice($products, -RANKING_LIMIT)
+        array_slice($remainingProducts, -RANKING_LIMIT)
     );
 
     return [
@@ -460,7 +574,7 @@ function renderProductRows(array $products): void
         ?>
         <tr>
             <td colspan="5" class="empty-row">
-                No qualifying loose-product sales were found.
+                No qualifying product sales were found.
             </td>
         </tr>
         <?php
@@ -475,20 +589,16 @@ function renderProductRows(array $products): void
                 <span class="rank-number"><?= number_format($product['overall_rank']) ?></span>
             </td>
             <td>
-                <strong><?= htmlspecialchars($product['product_name']) ?></strong>
-                <div class="product-code">
-                    Master code:
-                    <?= htmlspecialchars($product['item_code']) ?>
-                </div>
-            </td>
-            <td>
-                <?= htmlspecialchars(implode(', ', $product['brands'])) ?>
+                <strong><?= htmlspecialchars($product['category']) ?></strong>
             </td>
             <td class="number-cell">
                 <?= number_format($product['total_quantity']) ?>
             </td>
             <td class="sales-value">
                 RM<?= number_format($product['total_sales'], 2) ?>
+            </td>
+            <td class="number-cell">
+                <?= number_format($product['percentage'], 0) ?>%
             </td>
         </tr>
         <?php
@@ -527,6 +637,9 @@ $rankings = [
     'top'    => [],
     'bottom' => [],
 ];
+$overallSales = 0.00;
+$topSales = 0.00;
+$topPercentage = 0.00;
 
 $pdo = getDBConnection();
 
@@ -536,13 +649,33 @@ if(!$pdo) {
 
 if(empty($errors) && $pdo) {
     try {
-        $products = getOverallProducts(
+        $productReport = getOverallProducts(
             $pdo,
             $from,
             $to
         );
 
+        $products = $productReport['products'];
+        $overallSales = $productReport['overall_sales'];
+
+        foreach ($products as &$product) {
+            $product['percentage'] = $overallSales > 0
+                ? round(($product['total_sales'] / $overallSales) * 100, 2)
+                : 0.00;
+
+        }
+        unset($product);
+
         $rankings = splitRankings($products);
+
+        $topSales = round(
+            array_sum(array_column($rankings['top'], 'total_sales')),
+            2
+        );
+
+        $topPercentage = $overallSales > 0
+            ? round(($topSales / $overallSales) * 100, 2)
+            : 0.00;
     } catch (Throwable $e) {
         error_log(
             'Overall Top/Bottom Product report failed: ' .
@@ -569,36 +702,37 @@ if (isValidDate($from) && isValidDate($to)) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Overall Top &amp; Bottom 5 Products</title>
+<title>Overall Top &amp; Bottom 10 Products</title>
 <link rel="icon" href="../images/icon-sasia.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-    --red: #e0202e;--red-dark: #a91520;--ink: #1b1b1f;
-    --gray-700: #4a4a52;--gray-500: #8a8a93;--gray-300: #d8d8de;
-    --gray-100: #f2f2f4;--background: #f5f5f7;--white: #ffffff;
-    --sidebar-width: 256px;--sidebar-collapsed: 76px;--topbar-height: 64px;
+    --red: #E0202E;--red-dark: #8E1620;
+    --ink: #1B1B1F;--gray-700: #4A4A52;--gray-500: #8A8A93;
+    --gray-300: #D8D8DE;--gray-100: #F2F2F4;--bg: #F5F5F7;
+    --white: #FFFFFF;
+    --radius-lg: 18px;--radius-md: 12px;
+    --shadow-card: 0 8px 24px rgba(30, 30, 40, .06);--sidebar-w: 260px;
+    --sidebar-w-collapsed: 82px;--topbar-h: 64px;
 }
 *,*::before,*::after {box-sizing: border-box;margin: 0;padding: 0;}
-body {min-height: 100vh;background: var(--background);color: var(--ink);font-family: "Plus Jakarta Sans", sans-serif;}
+body {background: var(--bg);color: var(--ink);font-family: "Plus Jakarta Sans", sans-serif;}
 
 /* ── LAYOUT ── */
-.layout {display: flex;min-height: calc(100vh - var(--topbar-height));margin-top: var(--topbar-height);}
-.main {min-width: 0;flex: 1;margin-left: var(--sidebar-width);padding: 28px 32px 48px;transition: margin-left .25s ease;}
+.layout {display:flex;min-height:calc(100vh - var(--topbar-h));margin-top:var(--topbar-h);}
+.main {min-width:0;flex:1;margin-left:var(--sidebar-w);padding:28px 32px 48px;transition:margin-left .25s ease;}
+body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 
-/* ── SIDEBAR ── */
-body.sidebar-collapsed .main {margin-left: var(--sidebar-collapsed);}
-
-/* ── HEADER SECTION ── */
+/* ── PAGE HEADER ── */
 .page-header {margin-bottom: 24px;}
 .page-header h1 {margin-bottom: 5px;font-size: 25px;font-weight: 800;}
 .page-header p {color: var(--gray-500);font-size: 13px;}
 
 /* ── CARD SECTION ── */
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid #ececf0;border-radius: 18px;background: var(--white);box-shadow: 0 5px 18px rgba(30, 30, 40, .06);}
-.card-title {margin-bottom: 4px;font-size: 17px;font-weight: 800;}
-.card-subtitle {color: var(--gray-500);font-size: 12px;}
+.card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
+.card-subtitle {color: var(--gray-500);font-size: 12px;margin-bottom: 10px;}
 
 /* ── FILTER SECTION ── */
 .filter-grid {display: grid;grid-template-columns:repeat(2, minmax(180px, 1fr)) auto;gap: 16px;align-items: end;margin-top: 20px;}
@@ -607,7 +741,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-collapsed);}
 .field input {width: 100%;min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;font: inherit;}
 
 /* ── BUTTON ── */
-.apply-button {min-height: 44px;padding: 10px 22px;border: 0;border-radius: 9px;background: var(--red);color: var(--white);cursor: pointer;font-weight: 800;}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
 
 /* ── ERROR SECTION ── */
@@ -621,52 +755,46 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-collapsed);}
 .summary-value {font-size: 17px;font-weight: 800;}
 
 /* ── RANKING SECTION ── */
-.ranking-grid {display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 20px;}
+.ranking-grid {display: grid;grid-template-columns: 1fr;gap: 20px;}
 .ranking-card {min-width: 0;}
-.table-wrap {margin-top: 18px;overflow: hidden;border: 1px solid #e6e6ea;border-radius: 12px;}
-.ranking-table {width: 100%;table-layout: fixed;border-collapse: separate;border-spacing: 0;}
-.ranking-table th,.ranking-table td {padding: 13px 10px;border-bottom: 1px solid #ececf0;font-size: 11px;overflow-wrap: anywhere;vertical-align: middle;}
-.ranking-table th {background: #f7f7f9;color: var(--gray-700);font-size: 9px;font-weight: 800;text-transform: uppercase;}
+.table-wrap {width: 100%;overflow-x: auto;border: 1px solid #e6e6ea;border-radius: 12px;background: #fff;}
+.ranking-table {width: 100%;min-width: 650px;border-collapse: separate;border-spacing: 0;}
+.ranking-table th,.ranking-table td {padding: 13px 12px;border-bottom: 1px solid #ececf0;font-size: 11px;vertical-align: middle;}
+.ranking-table th {background: #f7f7f9;color: var(--gray-700);font-size: 9.5px;font-weight: 800;letter-spacing: .3px;text-transform: uppercase;white-space: nowrap;}
 .ranking-table tbody tr:last-child td {border-bottom: 0;}
 .ranking-table tbody tr:hover td {background: #fafafb;}
-.ranking-table th:nth-child(1),.ranking-table td:nth-child(1) {width: 10%;}
-.ranking-table th:nth-child(2),.ranking-table td:nth-child(2) {width: 36%;}
-.ranking-table th:nth-child(3),.ranking-table td:nth-child(3) {width: 20%;}
-.ranking-table th:nth-child(4),.ranking-table td:nth-child(4) {width: 14%;text-align: right;}
-.ranking-table th:nth-child(5),.ranking-table td:nth-child(5) {width: 20%;text-align: right;}
+.ranking-table th:nth-child(1),.ranking-table td:nth-child(1) {width: 10%;text-align: center;}
+.ranking-table th:nth-child(2),.ranking-table td:nth-child(2) {width: 42%;text-align: left;}
+.ranking-table th:nth-child(n+3),.ranking-table td:nth-child(n+3) {text-align: right;white-space: nowrap;}
 .rank-number {display: inline-flex;width: 27px;height: 27px;align-items: center;justify-content: center;border-radius: 50%;background: var(--gray-100);font-weight: 800;}
 .product-code {margin-top: 4px;color: var(--gray-500);font-size: 10px;}
 .sales-value {font-weight: 800;}
 .empty-row {padding: 30px !important;color: var(--gray-500);text-align: center !important;}
 .note {margin-top: 14px;color: var(--gray-500);font-size: 11px;line-height: 1.6;}
-@media (max-width: 1150px) {.ranking-grid {grid-template-columns: 1fr;}}
 @media (max-width: 900px) {.main, body.sidebar-collapsed .main {margin-left: 0; padding: 20px;}}
-@media (max-width: 650px) {.filter-grid,.summary-grid {grid-template-columns: 1fr;}.table-wrap {overflow-x: auto;}.ranking-table {min-width: 650px;}}
+@media (max-width: 650px) {.filter-grid,.summary-grid {grid-template-columns: 1fr;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 <body>
 
 <script>
-(function () {
-    try {
-        if (
-            window.innerWidth >= 900 &&
-            localStorage.getItem(
-                'adminSidebarCollapsed'
-            ) === '1'
-        ) {
-            document.body.classList.add(
-                'sidebar-collapsed'
-            );
+    (function() {
+        try {
+            if (
+                window.innerWidth >= 900 &&
+                localStorage.getItem('adminSidebarCollapsed') === '1'
+            ) {
+                document.body.classList.add('sidebar-collapsed');
+            }
+        } catch (error) {
+            // The report still works if localStorage is unavailable.
         }
-    } catch (error) {
-        // The report remains usable without localStorage
-    }
 })();
 </script>
 
 <?php
-$pageTitle = 'Overall Top & Bottom 5 Products';
+$pageTitle = 'Overall Top & Bottom 10 Products';
 
 include __DIR__ . '/../includes/topnav.php';
 include __DIR__ . '/../includes/sidebar.php';
@@ -676,7 +804,7 @@ include __DIR__ . '/../includes/sidebar.php';
 <main class="main">
 
     <header class="page-header">
-        <h1>Overall Top &amp; Bottom 5 Products</h1>
+        <h1>Overall Top &amp; Bottom 10 Products</h1>
         <p>Loose-product rankings across Malaysia, Brunei and Singapore.</p>
     </header>
 
@@ -697,7 +825,7 @@ include __DIR__ . '/../includes/sidebar.php';
             Select the Tax Invoice reporting period.
         </div>
 
-        <form method="get" action="top_product.php" class="filter-grid">
+        <form method="get" action="" class="filter-grid">
             <div class="field">
                 <label for="from">From</label>
                 <input type="date" id="from" name="from" value="<?= htmlspecialchars($from) ?>" required>
@@ -729,37 +857,50 @@ include __DIR__ . '/../includes/sidebar.php';
 
         <div class="ranking-grid">
             <section class="card ranking-card">
-                <div class="card-title">Top 5 by Total Sales</div>
+                <div class="card-title">Top 10 Products by Sales</div>
                 <div class="card-subtitle">Products with the highest converted sales.</div>
                 <div class="table-wrap">
                     <table class="ranking-table">
                         <thead>
                             <tr>
-                                <th>Rank</th>
+                                <th>No.</th>
                                 <th>Product</th>
-                                <th>Brand</th>
-                                <th>Quantity</th>
+                                <th>Qty</th>
                                 <th>Total Sales</th>
+                                <th>(%)</th>
                             </tr>
                         </thead>
-                        <tbody><?php renderProductRows($rankings['top']); ?>
+                        <tbody>
+                            <?php renderProductRows($rankings['top']); ?>
+                            <?php if (!empty($rankings['top'])): ?>
+                                <tr class="total-row">
+                                    <td colspan="3">Top 10 Sales</td>
+                                    <td>RM<?= number_format($topSales, 2) ?></td>
+                                    <td><?= number_format($topPercentage, 2) ?>%</td>
+                                </tr>
+                                <tr class="total-row">
+                                    <td colspan="3">Overall Sales</td>
+                                    <td>RM<?= number_format($overallSales, 2) ?></td>
+                                    <td><?= $overallSales > 0 ? '100.00%' : '0.00%' ?></td>
+                                </tr>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
             </section>
 
             <section class="card ranking-card">
-                <div class="card-title">Bottom 5 by Total Sales</div>
+                <div class="card-title">Bottom 10 Products by Sales</div>
                 <div class="card-subtitle">Products with the lowest positive sales.</div>
                 <div class="table-wrap">
                     <table class="ranking-table">
                         <thead>
                             <tr>
-                                <th>Rank</th>
+                                <th>No.</th>
                                 <th>Product</th>
-                                <th>Brand</th>
-                                <th>Quantity</th>
+                                <th>Qty</th>
                                 <th>Total Sales</th>
+                                <th>(%)</th>
                             </tr>
                         </thead>
                         <tbody><?php renderProductRows($rankings['bottom']);?>

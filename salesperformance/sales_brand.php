@@ -439,11 +439,13 @@ if ($isAjax) {
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-    --red: #E0202E;--red-dark: #8E1620;--ink: #1B1B1F;
-    --gray-700: #4A4A52;--gray-500: #8A8A93;--gray-300: #D8D8DE;
-    --gray-100: #F2F2F4;--bg: #F5F5F7;--white: #FFFFFF;--green: #059669;
-    --radius-lg: 18px;--radius-md: 12px;--shadow-card: 0 8px 24px rgba(30, 30, 40, .06);
-    --sidebar-w: 256px;--sidebar-w-collapsed: 76px;--topbar-h: 64px;
+    --red: #E0202E;--red-dark: #8E1620;
+    --ink: #1B1B1F;--gray-700: #4A4A52;--gray-500: #8A8A93;
+    --gray-300: #D8D8DE;--gray-100: #F2F2F4;--bg: #F5F5F7;
+    --white: #FFFFFF;
+    --radius-lg: 18px;--radius-md: 12px;
+    --shadow-card: 0 8px 24px rgba(30, 30, 40, .06);--sidebar-w: 260px;
+    --sidebar-w-collapsed: 82px;--topbar-h: 64px;
 }
 *,*::before,*::after {box-sizing: border-box;margin: 0;padding: 0;}
 body {background: var(--bg);color: var(--ink);font-family: "Plus Jakarta Sans", sans-serif;}
@@ -459,14 +461,14 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
 .card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
-.card-subtitle {color: var(--gray-500);font-size: 12px;}
+.card-subtitle {color: var(--gray-500);font-size: 12px; margin-bottom: 10px;}
 
 .filter-grid {display: grid;grid-template-columns:repeat(2, minmax(180px, 1fr))minmax(180px, 240px)auto;gap: 16px;align-items: end;margin-top: 20px;}
 .field {display: flex;min-width: 0;flex-direction: column;gap: 7px;}
 .field label {color: var(--gray-700);font-size: 10.5px;font-weight: 800;text-transform: uppercase;}
 .field input,.field select {width: 100%;min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;background: var(--white);color: var(--ink);font: inherit;font-size: 13px;}
 
-.apply-button {min-height: 44px;padding: 10px 22px;border: 0;border-radius: 9px;background: var(--red);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;display: inline-flex;align-items: center;justify-content: center;gap: 8px;}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
 .apply-button:disabled {opacity: .7;cursor: default;}
 
@@ -504,6 +506,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 @media (max-width: 900px) {.main,body.sidebar-collapsed .main {margin-left: 0;padding: 20px;}}
 @media (max-width: 650px) {.filter-grid,.summary-grid {grid-template-columns: 1fr;}.apply-button {width: 100%;}.table-wrap {overflow-x: auto;}.brand-table {min-width: 650px;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 
 <body>

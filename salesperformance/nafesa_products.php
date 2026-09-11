@@ -748,11 +748,13 @@ function renderProductRows(array $products): void
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-    --red:#E0202E;--red-dark:#8E1620;--ink:#1B1B1F;
-    --gray-700:#4A4A52;--gray-500:#8A8A93;--gray-300:#D8D8DE;--gray-100:#F2F2F4;
-    --bg:#F5F5F7;--white:#FFFFFF;--green:#059669;--gold:#D97706;--blue:#2563EB;
-    --radius-lg:18px;--radius-md:12px;--sidebar-w:256px;--sidebar-w-collapsed:76px;
-    --topbar-h:64px;--shadow-card:0 2px 8px rgba(20,20,30,.06);
+    --red: #E0202E;--red-dark: #8E1620;
+    --ink: #1B1B1F;--gray-700: #4A4A52;--gray-500: #8A8A93;
+    --gray-300: #D8D8DE;--gray-100: #F2F2F4;--bg: #F5F5F7;
+    --white: #FFFFFF;
+    --radius-lg: 18px;--radius-md: 12px;
+    --shadow-card: 0 8px 24px rgba(30, 30, 40, .06);--sidebar-w: 260px;
+    --sidebar-w-collapsed: 82px;--topbar-h: 64px;
 }
 *, *::before, *::after {box-sizing:border-box;margin:0;padding:0;}
 body {min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Plus Jakarta Sans',sans-serif;}
@@ -774,7 +776,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 /* ── CARD  ── */
 .card {margin-bottom:24px;padding:24px;border:1px solid var(--gray-100);border-radius:var(--radius-lg);background:var(--white);box-shadow:var(--shadow-card);}
 .card-title {margin-bottom:4px;font-size:16px;font-weight:800;}
-.card-subtitle {color:var(--gray-500);font-size:12px;}
+.card-subtitle {color:var(--gray-500);font-size:12px;margin-bottom:10px}
 
 /* ── FILTER SECTION ── */
 .filter-grid {display:grid;grid-template-columns:repeat(2,minmax(180px,1fr)) 200px;gap:16px;align-items:end;margin-top:20px;}
@@ -797,8 +799,8 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .filter-footer {display:flex;justify-content:flex-end;margin-top:18px;}
 
 /* ── APPLY BUTTON ── */
-.apply-button {min-width:180px;padding:11px 20px;border:0;border-radius:9px;background:var(--red);color:var(--white);cursor:pointer;font-size:13px;font-weight:800;}
-.apply-button:hover {background:var(--red-dark);}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
+.apply-button:hover {background: var(--red-dark);}
 .error-box,
 .info-box {margin-bottom:20px;padding:13px 15px;border-radius:10px;font-size:12px;line-height:1.6;}
 .error-box {border:1px solid #FECACA;background:#FEF2F2;color:#991B1B;}
@@ -811,9 +813,9 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .summary-value {font-size:16px;font-weight:800;}
 
 /* ── RANKING SECTION ── */
-.ranking-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
+.ranking-grid {display:grid;grid-template-columns:minmax(0,1fr);gap:20px;}
 .ranking-card {min-width:0;}
-.table-wrap {width:100%;min-width:0;margin-top:18px;overflow-x:hidden;}
+.table-wrap {width:100%;min-width:0;overflow-x:hidden;}
 .ranking-table {width:100%;table-layout:fixed;border-collapse:collapse;}
 .ranking-table th, .ranking-table td {padding:12px 8px;border-bottom:1px solid var(--black-100);text-align:left;vertical-align:top;font-size:11px;overflow-wrap:anywhere;}
 .ranking-table th {color:var(--black-500);font-size:10px;letter-spacing:.3px;text-transform:uppercase;}
@@ -833,6 +835,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 @media(max-width:900px) {.main,body.sidebar-collapsed .main {margin-left:0;padding:20px;}}
 @media(max-width:700px) {.filter-grid,.summary-grid {grid-template-columns:1fr;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 
 <body>
@@ -874,14 +877,6 @@ include __DIR__ . '/../includes/sidebar.php';
             </ul>
         </div>
     <?php endif; ?>
-
-    <div class="info-box">
-        This report includes Nafesa products only. Rankings are based
-        on Total Sales after converting Singapore sales to MYR.
-        Bottom 10 includes products with at least one sold unit and
-        positive sales during the selected period. Results are limited
-        to the selected region.
-    </div>
 
     <section class="card">
         <div class="card-title">Report Filters</div>

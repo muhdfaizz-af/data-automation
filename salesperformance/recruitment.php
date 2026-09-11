@@ -654,7 +654,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .field input {min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;background: var(--white);color: var(--ink);font: inherit;font-size: 13px;}
 
 /* ── APPLY BUTTON ── */
-.apply-button {min-height: 44px;padding: 10px 22px;border: 0;border-radius: 9px;background: var(--red);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
 
 /* ── DEFINITION SECTION ── */
@@ -687,6 +687,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 @media (max-width: 900px) {.main, body.sidebar-collapsed .main {margin-left: 0; padding: 20px;}}
 @media (max-width: 650px) {.filter-grid,.summary-grid {grid-template-columns: 1fr;}.table-wrap {overflow-x: auto;}.ranking-table {min-width: 650px;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 
 <body>
@@ -729,15 +730,6 @@ include __DIR__ . '/../includes/sidebar.php';
             <ul><?php foreach ($errors as $error): ?><li><?= htmlspecialchars($error) ?></li><?php endforeach; ?></ul>
         </div>
     <?php endif; ?>
-
-    <div class="definition">
-        <strong>New Registration:</strong>
-        Registration Order + On Behalf Register Order.
-
-        <strong>Purchase Agent:</strong>
-        unique members with a Repurchase Order or
-        On Behalf Repurchase Order.
-    </div>
 
     <section class="card">
         <div class="card-title">Report Filter</div>
