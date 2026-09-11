@@ -881,7 +881,116 @@ include __DIR__ . '/../includes/sidebar.php';
 </main>
 </div>
 
-<script src="../includes/report_ajax.js"></script>
+<script>
+(function () {
+    'use strict';
+
+    let activeRequest = null;
+
+    function bindAjaxForm(scope) {
+        scope.querySelectorAll('form[method="get"], form:not([method])').forEach(function (form) {
+            if (form.dataset.ajaxBound === '1') return;
+
+            form.dataset.ajaxBound = '1';
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+
+                if (!form.reportValidity()) return;
+
+                const url = new URL(form.action || window.location.href, window.location.href);
+                url.search = new URLSearchParams(new FormData(form)).toString();
+
+                const button = form.querySelector('button[type="submit"], input[type="submit"]');
+                const originalText = button
+                    ? (button.tagName === 'INPUT' ? button.value : button.textContent)
+                    : '';
+
+                if (button) {
+                    button.disabled = true;
+                    if (button.tagName === 'INPUT') button.value = 'Loading...';
+                    else button.textContent = 'Loading...';
+                }
+
+                loadReport(url.toString(), true).finally(function () {
+                    if (!button || !button.isConnected) return;
+                    button.disabled = false;
+                    if (button.tagName === 'INPUT') button.value = originalText;
+                    else button.textContent = originalText;
+                });
+            });
+        });
+    }
+
+    async function loadReport(url, updateHistory) {
+        const currentMain = document.querySelector('main.main');
+        if (!currentMain) {
+            window.location.assign(url);
+            return;
+        }
+
+        if (activeRequest) activeRequest.abort();
+
+        const controller = new AbortController();
+        activeRequest = controller;
+
+        try {
+            const response = await fetch(url, {
+                headers: { Accept: 'text/html' },
+                credentials: 'same-origin',
+                signal: controller.signal
+            });
+
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (response.redirected) {
+                window.location.assign(response.url);
+                return;
+            }
+
+            const html = await response.text();
+            const nextDocument = new DOMParser().parseFromString(html, 'text/html');
+            const nextMain = nextDocument.querySelector('main.main');
+
+            if (!nextMain) throw new Error('Invalid report response.');
+
+            currentMain.replaceWith(nextMain);
+            document.title = nextDocument.title || document.title;
+
+            if (updateHistory) {
+                window.history.pushState({ reportAjax: true }, '', url);
+            }
+
+            nextMain.setAttribute('tabindex', '-1');
+            bindAjaxForm(nextMain);
+            nextMain.focus({ preventScroll: true });
+            document.dispatchEvent(new CustomEvent('report:updated'));
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+
+            const main = document.querySelector('main.main') || currentMain;
+            const oldError = main.querySelector('.ajax-error-box');
+            if (oldError) oldError.remove();
+
+            const errorBox = document.createElement('div');
+            errorBox.className = 'error-box ajax-error-box';
+            errorBox.setAttribute('role', 'alert');
+            errorBox.textContent =
+                'Unable to update the report. Please check your connection and try again.';
+            main.prepend(errorBox);
+        } finally {
+            if (activeRequest === controller) activeRequest = null;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const main = document.querySelector('main.main');
+        if (main) bindAjaxForm(main);
+    });
+
+    window.addEventListener('popstate', function () {
+        loadReport(window.location.href, false);
+    });
+})();
+</script>
 
 </body>
 </html>
