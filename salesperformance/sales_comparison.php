@@ -801,8 +801,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
             </div>
           </div>
           <select class="chart-type-select" data-chart="daily">
-            <option value="line" selected>Line Chart</option>
-            <option value="bar">Bar Chart</option>
+            <option value="line" >Line Chart</option>
+            <option value="bar" selected>Bar Chart</option>
           </select>
         </div>
         <div class="chart-wrap" id="dailyChartWrap">
@@ -882,7 +882,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
           </div>
           <select class="chart-type-select" data-chart="monthly">
             <option value="line" selected>Line Chart</option>
-            <option value="bar">Bar Chart</option>
+            <option value="bar" >Bar Chart</option>
           </select>
         </div>
         <div class="chart-wrap" id="monthlyChartWrap">
@@ -984,8 +984,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
             </div>
           </div>
           <select class="chart-type-select" data-chart="yearly">
-            <option value="line" selected>Line Chart</option>
-            <option value="bar">Bar Chart</option>
+            <option value="line" >Line Chart</option>
+            <option value="bar" selected>Bar Chart</option>
           </select>
         </div>
         <div class="chart-wrap" id="yearlyChartWrap">

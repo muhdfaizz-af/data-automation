@@ -58,6 +58,17 @@ $adminUsername = $_SESSION['admin_username'] ?? '';
 $activeNav = 'asd_comparison';
 $navBasePath = '../';
 
+// Detect an AJAX request (fetch call from the filter form).
+$isAjaxRequest =
+    (
+        !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+        strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
+    ) ||
+    (
+        isset($_GET['ajax']) &&
+        $_GET['ajax'] === '1'
+    );
+
 // Create the PDO database connection.
 function getDBConnection(): ?PDO
 {
@@ -318,6 +329,195 @@ function changeClass(?float $change): string
     return $change > 0 ? 'positive' : 'negative';
 }
 
+// Renders the error box markup (used by both the full page and the AJAX response).
+function renderErrorsBox(array $errors): void
+{
+    if (empty($errors)) {
+        return;
+    }
+    ?>
+    <div class="error-box" role="alert">
+        <ul>
+            <?php foreach ($errors as $error): ?>
+                <li><?= htmlspecialchars($error) ?></li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+    <?php
+}
+
+/**
+ * Renders the period headings, metric cards and country breakdown table.
+ * Used by both the full page and the AJAX response.
+ */
+function renderReportResults(
+    array $errors,
+    string $periodALabel,
+    string $periodBLabel,
+    array $periodA,
+    array $periodB,
+    ?float $salesChange,
+    ?float $agentsChange,
+    ?float $asdChange,
+    array $countryBreakdown,
+    string $periodAMonthName,
+    string $periodBMonthName
+): void {
+    if (!empty($errors)) {
+        return;
+    }
+    ?>
+
+    <div class="period-heading-grid">
+        <div class="period-heading a">
+            <div class="period-heading-name">Last Month</div>
+            <div class="period-heading-date">
+                <?= htmlspecialchars($periodALabel) ?>
+            </div>
+        </div>
+
+        <div class="period-heading b">
+            <div class="period-heading-name">Current Month</div>
+            <div class="period-heading-date">
+                <?= htmlspecialchars($periodBLabel) ?>
+            </div>
+        </div>
+    </div>
+
+    <section class="metric-grid">
+
+    <article class="metric-card">
+        <div class="metric-name">Total Sales</div>
+
+        <div class="metric-values">
+            <div>
+                <div class="metric-period">Last Month</div>
+                <div class="metric-value">
+                    RM<?= number_format($periodA['total_sales'], 2) ?>
+                </div>
+            </div>
+
+            <div>
+                <div class="metric-period">Current Month</div>
+                <div class="metric-value">
+                    RM<?= number_format($periodB['total_sales'], 2) ?>
+                </div>
+            </div>
+        </div>
+
+        <div class="metric-change <?= changeClass($salesChange) ?>">
+        <?= htmlspecialchars(formatMetricDifference(
+            $periodA['total_sales'],
+            $periodB['total_sales'],
+            true,
+            2
+        )) ?>
+    </div>
+    </article>
+
+    <article class="metric-card">
+        <div class="metric-name">Active Agents</div>
+
+        <div class="metric-values">
+            <div>
+                <div class="metric-period">Last Month</div>
+                <div class="metric-value">
+                    <?= number_format($periodA['active_agents']) ?>
+                </div>
+            </div>
+
+            <div>
+                <div class="metric-period">Current Month</div>
+                <div class="metric-value">
+                    <?= number_format($periodB['active_agents']) ?>
+                </div>
+            </div>
+        </div>
+
+        <div class="metric-change <?= changeClass($agentsChange) ?>">
+            <?= htmlspecialchars(formatMetricDifference(
+                (float)$periodA['active_agents'],
+                (float)$periodB['active_agents'],
+                false,
+                0
+            )) ?>
+        </div>
+    </article>
+
+    <article class="metric-card">
+        <div class="metric-name">Average Sales per Agent (ASD)</div>
+
+        <div class="metric-values">
+            <div>
+                <div class="metric-period">Last Month</div>
+
+                <div class="metric-value">
+                    RM<?= number_format($periodA['asd'], 2) ?>
+                </div>
+            </div>
+
+            <div>
+                <div class="metric-period">Current Month</div>
+
+                <div class="metric-value">
+                    RM<?= number_format($periodB['asd'], 2) ?>
+                </div>
+            </div>
+        </div>
+
+        <div class="metric-change <?= changeClass($asdChange) ?>">
+            <?= htmlspecialchars(formatMetricDifference(
+                $periodA['asd'],
+                $periodB['asd'],
+                true,
+                2
+            )) ?>
+        </div>
+    </article>
+
+    </section>
+
+    <section class="card">
+        <div class="card-title">Calculation Breakdown</div>
+        <div class="card-subtitle">
+            Active Agents and ASD by country. Singapore sales are converted
+            to MYR before ASD is calculated.
+        </div>
+
+        <div class="table-wrap">
+            <table class="comparison-table country-breakdown-table">
+                <thead>
+                    <tr>
+                        <th>Country</th>
+                        <th>Active Agent <?= htmlspecialchars($periodAMonthName) ?></th>
+                        <th>Active Agent <?= htmlspecialchars($periodBMonthName) ?></th>
+                        <th>Difference (%)</th>
+                        <th>ASD <?= htmlspecialchars($periodAMonthName) ?></th>
+                        <th>ASD <?= htmlspecialchars($periodBMonthName) ?></th>
+                        <th>Difference (%)</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <?php foreach ($countryBreakdown as $country): ?>
+                        <tr>
+                            <td><?= htmlspecialchars($country['label']) ?></td>
+                            <td><?= number_format($country['period_a']['active_agents']) ?></td>
+                            <td><?= number_format($country['period_b']['active_agents']) ?></td>
+                            <td class="<?= changeClass($country['agent_change']) ?>"><?= formatChange($country['agent_change']) ?></td>
+                            <td>RM<?= number_format($country['period_a']['asd'], 2) ?></td>
+                            <td>RM<?= number_format($country['period_b']['asd'], 2) ?></td>
+                            <td class="<?= changeClass($country['asd_change']) ?>"><?= formatChange($country['asd_change']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <?php
+}
+
 /**
  * Default comparison periods:
  *
@@ -508,6 +708,47 @@ $periodAMonthName = strtoupper(
 $periodBMonthName = strtoupper(
     date('F', strtotime($periodBFrom))
 );
+
+/*
+ * AJAX response.
+ *
+ * The filter form submits here via fetch(). We return just the two
+ * fragments that can change (the error box and the results) as JSON,
+ * so the page never reloads and the address bar in the browser is
+ * never touched — it stays exactly as it is.
+ */
+if ($isAjaxRequest) {
+    ob_start();
+    renderErrorsBox($errors);
+    $errorsHtml = ob_get_clean();
+
+    ob_start();
+    renderReportResults(
+        $errors,
+        $periodALabel,
+        $periodBLabel,
+        $periodA,
+        $periodB,
+        $salesChange,
+        $agentsChange,
+        $asdChange,
+        $countryBreakdown,
+        $periodAMonthName,
+        $periodBMonthName
+    );
+    $resultsHtml = ob_get_clean();
+
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode([
+        'period_a_from' => $periodAFrom,
+        'period_a_to'   => $periodATo,
+        'period_b_from' => $periodBFrom,
+        'period_b_to'   => $periodBTo,
+        'errors_html'   => $errorsHtml,
+        'results_html'  => $resultsHtml,
+    ]);
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -561,6 +802,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .field input:focus,.field select:focus {border-color: var(--red);box-shadow: 0 0 0 3px rgba(224, 32, 46, .10);}
 .apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
+.apply-button:disabled {opacity: .6;cursor: not-allowed;}
 .error-box {margin-bottom: 20px;padding: 13px 15px;border: 1px solid #FECACA;border-radius: 10px;background: var(--red-soft);color: #991B1B;font-size: 13px;font-weight: 600;}
 .error-box ul {padding-left: 18px;}
 .definition {display: flex;gap: 12px;align-items: center;margin-bottom: 24px;padding: 15px 18px;border-radius: 10px;background: var(--white);box-shadow: var(--shadow-card);color: var(--gray-700);font-size: 13px;}
@@ -675,15 +917,9 @@ include __DIR__ . '/../includes/sidebar.php';
         </p>
      </div>
 
-     <?php if (!empty($errors)): ?>
-        <div class="error-box" role="alert">
-            <ul>
-                <?php foreach ($errors as $error): ?>
-                    <li><?= htmlspecialchars($error) ?></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-    <?php endif; ?>
+    <div id="report-errors">
+        <?php renderErrorsBox($errors); ?>
+    </div>
 
     <div class="definition">
         <div>
@@ -742,159 +978,71 @@ include __DIR__ . '/../includes/sidebar.php';
         </form>
     </section>
 
-            <?php if (empty($errors)): ?>
-
-            <div class="period-heading-grid">
-                <div class="period-heading a">
-                    <div class="period-heading-name">Last Month</div>
-                    <div class="period-heading-date">
-                        <?= htmlspecialchars($periodALabel) ?>
-                    </div>
-                </div>
-
-                <div class="period-heading b">
-                    <div class="period-heading-name">Current Month</div>
-                    <div class="period-heading-date">
-                        <?= htmlspecialchars($periodBLabel) ?>
-                    </div>
-                </div>
-            </div>
-
-            <section class="metric-grid">
-
-            <article class="metric-card">
-                <div class="metric-name">Total Sales</div>
-
-                <div class="metric-values">
-                    <div>
-                        <div class="metric-period">Last Month</div>
-                        <div class="metric-value">
-                            RM<?= number_format($periodA['total_sales'], 2) ?>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="metric-period">Current Month</div>
-                        <div class="metric-value">
-                            RM<?= number_format($periodB['total_sales'], 2) ?>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="metric-change <?= changeClass($salesChange) ?>">
-                <?= htmlspecialchars(formatMetricDifference(
-                    $periodA['total_sales'],
-                    $periodB['total_sales'],
-                    true,
-                    2
-                )) ?>
-            </div>
-            </article>
-
-            <article class="metric-card">
-                <div class="metric-name">Active Agents</div>
-
-                <div class="metric-values">
-                    <div>
-                        <div class="metric-period">Last Month</div>
-                        <div class="metric-value">
-                            <?= number_format($periodA['active_agents']) ?>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="metric-period">Current Month</div>
-                        <div class="metric-value">
-                            <?= number_format($periodB['active_agents']) ?>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="metric-change <?= changeClass($agentsChange) ?>">
-                    <?= htmlspecialchars(formatMetricDifference(
-                        (float)$periodA['active_agents'],
-                        (float)$periodB['active_agents'],
-                        false,
-                        0
-                    )) ?>
-                </div>
-            </article>
-
-            <article class="metric-card">
-                <div class="metric-name">Average Sales per Agent (ASD)</div>
-
-                <div class="metric-values">
-                    <div>
-                        <div class="metric-period">Last Month</div>
-
-                        <div class="metric-value">
-                            RM<?= number_format($periodA['asd'], 2) ?>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="metric-period">Current Month</div>
-
-                        <div class="metric-value">
-                            RM<?= number_format($periodB['asd'], 2) ?>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="metric-change <?= changeClass($asdChange) ?>">
-                    <?= htmlspecialchars(formatMetricDifference(
-                        $periodA['asd'],
-                        $periodB['asd'],
-                        true,
-                        2
-                    )) ?>
-                </div>
-            </article>
-
-            </section>
-
-        <section class="card">
-            <div class="card-title">Calculation Breakdown</div>
-            <div class="card-subtitle">
-                Active Agents and ASD by country. Singapore sales are converted
-                to MYR before ASD is calculated.
-            </div>
-
-            <div class="table-wrap">
-                <table class="comparison-table country-breakdown-table">
-                    <thead>
-                        <tr>
-                            <th>Country</th>
-                            <th>Active Agent <?= htmlspecialchars($periodAMonthName) ?></th>
-                            <th>Active Agent <?= htmlspecialchars($periodBMonthName) ?></th>
-                            <th>Difference (%)</th>
-                            <th>ASD <?= htmlspecialchars($periodAMonthName) ?></th>
-                            <th>ASD <?= htmlspecialchars($periodBMonthName) ?></th>
-                            <th>Difference (%)</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-                        <?php foreach ($countryBreakdown as $country): ?>
-                            <tr>
-                                <td><?= htmlspecialchars($country['label']) ?></td>
-                                <td><?= number_format($country['period_a']['active_agents']) ?></td>
-                                <td><?= number_format($country['period_b']['active_agents']) ?></td>
-                                <td class="<?= changeClass($country['agent_change']) ?>"><?= formatChange($country['agent_change']) ?></td>
-                                <td>RM<?= number_format($country['period_a']['asd'], 2) ?></td>
-                                <td>RM<?= number_format($country['period_b']['asd'], 2) ?></td>
-                                <td class="<?= changeClass($country['asd_change']) ?>"><?= formatChange($country['asd_change']) ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-    <?php endif; ?>
+    <div id="report-results">
+        <?php renderReportResults(
+            $errors,
+            $periodALabel,
+            $periodBLabel,
+            $periodA,
+            $periodB,
+            $salesChange,
+            $agentsChange,
+            $asdChange,
+            $countryBreakdown,
+            $periodAMonthName,
+            $periodBMonthName
+        ); ?>
+    </div>
 
 </main>
 </div>
+
+<script>
+(function () {
+    var form = document.getElementById('asdFilterForm');
+    if (!form) return;
+
+    var errorsContainer = document.getElementById('report-errors');
+    var resultsContainer = document.getElementById('report-results');
+    var submitButton = form.querySelector('.apply-button');
+
+    function loadReport(formData) {
+        var params = new URLSearchParams(formData);
+        params.set('apply', '1');
+
+        // Only used as the fetch target — the address bar is never touched.
+        var url = 'asd_comparison.php?' + params.toString();
+
+        if (submitButton) submitButton.disabled = true;
+
+        fetch(url, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (response) {
+            if (!response.ok) throw new Error('Request failed');
+            return response.json();
+        })
+        .then(function (data) {
+            if (errorsContainer) errorsContainer.innerHTML = data.errors_html || '';
+            if (resultsContainer) resultsContainer.innerHTML = data.results_html || '';
+        })
+        .catch(function () {
+            if (errorsContainer) {
+                errorsContainer.innerHTML =
+                    '<div class="error-box" role="alert"><ul><li>Unable to load the ASD report data.</li></ul></div>';
+            }
+        })
+        .finally(function () {
+            if (submitButton) submitButton.disabled = false;
+        });
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        loadReport(new FormData(form));
+    });
+})();
+</script>
 
 </body>
 </html>

@@ -68,6 +68,17 @@ $adminUsername = $_SESSION['admin_username'] ?? '';
 $activeNav = 'recruitment';
 $navBasePath = '../';
 
+// Detect an AJAX request (fetch call from the filter form).
+$isAjaxRequest =
+    (
+        !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+        strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
+    ) ||
+    (
+        isset($_GET['ajax']) &&
+        $_GET['ajax'] === '1'
+    );
+
 // Create the PDO database connection.
 function getDBConnection(): ?PDO
 {
@@ -535,6 +546,42 @@ function renderRecruitmentTable(
     <?php
 }
 
+// Renders the error box markup (used by both the full page and the AJAX response).
+function renderErrorsBox(array $errors): void
+{
+    if (empty($errors)) {
+        return;
+    }
+    ?>
+    <div class="error-box" role="alert">
+        <ul><?php foreach ($errors as $error): ?><li><?= htmlspecialchars($error) ?></li><?php endforeach; ?></ul>
+    </div>
+    <?php
+}
+
+// Renders the report card markup (used by both the full page and the AJAX response).
+function renderReportCard(
+    array $errors,
+    string $monthlyHeading,
+    string $dailyHeading,
+    array $dailyMetrics,
+    array $monthlyMetrics
+): void {
+    if (!empty($errors)) {
+        return;
+    }
+    ?>
+    <section class="card report-card">
+        <h2 class="report-title">
+            Registration <?= htmlspecialchars($monthlyHeading) ?>
+        </h2>
+        <div class="report-subtitle">Counts are based on confirmed Tax Invoice orders.</div>
+        <?php renderRecruitmentTable($dailyHeading, $dailyMetrics); ?>
+        <?php renderRecruitmentTable($monthlyHeading, $monthlyMetrics); ?>
+    </section>
+    <?php
+}
+
 // Default report date set to yesterday
 $defaultReportDate = (new DateTimeImmutable('today'))
     ->modify('-1 day')
@@ -607,6 +654,38 @@ $dailyHeading = empty($errors)
 $monthlyHeading = empty($errors)
     ? strtoupper(date('F Y', strtotime($reportDate)))
     : '';
+
+/*
+ * AJAX response.
+ *
+ * The filter form submits here via fetch(). We return just the two
+ * fragments that can change (the error box and the report card) as
+ * JSON, so the page never reloads and the address bar in the browser
+ * is never touched — it stays exactly as it is.
+ */
+if ($isAjaxRequest) {
+    ob_start();
+    renderErrorsBox($errors);
+    $errorsHtml = ob_get_clean();
+
+    ob_start();
+    renderReportCard(
+        $errors,
+        $monthlyHeading,
+        $dailyHeading,
+        $dailyMetrics,
+        $monthlyMetrics
+    );
+    $resultsHtml = ob_get_clean();
+
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode([
+        'report_date'  => $reportDate,
+        'errors_html'  => $errorsHtml,
+        'results_html' => $resultsHtml,
+    ]);
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -661,6 +740,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 /* ── APPLY BUTTON ── */
 .apply-button {min-height: 44px;padding: 10px 22px;border: 0;border-radius: 9px;background: var(--red);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
+.apply-button:disabled {opacity: .6;cursor: not-allowed;}
 
 /* ── DEFINITION SECTION ── */
 .definition,
@@ -723,11 +803,9 @@ include __DIR__ . '/../includes/sidebar.php';
         <p>Daily and monthly registrations by Starter Kit, SPC upgrades, and unique purchasing agents.</p>
     </header>
 
-    <?php if (!empty($errors)): ?>
-        <div class="error-box" role="alert">
-            <ul><?php foreach ($errors as $error): ?><li><?= htmlspecialchars($error) ?></li><?php endforeach; ?></ul>
-        </div>
-    <?php endif; ?>
+    <div id="report-errors">
+        <?php renderErrorsBox($errors); ?>
+    </div>
 
     <div class="definition">
         <strong>New Registration:</strong>
@@ -746,7 +824,7 @@ include __DIR__ . '/../includes/sidebar.php';
             calendar-month report.
         </div>
 
-        <form method="get" action="reqruitment.php" class="filter-form">
+        <form method="get" action="recruitment.php" class="filter-form" id="recruitment-filter-form">
             <div class="field">
                 <label for="report_date">Report Date</label>
                 <input type="date" id="report_date" name="report_date" value="<?= htmlspecialchars($reportDate) ?>" required>
@@ -755,18 +833,66 @@ include __DIR__ . '/../includes/sidebar.php';
         </form>
     </section>
 
-    <?php if (empty($errors)): ?>
-        <section class="card report-card">
-            <h2 class="report-title">
-                Registration <?= htmlspecialchars($monthlyHeading) ?>
-            </h2>
-            <div class="report-subtitle">Counts are based on confirmed Tax Invoice orders.</div>
-            <?php renderRecruitmentTable($dailyHeading, $dailyMetrics); ?>
-            <?php renderRecruitmentTable($monthlyHeading, $monthlyMetrics); ?>
-        </section>
-    <?php endif; ?>
+    <div id="report-results">
+        <?php renderReportCard(
+            $errors,
+            $monthlyHeading,
+            $dailyHeading,
+            $dailyMetrics,
+            $monthlyMetrics
+        ); ?>
+    </div>
 </main>
 </div>
+
+<script>
+(function () {
+    var form = document.getElementById('recruitment-filter-form');
+    if (!form) return;
+
+    var dateInput = document.getElementById('report_date');
+    var errorsContainer = document.getElementById('report-errors');
+    var resultsContainer = document.getElementById('report-results');
+    var submitButton = form.querySelector('.apply-button');
+
+    function loadReport(dateValue) {
+        var params = new URLSearchParams();
+        params.set('report_date', dateValue);
+        params.set('apply', '1');
+
+        // Only used as the fetch target — the address bar is never touched.
+        var url = 'recruitment.php?' + params.toString();
+
+        if (submitButton) submitButton.disabled = true;
+
+        fetch(url, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (response) {
+            if (!response.ok) throw new Error('Request failed');
+            return response.json();
+        })
+        .then(function (data) {
+            if (errorsContainer) errorsContainer.innerHTML = data.errors_html || '';
+            if (resultsContainer) resultsContainer.innerHTML = data.results_html || '';
+        })
+        .catch(function () {
+            if (errorsContainer) {
+                errorsContainer.innerHTML =
+                    '<div class="error-box" role="alert"><ul><li>Unable to load the Recruitment report.</li></ul></div>';
+            }
+        })
+        .finally(function () {
+            if (submitButton) submitButton.disabled = false;
+        });
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        loadReport(dateInput.value);
+    });
+})();
+</script>
 
 </body>
 </html>
