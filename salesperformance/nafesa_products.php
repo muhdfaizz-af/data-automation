@@ -813,10 +813,10 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .summary-value {font-size:16px;font-weight:800;}
 
 /* ── RANKING SECTION ── */
-.ranking-grid {display:grid;grid-template-columns:minmax(0,1fr);gap:20px;}
+.ranking-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
 .ranking-card {min-width:0;}
-.table-wrap {width:100%;min-width:0;overflow-x:hidden;}
-.ranking-table {width:100%;table-layout:fixed;border-collapse:collapse;}
+.table-wrap {width:100%;min-width:0;overflow-x:auto;}
+.ranking-table {width:100%;min-width:650px;table-layout:fixed;border-collapse:collapse;}
 .ranking-table th, .ranking-table td {padding:12px 8px;border-bottom:1px solid var(--black-100);text-align:left;vertical-align:top;font-size:11px;overflow-wrap:anywhere;}
 .ranking-table th {color:var(--black-500);font-size:10px;letter-spacing:.3px;text-transform:uppercase;}
 .ranking-table th:nth-child(1),.ranking-table td:nth-child(1) {width:10%;}
@@ -1083,6 +1083,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+
+<script src="../includes/report_ajax.js"></script>
 
 </body>
 </html>

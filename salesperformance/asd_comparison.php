@@ -881,5 +881,7 @@ include __DIR__ . '/../includes/sidebar.php';
 </main>
 </div>
 
+<script src="../includes/report_ajax.js"></script>
+
 </body>
 </html>

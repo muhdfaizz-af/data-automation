@@ -302,50 +302,35 @@ function isCategoryQuantityRow(
 
     return match ($category) {
         // Reference quantity for BCDB comes from BCD-002
-        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' =>
-            $itemCode === 'BCD-002',
+        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' => $itemCode === 'BCD-002',
 
         // CA-6 is the loose component generated from Unicorn cartons and packs. Not count CA-006/CAC-011
-        'UNICORN STRAWBERRY CHOCOLATE TUB' =>
-            $itemCode === 'CA-6',
+        'UNICORN STRAWBERRY CHOCOLATE TUB' => $itemCode === 'CA-6',
 
-        'CUTIE MINI CHOCO CRUNCH TUB' =>
-            $itemCode === 'CA-9',
+        'CUTIE MINI CHOCO CRUNCH TUB' => $itemCode === 'CA-9',
 
-        'CUTIE CHOCO BALL TUB' =>
-            $itemCode === 'CA-8',
+        'CUTIE CHOCO BALL TUB' => $itemCode === 'CA-8',
 
-        'CUTIE MINI CHOCO DORAYAKI TUB' =>
-            $itemCode === 'CA-13',
+        'CUTIE MINI CHOCO DORAYAKI TUB' => $itemCode === 'CA-13',
 
-        'CUTIE CHOCO RICE TUB' =>
-            $itemCode === 'CA-12',
+        'CUTIE CHOCO RICE TUB' => $itemCode === 'CA-12',
 
-        'PISTACHIO DREAM TUB' =>
-            $itemCode === 'CA-15',
+        'PISTACHIO DREAM TUB' => $itemCode === 'CA-15',
 
-        'COTTON CANDY CHOCOLATE TUB' =>
-            $itemCode === 'CA-10',
+        'COTTON CANDY CHOCOLATE TUB' => $itemCode === 'CA-10',
 
         // Reference Zeky quantity comes from its loose component
-        'ZEKY BRAIN HERO' =>
-            $itemCode === 'ZEKY-BH',
+        'ZEKY BRAIN HERO' => $itemCode === 'ZEKY-BH',
 
         // Brazillian Coffee loose component
-        'BRAZILIAN COFFEE DRINK' =>
-            $itemCode === 'BRC-001',
+        'BRAZILIAN COFFEE DRINK' => $itemCode === 'BRC-001',
 
         // Nafesa scarves
-        'SCARF' =>
-            $productType === 'NORMAL' ||
-            (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode),
-
-        'INNER' =>
-            $productType === 'NORMAL',
+        'SCARF' => $productType === 'NORMAL' || (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode),
+        'INNER' => $productType === 'NORMAL',
 
         // Other categories use normal/loose rows only
-        default =>
-            $productType === 'NORMAL',
+        default => $productType === 'NORMAL',
     };
 }
 
@@ -557,9 +542,7 @@ function splitRankings(array $products): array
      */
     $remainingProducts = array_slice($products, RANKING_LIMIT);
 
-    $bottom = array_reverse(
-        array_slice($remainingProducts, -RANKING_LIMIT)
-    );
+    $bottom = array_reverse(array_slice($remainingProducts, -RANKING_LIMIT));
 
     return [
         'top'   => $top,
@@ -640,6 +623,8 @@ $rankings = [
 $overallSales = 0.00;
 $topSales = 0.00;
 $topPercentage = 0.00;
+$bttomSales = 0.00;
+$bottomPercentage = 0.00;
 
 $pdo = getDBConnection();
 
@@ -669,13 +654,28 @@ if(empty($errors) && $pdo) {
         $rankings = splitRankings($products);
 
         $topSales = round(
-            array_sum(array_column($rankings['top'], 'total_sales')),
-            2
+            array_sum(array_column($rankings['top'], 'total_sales')), 2
         );
 
         $topPercentage = $overallSales > 0
             ? round(($topSales / $overallSales) * 100, 2)
             : 0.00;
+        $bottomSales = round(
+            array_sum(
+                array_column(
+                    $rankings['bottom'],
+                    'total_sales'
+                )
+            ),
+            2
+        );
+
+        // Calculate the Bottom 10 contribution to overall sales
+        $bottomPercentage =$overallSales > 0
+        ? round(
+            ($bottomSales / $overallSales) * 100, 2
+        )
+        : 0.00;
     } catch (Throwable $e) {
         error_log(
             'Overall Top/Bottom Product report failed: ' .
@@ -903,7 +903,22 @@ include __DIR__ . '/../includes/sidebar.php';
                                 <th>(%)</th>
                             </tr>
                         </thead>
-                        <tbody><?php renderProductRows($rankings['bottom']);?>
+                        <tbody>
+                            <?php renderProductRows($rankings['bottom']); ?>
+
+                            <?php if (!empty($rankings['bottom'])): ?>
+                                <tr class="total-row">
+                                    <td colspan="3">Bottom 10 Sales</td>
+                                    <td>RM<?= number_format($bottomSales, 2) ?></td>
+                                    <td><?= number_format($bottomPercentage, 2) ?>%</td>
+                                </tr>
+
+                                <tr class="total-row">
+                                    <td colspan="3">Overall Sales</td>
+                                    <td>RM<?= number_format($overallSales, 2) ?></td>
+                                    <td><?= $overallSales > 0 ? '100.00%' : '0.00%' ?></td>
+                                </tr>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
@@ -920,5 +935,6 @@ include __DIR__ . '/../includes/sidebar.php';
     <?php endif; ?>
     </main>
     </div>
+    <script src="../includes/report_ajax.js"></script>
 </body>
 </html>

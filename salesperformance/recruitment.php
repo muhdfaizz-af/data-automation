@@ -405,17 +405,13 @@ function getRecruitmentMetrics(
     $statement = $pdo->prepare($purchaseAgentSql);
 
     $statement->execute([
-        'registration_from' =>
-            $fromDate,
+        'registration_from' => $fromDate,
 
-        'registration_to_exclusive' =>
-            $toExclusive,
+        'registration_to_exclusive' => $toExclusive,
 
-        'purchase_from' =>
-            $fromDate,
+        'purchase_from' => $fromDate,
 
-        'purchase_to_exclusive' =>
-            $toExclusive,
+        'purchase_to_exclusive' => $toExclusive,
     ]);
 
     while ($row = $statement->fetch()) {
@@ -739,7 +735,7 @@ include __DIR__ . '/../includes/sidebar.php';
             calendar-month report.
         </div>
 
-        <form method="get" action="reqruitment.php" class="filter-form">
+        <form method="get" action="recruitment.php" class="filter-form">
             <div class="field">
                 <label for="report_date">Report Date</label>
                 <input type="date" id="report_date" name="report_date" value="<?= htmlspecialchars($reportDate) ?>" required>
@@ -760,6 +756,8 @@ include __DIR__ . '/../includes/sidebar.php';
     <?php endif; ?>
 </main>
 </div>
+
+<script src="../includes/report_ajax.js"></script>
 
 </body>
 </html>
