@@ -1125,7 +1125,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     else button.textContent = 'Loading...';
                 }
 
-                loadReport(url.toString(), true).finally(function () {
+                loadReport(url.toString()).finally(function () {
                     if (!button || !button.isConnected) return;
                     button.disabled = false;
                     if (button.tagName === 'INPUT') button.value = originalText;
@@ -1135,7 +1135,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    async function loadReport(url, updateHistory) {
+    async function loadReport(url) {
         const currentMain = document.querySelector('main.main');
         if (!currentMain) {
             window.location.assign(url);
@@ -1169,10 +1169,6 @@ document.addEventListener('DOMContentLoaded', function () {
             currentMain.replaceWith(nextMain);
             document.title = nextDocument.title || document.title;
 
-            if (updateHistory) {
-                window.history.pushState({ reportAjax: true }, '', url);
-            }
-
             nextMain.setAttribute('tabindex', '-1');
             bindAjaxForm(nextMain);
             nextMain.focus({ preventScroll: true });
@@ -1201,7 +1197,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     window.addEventListener('popstate', function () {
-        loadReport(window.location.href, false);
+        loadReport(window.location.href);
     });
 })();
 </script>

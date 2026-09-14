@@ -616,7 +616,6 @@ include __DIR__ . '/../includes/sidebar.php';
 <script>
 // Same URL as the current page — no separate API file needed.
 const API_URL = window.location.pathname;
-const PAGE_URL = window.location.pathname;
 
 const form = document.getElementById('filterForm');
 const applyButton = document.getElementById('applyButton');
@@ -703,7 +702,7 @@ function renderReport(data) {
         `Event Ticket appears only when ticket transactions exist during the selected period.`;
 }
 
-async function loadReport(params, updateUrl) {
+async function loadReport(params) {
     const requestId = ++currentRequestId;
     setLoading(true);
     tableBody.innerHTML = '<tr class="report-loading"><td>Loading report…</td></tr>';
@@ -739,10 +738,6 @@ async function loadReport(params, updateUrl) {
         renderErrors([]);
         renderReport(data);
 
-        if (updateUrl) {
-            const urlParams = new URLSearchParams(params);
-            history.replaceState(null, '', `${PAGE_URL}?${urlParams.toString()}`);
-        }
     } catch (err) {
         if (requestId !== currentRequestId) return;
         renderErrors(['Unable to load the report. Please check your connection and try again.']);
@@ -760,14 +755,14 @@ form.addEventListener('submit', function (e) {
         to: document.getElementById('to').value,
         company: document.getElementById('company').value,
     };
-    loadReport(params, true);
+    loadReport(params);
 });
 
 loadReport({
     from: document.getElementById('from').value,
     to: document.getElementById('to').value,
     company: document.getElementById('company').value,
-}, false);
+});
 </script>
 
 </body>
