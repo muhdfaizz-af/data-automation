@@ -1100,7 +1100,10 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 <script>
+<<<<<<< HEAD
 // AJAX functionality
+=======
+>>>>>>> 300a6bb2759fbc8b97dbbbc4395af841c9c9fad7
 (function () {
     'use strict';
 

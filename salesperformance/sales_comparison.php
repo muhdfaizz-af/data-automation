@@ -802,8 +802,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
             </div>
           </div>
           <select class="chart-type-select" data-chart="daily">
-            <option value="line" selected>Line Chart</option>
-            <option value="bar">Bar Chart</option>
+            <option value="line" >Line Chart</option>
+            <option value="bar" selected>Bar Chart</option>
           </select>
         </div>
         <div class="chart-wrap" id="dailyChartWrap">
@@ -883,7 +883,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
           </div>
           <select class="chart-type-select" data-chart="monthly">
             <option value="line" selected>Line Chart</option>
-            <option value="bar">Bar Chart</option>
+            <option value="bar" >Bar Chart</option>
           </select>
         </div>
         <div class="chart-wrap" id="monthlyChartWrap">
@@ -985,8 +985,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
             </div>
           </div>
           <select class="chart-type-select" data-chart="yearly">
-            <option value="line" selected>Line Chart</option>
-            <option value="bar">Bar Chart</option>
+            <option value="line" >Line Chart</option>
+            <option value="bar" selected>Bar Chart</option>
           </select>
         </div>
         <div class="chart-wrap" id="yearlyChartWrap">
@@ -1014,42 +1014,6 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 </div><!-- layout -->
 
 <script>
-function openDrawer(){
-    const d = document.getElementById('sidebarDrawer');
-    const o = document.getElementById('drawerOverlay');
-    if (!d || !o) return;
-    d.classList.add('open');
-    o.style.display = 'block';
-    requestAnimationFrame(() => o.classList.add('open'));
-    document.body.style.overflow = 'hidden';
-}
-
-function closeDrawer(){
-    const d = document.getElementById('sidebarDrawer');
-    const o = document.getElementById('drawerOverlay');
-    if (!d || !o) return;
-    d.classList.remove('open');
-    o.classList.remove('open');
-    setTimeout(() => { o.style.display = 'none'; }, 260);
-    document.body.style.overflow = '';
-}
-
-document.addEventListener('keydown', function(e){
-    if (e.key === 'Escape') closeDrawer();
-});
-
-function toggleSidebarOnDesktop(){
-    if (window.innerWidth >= 900) {
-        const collapsed = document.body.classList.toggle('sidebar-collapsed');
-        try {
-            if (collapsed) localStorage.setItem('adminSidebarCollapsed', '1');
-            else localStorage.removeItem('adminSidebarCollapsed');
-        } catch (e) {}
-    } else {
-        openDrawer();
-    }
-}
-
 function formatRM(n){
     return 'RM ' + Number(n || 0).toLocaleString('en-MY', {minimumFractionDigits:2, maximumFractionDigits:2});
 }

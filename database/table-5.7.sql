@@ -124,13 +124,26 @@ CREATE TABLE `orders` (
   KEY `idx_orders_member_code` (`member_code`),
   KEY `idx_orders_import_batch_id` (`import_batch_id`),
   KEY `idx_orders_invoice_prefix` (`invoice_prefix`),
+  -- Covering index for Daily Sales Report / Hub sales query
+  KEY `idx_orders_hub_cover` (
+    `company_id`,
+    `order_datetime`,
+    `order_status`,
+    `sub_total`
+  ),
   CONSTRAINT `fk_orders_company`
-    FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`)
-    ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (`company_id`)
+    REFERENCES `companies` (`id`)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT,
   CONSTRAINT `fk_orders_import_batch`
-    FOREIGN KEY (`import_batch_id`) REFERENCES `import_batches` (`id`)
-    ON UPDATE CASCADE ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    FOREIGN KEY (`import_batch_id`)
+    REFERENCES `import_batches` (`id`)
+    ON UPDATE CASCADE
+    ON DELETE SET NULL
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci
 COMMENT='Stores Order History - satu row = satu order';
 
 -- ============================================================
@@ -193,7 +206,8 @@ COMMENT='Stores manual/external sales channel names';
 INSERT IGNORE INTO `sales_channels` (`channel_code`, `channel_name`) VALUES
 ('MODERN TRADE', 'OTHER SALES'),
 ('TIKTOK', 'OTHER SALES'),
-('SHOPEE', 'OTHER SALES');
+('SHOPEE', 'OTHER SALES'),
+('WAREHOUSE', 'OTHER SALES');
 
 -- ============================================================
 -- Table: manual_sales (UPDATED - with company_id)
@@ -205,7 +219,7 @@ CREATE TABLE `manual_sales` (
   `sales_channel_id` BIGINT UNSIGNED NOT NULL,
   `sales_date` DATE NOT NULL,
   `amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-  `brand` ENUM('CHOCO ALBAB', 'NAFESA', 'ZEKY') NOT NULL DEFAULT 'CHOCO ALBAB',
+  `brand` ENUM('CHOCO ALBAB', 'NAFESA', 'ZEKY') DEFAULT NULL,
   `remarks` TEXT DEFAULT NULL,
   `entered_by` BIGINT UNSIGNED DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

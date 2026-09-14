@@ -21,7 +21,6 @@ $currentPage = basename($_SERVER['SCRIPT_NAME'] ?? '');
 $salesPerformancePages = [
   'sales_comparison.php',
   'hub_comparison.php',
-  'sales_estimation.php',
   'asd_comparison.php',
   'sales_brand.php',
   'overall_products.php',
@@ -109,7 +108,6 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
     <div class="nav-children">
       <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
-      <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
       <?= navItem('salesperformance/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
@@ -157,7 +155,6 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
     <div class="nav-children">
       <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
-      <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
       <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
       <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
       <?= navItem('salesperformance/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
@@ -177,6 +174,59 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 </aside>
 
 <script>
+  function openDrawer() {
+    const drawer = document.getElementById('sidebarDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    if (!drawer || !overlay) return;
+
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeDrawer() {
+    const drawer = document.getElementById('sidebarDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    if (!drawer || !overlay) return;
+
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function toggleSidebarOnDesktop() {
+    if (window.innerWidth >= 900) {
+      const collapsed = document.body.classList.toggle('sidebar-collapsed');
+
+      try {
+        if (collapsed) {
+          localStorage.setItem('adminSidebarCollapsed', '1');
+        } else {
+          localStorage.removeItem('adminSidebarCollapsed');
+        }
+      } catch (error) {
+        // Continue without saved sidebar state.
+      }
+    } else {
+      openDrawer();
+    }
+  }
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeDrawer();
+  });
+
+  try {
+    if (
+      window.innerWidth >= 900 &&
+      localStorage.getItem('adminSidebarCollapsed') === '1'
+    ) {
+      document.body.classList.add('sidebar-collapsed');
+    }
+  } catch (error) {
+    // Continue without saved sidebar state.
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     const groups = document.querySelectorAll('.nav-group');
 
@@ -252,10 +302,10 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 
       let shouldOpen;
       if (saved !== null) {
-        // ada preference user sebelum ni → guna itu
-        shouldOpen = saved === 'true';
+        // Keep the active page reachable even when an old saved state was closed.
+        shouldOpen = saved === 'true' || !!hasActiveChild;
       } else {
-        // takde preference lagi → buka hanya kalau page semasa dalam group ni
+        // Open the group automatically when the current page belongs to it.
         shouldOpen = !!hasActiveChild;
       }
 
