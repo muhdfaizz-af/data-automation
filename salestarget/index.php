@@ -407,6 +407,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;}
 
 @media(max-width:600px){.main{padding:16px 14px 40px;} .btn-save{margin-left:0;width:100%;justify-content:center;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 <body>
 <script>

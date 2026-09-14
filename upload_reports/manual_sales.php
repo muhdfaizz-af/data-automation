@@ -237,6 +237,7 @@ table tr:hover{background:var(--gray-50);}
 .text-right{text-align:right;}
 .w-100{width:100%;}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 <body>
 <script>

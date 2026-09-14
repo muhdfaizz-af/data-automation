@@ -8,9 +8,10 @@
  * Rules:
  * - Include Nafesa products only
  * - Divide products into Scarf, Inner and Hand Socks
- * - Include all regions
+ * - Include all regions, semenanjung, Bintulu, and Singapore
  * - Consolidate codes representing the same product/design
  * - Convert SG invoice amounts to MYR
+ * - Product type normal only
  * - Rank by total sales
  * - Exclude zero/negative sales from Bottom 10
  */
@@ -26,14 +27,17 @@ define('SGD_TO_MYR_RATE', 3.27);
 // Fix the report to Nafesa and define the selectable product types.
 define('REPORT_BRAND', 'NAFESA');
 
+// List of allowed product type
 define('ALLOWED_PRODUCT_TYPES', [
     'scarf'      => 'Scarf',
     'inner'      => 'Inner',
     'hand_socks' => 'Hand Socks',
 ]);
 
+// Set scarf as default product type
 define('DEFAULT_PRODUCT_TYPE', 'scarf');
 
+// Allowed regions including all, Semenanjung, Bintulu, and Singapore
 define('ALLOWED_REGIONS', [
     'all' => 'All Regions',
     'SM'  => 'Semenanjung',
@@ -919,9 +923,9 @@ include __DIR__ . '/../includes/sidebar.php';
                             <option
                                 value="<?= htmlspecialchars($regionValue) ?>"
                                 <?= $regionFilter === $regionValue
-                                    ? 'selected'
-                                    : '' ?>
-                            >
+                                ? 'selected'
+                                : '' ?>
+                                >
                                 <?= htmlspecialchars($regionLabel) ?>
 
                                 <?php if ($regionValue !== 'all'): ?>
@@ -1096,6 +1100,7 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 <script>
+// AJAX functionality
 (function () {
     'use strict';
 

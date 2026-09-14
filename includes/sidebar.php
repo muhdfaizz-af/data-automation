@@ -26,7 +26,7 @@ $salesPerformancePages = [
   'sales_brand.php',
   'overall_products.php',
   'nafesa_products.php',
-  'reqruitment.php',
+  'recruitment.php',
 ];
 
 function navItem($href, $icon, $label, $active = false, $basePath = '') {
@@ -99,7 +99,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   
   <div class="sidebar-section-label">Reports</div>
   <div class="nav-group open" data-nav-id="salesperformance">
-    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' ? 'active' : '' ?>" aria-expanded="true">
+    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' || in_array($currentPage, $salesPerformancePages, true) ? 'active' : '' ?>" aria-expanded="true">
       <span class="nav-parent-content">
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
@@ -107,12 +107,14 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <span class="nav-chev">▾</span>
     </button>
     <div class="nav-children">
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $activeNav === 'salesperformance', $navBasePath) ?>
-      <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', false, $navBasePath) ?>
-      <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', false, $navBasePath) ?>
-      <?= navItem('salesperformance/topupper_product.php', $icoSales, 'Top Upper Product', false, $navBasePath) ?>
-      <?= navItem('salesperformance/topbottom_product.php', $icoSales, 'Top Bottom Product', false, $navBasePath) ?>
-      <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Reqruitment', false, $navBasePath) ?>
+      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
+      <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
+      <?= navItem('salesperformance/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
+      <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
+      <?= navItem('salesperformance/recruitment.php', $icoSales, 'Recruitment', $currentPage === 'recruitment.php', $navBasePath) ?>
     </div>
   </div>
   <div class="nav-divider"></div>
@@ -145,7 +147,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   
   <div class="sidebar-section-label">Reports</div>
   <div class="nav-group open" data-nav-id="salesperformance">
-    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' ? 'active' : '' ?>" aria-expanded="true">
+    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' || in_array($currentPage, $salesPerformancePages, true) ? 'active' : '' ?>" aria-expanded="true">
       <span class="nav-parent-content">
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
@@ -153,10 +155,14 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <span class="nav-chev">▾</span>
     </button>
     <div class="nav-children">
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $activeNav === 'salesperformance', $navBasePath) ?>
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Estimation', false, $navBasePath) ?>
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Monthly Summary', false, $navBasePath) ?>
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Yearly Overview', false, $navBasePath) ?>
+      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', $currentPage === 'sales_estimation.php', $navBasePath) ?>
+      <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
+      <?= navItem('salesperformance/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
+      <?= navItem('salesperformance/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
+      <?= navItem('salesperformance/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
+      <?= navItem('salesperformance/recruitment.php', $icoSales, 'Recruitment', $currentPage === 'recruitment.php', $navBasePath) ?>
     </div>
   </div>
   
@@ -219,18 +225,14 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 
   // ── Function untuk butang open/close sidebar ──
   function toggleSidebar() {
-    if (window.innerWidth >= 900 && typeof window.toggleSidebarOnDesktop === 'function') {
-      window.toggleSidebarOnDesktop();
-      return;
-    }
-
     document.body.classList.toggle('sidebar-collapsed');
+    localStorage.setItem('sidebarCollapsed', document.body.classList.contains('sidebar-collapsed'));
   }
 
   // ── Load balik state sidebar (collapsed/expand) bila page dibuka semula ──
   document.addEventListener('DOMContentLoaded', function () {
-    const saved = localStorage.getItem('adminSidebarCollapsed');
-    if (saved === '1') {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    if (saved === 'true') {
       document.body.classList.add('sidebar-collapsed');
     }
   });

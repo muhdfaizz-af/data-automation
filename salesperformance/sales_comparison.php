@@ -696,6 +696,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 
 @media(max-width:600px){.main{padding:16px 14px 40px;} .stats-row{flex-direction:column;align-items:flex-start;} .global-filter-hint{margin-left:0;max-width:none;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 <body>
 <script>

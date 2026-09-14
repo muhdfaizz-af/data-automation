@@ -1,0 +1,186 @@
+/* Shared report-table design based on the Recruitment report. */
+:is(
+    .table-wrap,
+    .comparison-table-scroll,
+    .target-table-scroll,
+    .increment-table-scroll
+) {
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    border: 1px solid #e6e6ea;
+    border-radius: 12px;
+    background: #fff;
+    scrollbar-width: thin;
+    scrollbar-color: #b8b8bf #f2f2f4;
+}
+
+:is(
+    .recruitment-table,
+    .comparison-table,
+    .country-breakdown-table,
+    .brand-table,
+    .ranking-table,
+    .hub-table,
+    .target-table,
+    .increment-table,
+    .table-wrap > table
+) {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #1b1b1f;
+    font-variant-numeric: tabular-nums;
+}
+
+:is(
+    .recruitment-table,
+    .comparison-table,
+    .country-breakdown-table,
+    .brand-table,
+    .ranking-table,
+    .hub-table,
+    .target-table,
+    .increment-table,
+    .table-wrap > table
+) th,
+:is(
+    .recruitment-table,
+    .comparison-table,
+    .country-breakdown-table,
+    .brand-table,
+    .ranking-table,
+    .hub-table,
+    .target-table,
+    .increment-table,
+    .table-wrap > table
+) td {
+    padding: 13px 14px;
+    border: 0;
+    border-bottom: 1px solid #ececf0;
+    vertical-align: middle;
+    font-size: 12px;
+}
+
+:is(
+    .recruitment-table,
+    .comparison-table,
+    .country-breakdown-table,
+    .brand-table,
+    .ranking-table,
+    .hub-table,
+    .target-table,
+    .increment-table,
+    .table-wrap > table
+) thead th {
+    background: #f7f7f9;
+    color: #4a4a52;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: .3px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+:is(
+    .recruitment-table,
+    .comparison-table,
+    .country-breakdown-table,
+    .brand-table,
+    .ranking-table,
+    .hub-table,
+    .target-table,
+    .increment-table,
+    .table-wrap > table
+) thead tr:first-child th {
+    border-bottom-color: #dedee4;
+}
+
+:is(
+    .recruitment-table,
+    .comparison-table,
+    .country-breakdown-table,
+    .brand-table,
+    .ranking-table,
+    .hub-table,
+    .target-table,
+    .increment-table,
+    .table-wrap > table
+) tbody tr:not(.total-row):hover td {
+    background: #fafafb;
+}
+
+:is(
+    .recruitment-table,
+    .comparison-table,
+    .country-breakdown-table,
+    .brand-table,
+    .ranking-table,
+    .hub-table,
+    .target-table,
+    .increment-table,
+    .table-wrap > table
+) tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+:is(.total-row td, tfoot td) {
+    background: #f7f7f9 !important;
+    font-weight: 800;
+}
+
+/* Matrix reports are centred, except their descriptive first column. */
+.recruitment-table th,
+.recruitment-table td,
+.country-breakdown-table th,
+.country-breakdown-table td {
+    text-align: center;
+}
+
+.recruitment-table td:first-child,
+.country-breakdown-table th:first-child,
+.country-breakdown-table td:first-child {
+    text-align: left;
+}
+
+/* Ranking and comparison reports keep labels left and figures right. */
+.ranking-table th:nth-last-child(-n + 2),
+.ranking-table td:nth-last-child(-n + 2),
+.brand-table th:not(:first-child),
+.brand-table td:not(:first-child),
+.comparison-table:not(.country-breakdown-table) th:not(:first-child),
+.comparison-table:not(.country-breakdown-table) td:not(:first-child),
+.target-table th:not(:first-child),
+.target-table td:not(:first-child),
+.increment-table th:not(:first-child),
+.increment-table td:not(:first-child),
+.hub-table th:not(:first-child),
+.hub-table td:not(:first-child) {
+    text-align: right;
+}
+
+.ranking-table th:first-child,
+.ranking-table td:first-child {
+    text-align: center;
+}
+
+.ranking-table th:nth-child(2),
+.ranking-table td:nth-child(2),
+.ranking-table th:nth-child(3),
+.ranking-table td:nth-child(3) {
+    text-align: left;
+}
+
+@media (max-width: 700px) {
+    :is(
+        .recruitment-table,
+        .country-breakdown-table,
+        .ranking-table,
+        .brand-table,
+        .comparison-table,
+        .target-table,
+        .increment-table
+    ) {
+        min-width: 680px;
+    }
+}

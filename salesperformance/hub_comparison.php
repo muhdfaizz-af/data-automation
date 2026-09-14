@@ -618,6 +618,7 @@ svg{display:block;}
 
 @media(max-width:600px){.main{padding:16px 14px 40px;} .global-filter-hint{margin-left:0;max-width:none;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 <body>
 <script>
