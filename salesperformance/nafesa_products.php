@@ -401,6 +401,9 @@ function getRankedProducts(
      * - order date
      * - order status
      * - company relationship
+     * 
+     * product type:
+     * - normal
      *
      * companies supplies:
      * - MY/SG company code
@@ -408,10 +411,11 @@ function getRankedProducts(
     $sql = "
     SELECT
         UPPER(TRIM(oi.brand)) AS brand,
+        UPPER(TRIM(COALESCE(oi.product_type, ''))) AS product_type, 
         oi.item_code,
         oi.item_description,
         c.company_code,
-        SUM(oi.qty) AS total_quantity,
+        SUM(COALESCE(oi.qty, 0)) AS total_quantity,
         SUM(COALESCE(oi.invoice_amount, 0)) AS sales_amount
 
     FROM order_items oi
@@ -426,10 +430,13 @@ function getRankedProducts(
         AND o.order_datetime < :to_exclusive
         AND o.order_status = :status
         AND UPPER(TRIM(oi.brand)) = :brand
+        AND UPPER(TRIM(COALESCE(oi.product_type, ''))) = 'NORMAL'
+        
         {$regionCondition}
 
     GROUP BY
         UPPER(TRIM(oi.brand)),
+        UPPER(TRIM(COALESCE(oi.product_type, ''))),
         oi.item_code,
         oi.item_description,
         c.company_code
@@ -446,6 +453,10 @@ function getRankedProducts(
     $rawCode = trim((string)$row['item_code']);
     $description = trim(
         (string)($row['item_description'] ?? '')
+    );
+
+    $productTypeFromDatabase = strtoupper(
+    trim((string)($row['product_type'] ?? ''))
     );
 
    $productType = classifyNafesaProduct(
