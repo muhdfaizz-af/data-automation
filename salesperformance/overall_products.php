@@ -592,9 +592,7 @@ function renderProductRows(array $products): void
 $today = new DateTimeImmutable('today');
 $yesterday = $today->modify('-1 day');
 
-$defaultFrom = $yesterday
-    ->modify('first day of this month')
-    ->format('Y-m-d');
+$defaultFrom = $yesterday->format('Y-m-d');
 
 $defaultTo = $yesterday->format('Y-m-d');
 
@@ -965,7 +963,7 @@ include __DIR__ . '/../includes/sidebar.php';
                     else button.textContent = 'Loading...';
                 }
 
-                loadReport(url.toString(), true).finally(function () {
+                loadReport(url.toString()).finally(function () {
                     if (!button || !button.isConnected) return;
                     button.disabled = false;
                     if (button.tagName === 'INPUT') button.value = originalText;
@@ -975,7 +973,7 @@ include __DIR__ . '/../includes/sidebar.php';
         });
     }
 
-    async function loadReport(url, updateHistory) {
+    async function loadReport(url) {
         const currentMain = document.querySelector('main.main');
         if (!currentMain) {
             window.location.assign(url);
@@ -1009,10 +1007,6 @@ include __DIR__ . '/../includes/sidebar.php';
             currentMain.replaceWith(nextMain);
             document.title = nextDocument.title || document.title;
 
-            if (updateHistory) {
-                window.history.pushState({ reportAjax: true }, '', url);
-            }
-
             nextMain.setAttribute('tabindex', '-1');
             bindAjaxForm(nextMain);
             nextMain.focus({ preventScroll: true });
@@ -1041,7 +1035,7 @@ include __DIR__ . '/../includes/sidebar.php';
     });
 
     window.addEventListener('popstate', function () {
-        loadReport(window.location.href, false);
+        loadReport(window.location.href);
     });
 })();
 </script>
