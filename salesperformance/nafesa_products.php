@@ -631,8 +631,8 @@ function splitRankings(array $products): array
 }
 
 
-$defaultFrom = date('Y-m-01');
-$defaultTo = date('Y-m-d');
+$defaultFrom = date('Y-m-d', strtotime('-1 day'));
+$defaultTo = $defaultFrom;
 
 $from = is_string($_GET['from'] ?? null)
     ? $_GET['from']

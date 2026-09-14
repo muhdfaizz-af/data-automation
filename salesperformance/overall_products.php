@@ -592,9 +592,7 @@ function renderProductRows(array $products): void
 $today = new DateTimeImmutable('today');
 $yesterday = $today->modify('-1 day');
 
-$defaultFrom = $yesterday
-    ->modify('first day of this month')
-    ->format('Y-m-d');
+$defaultFrom = $yesterday->format('Y-m-d');
 
 $defaultTo = $yesterday->format('Y-m-d');
 
