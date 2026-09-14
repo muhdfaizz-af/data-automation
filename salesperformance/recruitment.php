@@ -68,17 +68,6 @@ $adminUsername = $_SESSION['admin_username'] ?? '';
 $activeNav = 'recruitment';
 $navBasePath = '../';
 
-// Detect an AJAX request (fetch call from the filter form).
-$isAjaxRequest =
-    (
-        !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
-        strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
-    ) ||
-    (
-        isset($_GET['ajax']) &&
-        $_GET['ajax'] === '1'
-    );
-
 // Create the PDO database connection.
 function getDBConnection(): ?PDO
 {
@@ -416,17 +405,13 @@ function getRecruitmentMetrics(
     $statement = $pdo->prepare($purchaseAgentSql);
 
     $statement->execute([
-        'registration_from' =>
-            $fromDate,
+        'registration_from' => $fromDate,
 
-        'registration_to_exclusive' =>
-            $toExclusive,
+        'registration_to_exclusive' => $toExclusive,
 
-        'purchase_from' =>
-            $fromDate,
+        'purchase_from' => $fromDate,
 
-        'purchase_to_exclusive' =>
-            $toExclusive,
+        'purchase_to_exclusive' => $toExclusive,
     ]);
 
     while ($row = $statement->fetch()) {
@@ -546,42 +531,6 @@ function renderRecruitmentTable(
     <?php
 }
 
-// Renders the error box markup (used by both the full page and the AJAX response).
-function renderErrorsBox(array $errors): void
-{
-    if (empty($errors)) {
-        return;
-    }
-    ?>
-    <div class="error-box" role="alert">
-        <ul><?php foreach ($errors as $error): ?><li><?= htmlspecialchars($error) ?></li><?php endforeach; ?></ul>
-    </div>
-    <?php
-}
-
-// Renders the report card markup (used by both the full page and the AJAX response).
-function renderReportCard(
-    array $errors,
-    string $monthlyHeading,
-    string $dailyHeading,
-    array $dailyMetrics,
-    array $monthlyMetrics
-): void {
-    if (!empty($errors)) {
-        return;
-    }
-    ?>
-    <section class="card report-card">
-        <h2 class="report-title">
-            Registration <?= htmlspecialchars($monthlyHeading) ?>
-        </h2>
-        <div class="report-subtitle">Counts are based on confirmed Tax Invoice orders.</div>
-        <?php renderRecruitmentTable($dailyHeading, $dailyMetrics); ?>
-        <?php renderRecruitmentTable($monthlyHeading, $monthlyMetrics); ?>
-    </section>
-    <?php
-}
-
 // Default report date set to yesterday
 $defaultReportDate = (new DateTimeImmutable('today'))
     ->modify('-1 day')
@@ -654,38 +603,6 @@ $dailyHeading = empty($errors)
 $monthlyHeading = empty($errors)
     ? strtoupper(date('F Y', strtotime($reportDate)))
     : '';
-
-/*
- * AJAX response.
- *
- * The filter form submits here via fetch(). We return just the two
- * fragments that can change (the error box and the report card) as
- * JSON, so the page never reloads and the address bar in the browser
- * is never touched — it stays exactly as it is.
- */
-if ($isAjaxRequest) {
-    ob_start();
-    renderErrorsBox($errors);
-    $errorsHtml = ob_get_clean();
-
-    ob_start();
-    renderReportCard(
-        $errors,
-        $monthlyHeading,
-        $dailyHeading,
-        $dailyMetrics,
-        $monthlyMetrics
-    );
-    $resultsHtml = ob_get_clean();
-
-    header('Content-Type: application/json; charset=UTF-8');
-    echo json_encode([
-        'report_date'  => $reportDate,
-        'errors_html'  => $errorsHtml,
-        'results_html' => $resultsHtml,
-    ]);
-    exit;
-}
 ?>
 
 <!DOCTYPE html>
@@ -693,15 +610,10 @@ if ($isAjaxRequest) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>Recruitment Report — S ASIA SALES REPORT</title>
-
 <link rel="icon" href="../images/icon-sasia.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link
-    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-    rel="stylesheet"
->
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
 :root {
@@ -738,9 +650,8 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .field input {min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;background: var(--white);color: var(--ink);font: inherit;font-size: 13px;}
 
 /* ── APPLY BUTTON ── */
-.apply-button {min-height: 44px;padding: 10px 22px;border: 0;border-radius: 9px;background: var(--red);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
-.apply-button:disabled {opacity: .6;cursor: not-allowed;}
 
 /* ── DEFINITION SECTION ── */
 .definition,
@@ -768,23 +679,30 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .recruitment-table td:first-child {text-align: left;}
 .recruitment-table td:first-child small {display: block;margin-top: 3px;color: var(--gray-500);font-size: 9.5px;}
 .total-row td {background:#F7F7F9 !important;font-weight:800;}
-@media (max-width: 900px) {.main,body.sidebar-collapsed .main {margin-left: 0;padding: 20px;}}
-@media (max-width: 600px) {.filter-form {flex-direction: column;align-items: stretch;}.field {width: 100%;}.apply-button {width: 100%;}}
+@media (max-width: 1150px) {.ranking-grid {grid-template-columns: 1fr;}}
+@media (max-width: 900px) {.main, body.sidebar-collapsed .main {margin-left: 0; padding: 20px;}}
+@media (max-width: 650px) {.filter-grid,.summary-grid {grid-template-columns: 1fr;}.table-wrap {overflow-x: auto;}.ranking-table {min-width: 650px;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 
+<body>
+
 <script>
-    (function() {
-        try {
-            if (
-                window.innerWidth >= 900 &&
-                localStorage.getItem('adminSidebarCollapsed') === '1'
-            ) {
-                document.body.classList.add('sidebar-collapsed');
-            }
-        } catch (error) {
-            // The report still works if localStorage is unavailable.
+(function () {
+    try {
+        const sidebarWasCollapsed =
+            localStorage.getItem('adminSidebarCollapsed') === '1';
+
+        if (
+            window.innerWidth >= 900 &&
+            sidebarWasCollapsed
+        ) {
+            document.body.classList.add('sidebar-collapsed');
         }
+    } catch (error) {
+        // Continue without restoring the saved sidebar state.
+    }
 })();
 </script>
 
@@ -803,9 +721,11 @@ include __DIR__ . '/../includes/sidebar.php';
         <p>Daily and monthly registrations by Starter Kit, SPC upgrades, and unique purchasing agents.</p>
     </header>
 
-    <div id="report-errors">
-        <?php renderErrorsBox($errors); ?>
-    </div>
+    <?php if (!empty($errors)): ?>
+        <div class="error-box" role="alert">
+            <ul><?php foreach ($errors as $error): ?><li><?= htmlspecialchars($error) ?></li><?php endforeach; ?></ul>
+        </div>
+    <?php endif; ?>
 
     <section class="card">
         <div class="card-title">Report Filter</div>
@@ -815,7 +735,7 @@ include __DIR__ . '/../includes/sidebar.php';
             calendar-month report.
         </div>
 
-        <form method="get" action="recruitment.php" class="filter-form" id="recruitment-filter-form">
+        <form method="get" action="recruitment.php" class="filter-form">
             <div class="field">
                 <label for="report_date">Report Date</label>
                 <input type="date" id="report_date" name="report_date" value="<?= htmlspecialchars($reportDate) ?>" required>
@@ -824,63 +744,126 @@ include __DIR__ . '/../includes/sidebar.php';
         </form>
     </section>
 
-    <div id="report-results">
-        <?php renderReportCard(
-            $errors,
-            $monthlyHeading,
-            $dailyHeading,
-            $dailyMetrics,
-            $monthlyMetrics
-        ); ?>
-    </div>
+    <?php if (empty($errors)): ?>
+        <section class="card report-card">
+            <h2 class="report-title">
+                Registration <?= htmlspecialchars($monthlyHeading) ?>
+            </h2>
+            <div class="report-subtitle">Counts are based on confirmed Tax Invoice orders.</div>
+            <?php renderRecruitmentTable($dailyHeading, $dailyMetrics); ?>
+            <?php renderRecruitmentTable($monthlyHeading, $monthlyMetrics); ?>
+        </section>
+    <?php endif; ?>
 </main>
 </div>
 
 <script>
 (function () {
-    var form = document.getElementById('recruitment-filter-form');
-    if (!form) return;
+    'use strict';
 
-    var dateInput = document.getElementById('report_date');
-    var errorsContainer = document.getElementById('report-errors');
-    var resultsContainer = document.getElementById('report-results');
-    var submitButton = form.querySelector('.apply-button');
+    let activeRequest = null;
 
-    function loadReport(dateValue) {
-        var params = new URLSearchParams();
-        params.set('report_date', dateValue);
-        params.set('apply', '1');
+    function bindAjaxForm(scope) {
+        scope.querySelectorAll('form[method="get"], form:not([method])').forEach(function (form) {
+            if (form.dataset.ajaxBound === '1') return;
 
-        // Only used as the fetch target — the address bar is never touched.
-        var url = 'recruitment.php?' + params.toString();
+            form.dataset.ajaxBound = '1';
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
 
-        if (submitButton) submitButton.disabled = true;
+                if (!form.reportValidity()) return;
 
-        fetch(url, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(function (response) {
-            if (!response.ok) throw new Error('Request failed');
-            return response.json();
-        })
-        .then(function (data) {
-            if (errorsContainer) errorsContainer.innerHTML = data.errors_html || '';
-            if (resultsContainer) resultsContainer.innerHTML = data.results_html || '';
-        })
-        .catch(function () {
-            if (errorsContainer) {
-                errorsContainer.innerHTML =
-                    '<div class="error-box" role="alert"><ul><li>Unable to load the Recruitment report.</li></ul></div>';
-            }
-        })
-        .finally(function () {
-            if (submitButton) submitButton.disabled = false;
+                const url = new URL(form.action || window.location.href, window.location.href);
+                url.search = new URLSearchParams(new FormData(form)).toString();
+
+                const button = form.querySelector('button[type="submit"], input[type="submit"]');
+                const originalText = button
+                    ? (button.tagName === 'INPUT' ? button.value : button.textContent)
+                    : '';
+
+                if (button) {
+                    button.disabled = true;
+                    if (button.tagName === 'INPUT') button.value = 'Loading...';
+                    else button.textContent = 'Loading...';
+                }
+
+                loadReport(url.toString(), true).finally(function () {
+                    if (!button || !button.isConnected) return;
+                    button.disabled = false;
+                    if (button.tagName === 'INPUT') button.value = originalText;
+                    else button.textContent = originalText;
+                });
+            });
         });
     }
 
-    form.addEventListener('submit', function (e) {
-        e.preventDefault();
-        loadReport(dateInput.value);
+    async function loadReport(url, updateHistory) {
+        const currentMain = document.querySelector('main.main');
+        if (!currentMain) {
+            window.location.assign(url);
+            return;
+        }
+
+        if (activeRequest) activeRequest.abort();
+
+        const controller = new AbortController();
+        activeRequest = controller;
+
+        try {
+            const response = await fetch(url, {
+                headers: { Accept: 'text/html' },
+                credentials: 'same-origin',
+                signal: controller.signal
+            });
+
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (response.redirected) {
+                window.location.assign(response.url);
+                return;
+            }
+
+            const html = await response.text();
+            const nextDocument = new DOMParser().parseFromString(html, 'text/html');
+            const nextMain = nextDocument.querySelector('main.main');
+
+            if (!nextMain) throw new Error('Invalid report response.');
+
+            currentMain.replaceWith(nextMain);
+            document.title = nextDocument.title || document.title;
+
+            if (updateHistory) {
+                window.history.pushState({ reportAjax: true }, '', url);
+            }
+
+            nextMain.setAttribute('tabindex', '-1');
+            bindAjaxForm(nextMain);
+            nextMain.focus({ preventScroll: true });
+            document.dispatchEvent(new CustomEvent('report:updated'));
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+
+            const main = document.querySelector('main.main') || currentMain;
+            const oldError = main.querySelector('.ajax-error-box');
+            if (oldError) oldError.remove();
+
+            const errorBox = document.createElement('div');
+            errorBox.className = 'error-box ajax-error-box';
+            errorBox.setAttribute('role', 'alert');
+            errorBox.textContent =
+                'Unable to update the report. Please check your connection and try again.';
+            main.prepend(errorBox);
+        } finally {
+            if (activeRequest === controller) activeRequest = null;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const main = document.querySelector('main.main');
+        if (main) bindAjaxForm(main);
+    });
+
+    window.addEventListener('popstate', function () {
+        loadReport(window.location.href, false);
     });
 })();
 </script>

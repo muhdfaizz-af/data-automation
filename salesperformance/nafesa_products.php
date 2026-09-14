@@ -401,6 +401,9 @@ function getRankedProducts(
      * - order date
      * - order status
      * - company relationship
+     * 
+     * product type:
+     * - normal
      *
      * companies supplies:
      * - MY/SG company code
@@ -408,10 +411,11 @@ function getRankedProducts(
     $sql = "
     SELECT
         UPPER(TRIM(oi.brand)) AS brand,
+        UPPER(TRIM(COALESCE(oi.product_type, ''))) AS product_type, 
         oi.item_code,
         oi.item_description,
         c.company_code,
-        SUM(oi.qty) AS total_quantity,
+        SUM(COALESCE(oi.qty, 0)) AS total_quantity,
         SUM(COALESCE(oi.invoice_amount, 0)) AS sales_amount
 
     FROM order_items oi
@@ -426,10 +430,13 @@ function getRankedProducts(
         AND o.order_datetime < :to_exclusive
         AND o.order_status = :status
         AND UPPER(TRIM(oi.brand)) = :brand
+        AND UPPER(TRIM(COALESCE(oi.product_type, ''))) = 'NORMAL'
+        
         {$regionCondition}
 
     GROUP BY
         UPPER(TRIM(oi.brand)),
+        UPPER(TRIM(COALESCE(oi.product_type, ''))),
         oi.item_code,
         oi.item_description,
         c.company_code
@@ -446,6 +453,10 @@ function getRankedProducts(
     $rawCode = trim((string)$row['item_code']);
     $description = trim(
         (string)($row['item_description'] ?? '')
+    );
+
+    $productTypeFromDatabase = strtoupper(
+    trim((string)($row['product_type'] ?? ''))
     );
 
    $productType = classifyNafesaProduct(
@@ -620,30 +631,25 @@ function splitRankings(array $products): array
 }
 
 
-$yesterday = date('Y-m-d', strtotime('-1 day'));
-$defaultFrom = $yesterday;
-$defaultTo = $yesterday;
+$defaultFrom = date('Y-m-01');
+$defaultTo = date('Y-m-d');
 
-$requestData = $_SERVER['REQUEST_METHOD'] === 'POST'
-    ? $_POST
-    : $_GET;
-
-$from = is_string($requestData['from'] ?? null)
-    ? $requestData['from']
+$from = is_string($_GET['from'] ?? null)
+    ? $_GET['from']
     : $defaultFrom;
 
-$to = is_string($requestData['to'] ?? null)
-    ? $requestData['to']
+$to = is_string($_GET['to'] ?? null)
+    ? $_GET['to']
     : $defaultTo;
 
 $regionFilter = normalizeRegion(
-    $requestData['region'] ?? 'all'
+    $_GET['region'] ?? 'all'
 );
 
-$isSubmitted = isset($requestData['apply']);
+$isSubmitted = isset($_GET['apply']);
 
 $selectedType = normalizeProductType(
-    $requestData['type'] ?? DEFAULT_PRODUCT_TYPE
+    $_GET['type'] ?? DEFAULT_PRODUCT_TYPE
 );
 
 $errors = [];
@@ -753,11 +759,13 @@ function renderProductRows(array $products): void
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-    --red:#E0202E;--red-dark:#8E1620;--ink:#1B1B1F;
-    --gray-700:#4A4A52;--gray-500:#8A8A93;--gray-300:#D8D8DE;--gray-100:#F2F2F4;
-    --bg:#F5F5F7;--white:#FFFFFF;--green:#059669;--gold:#D97706;--blue:#2563EB;
-    --radius-lg:18px;--radius-md:12px;--sidebar-w:256px;--sidebar-w-collapsed:76px;
-    --topbar-h:64px;--shadow-card:0 2px 8px rgba(20,20,30,.06);
+    --red: #E0202E;--red-dark: #8E1620;
+    --ink: #1B1B1F;--gray-700: #4A4A52;--gray-500: #8A8A93;
+    --gray-300: #D8D8DE;--gray-100: #F2F2F4;--bg: #F5F5F7;
+    --white: #FFFFFF;
+    --radius-lg: 18px;--radius-md: 12px;
+    --shadow-card: 0 8px 24px rgba(30, 30, 40, .06);--sidebar-w: 260px;
+    --sidebar-w-collapsed: 82px;--topbar-h: 64px;
 }
 *, *::before, *::after {box-sizing:border-box;margin:0;padding:0;}
 body {min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Plus Jakarta Sans',sans-serif;}
@@ -779,7 +787,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 /* ── CARD  ── */
 .card {margin-bottom:24px;padding:24px;border:1px solid var(--gray-100);border-radius:var(--radius-lg);background:var(--white);box-shadow:var(--shadow-card);}
 .card-title {margin-bottom:4px;font-size:16px;font-weight:800;}
-.card-subtitle {color:var(--gray-500);font-size:12px;}
+.card-subtitle {color:var(--gray-500);font-size:12px;margin-bottom:10px}
 
 /* ── FILTER SECTION ── */
 .filter-grid {display:grid;grid-template-columns:repeat(2,minmax(180px,1fr)) 200px;gap:16px;align-items:end;margin-top:20px;}
@@ -802,8 +810,8 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .filter-footer {display:flex;justify-content:flex-end;margin-top:18px;}
 
 /* ── APPLY BUTTON ── */
-.apply-button {min-width:180px;padding:11px 20px;border:0;border-radius:9px;background:var(--red);color:var(--white);cursor:pointer;font-size:13px;font-weight:800;}
-.apply-button:hover {background:var(--red-dark);}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
+.apply-button:hover {background: var(--red-dark);}
 .error-box,
 .info-box {margin-bottom:20px;padding:13px 15px;border-radius:10px;font-size:12px;line-height:1.6;}
 .error-box {border:1px solid #FECACA;background:#FEF2F2;color:#991B1B;}
@@ -818,8 +826,8 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 /* ── RANKING SECTION ── */
 .ranking-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
 .ranking-card {min-width:0;}
-.table-wrap {width:100%;min-width:0;margin-top:18px;overflow-x:hidden;}
-.ranking-table {width:100%;table-layout:fixed;border-collapse:collapse;}
+.table-wrap {width:100%;min-width:0;overflow-x:auto;}
+.ranking-table {width:100%;min-width:650px;table-layout:fixed;border-collapse:collapse;}
 .ranking-table th, .ranking-table td {padding:12px 8px;border-bottom:1px solid var(--black-100);text-align:left;vertical-align:top;font-size:11px;overflow-wrap:anywhere;}
 .ranking-table th {color:var(--black-500);font-size:10px;letter-spacing:.3px;text-transform:uppercase;}
 .ranking-table th:nth-child(1),.ranking-table td:nth-child(1) {width:10%;}
@@ -838,6 +846,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 @media(max-width:900px) {.main,body.sidebar-collapsed .main {margin-left:0;padding:20px;}}
 @media(max-width:700px) {.filter-grid,.summary-grid {grid-template-columns:1fr;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 
 <body>
@@ -870,7 +879,6 @@ include __DIR__ . '/../includes/sidebar.php';
         <p>Rank Nafesa Scarf, Inner and Hand Socks products using converted Tax Invoice sales.</p>
     </div>
 
-    <div id="report-results">
     <?php if (!empty($errors)): ?>
         <div class="error-box">
             <ul>
@@ -880,6 +888,7 @@ include __DIR__ . '/../includes/sidebar.php';
             </ul>
         </div>
     <?php endif; ?>
+
     <section class="card">
         <div class="card-title">Report Filters</div>
 
@@ -887,7 +896,7 @@ include __DIR__ . '/../includes/sidebar.php';
             Select the period, region and one Nafesa product type.
         </div>
 
-        <form method="post" action="nafesa_products.php" id="report-filter">
+        <form method="get" action="nafesa_products.php">
             <div class="filter-grid">
 
                 <div class="field">
@@ -1059,54 +1068,142 @@ include __DIR__ . '/../includes/sidebar.php';
         </div>
     <?php endif; ?>
 
-    </div>
-
 </main>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const form = document.getElementById('report-filter');
-    const results = document.getElementById('report-results');
-    const button = form.querySelector('button[type="submit"]');
+    const typeRadios = document.querySelectorAll(
+        'input[name="type"]'
+    );
 
-    form.addEventListener('submit', async function (event) {
-        event.preventDefault();
+    typeRadios.forEach(function (radio) {
+        radio.addEventListener('change', function () {
+            document.querySelectorAll('.brand-option').forEach(
+                function (option) {
+                    option.classList.remove('selected');
+                }
+            );
 
-        const originalLabel = button.textContent;
-        button.disabled = true;
-        button.textContent = 'Loading...';
+            const selectedOption = radio.closest('.brand-option');
+
+            if (selectedOption) {
+                selectedOption.classList.add('selected');
+            }
+        });
+    });
+});
+</script>
+
+<script>
+(function () {
+    'use strict';
+
+    let activeRequest = null;
+
+    function bindAjaxForm(scope) {
+        scope.querySelectorAll('form[method="get"], form:not([method])').forEach(function (form) {
+            if (form.dataset.ajaxBound === '1') return;
+
+            form.dataset.ajaxBound = '1';
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+
+                if (!form.reportValidity()) return;
+
+                const url = new URL(form.action || window.location.href, window.location.href);
+                url.search = new URLSearchParams(new FormData(form)).toString();
+
+                const button = form.querySelector('button[type="submit"], input[type="submit"]');
+                const originalText = button
+                    ? (button.tagName === 'INPUT' ? button.value : button.textContent)
+                    : '';
+
+                if (button) {
+                    button.disabled = true;
+                    if (button.tagName === 'INPUT') button.value = 'Loading...';
+                    else button.textContent = 'Loading...';
+                }
+
+                loadReport(url.toString(), true).finally(function () {
+                    if (!button || !button.isConnected) return;
+                    button.disabled = false;
+                    if (button.tagName === 'INPUT') button.value = originalText;
+                    else button.textContent = originalText;
+                });
+            });
+        });
+    }
+
+    async function loadReport(url, updateHistory) {
+        const currentMain = document.querySelector('main.main');
+        if (!currentMain) {
+            window.location.assign(url);
+            return;
+        }
+
+        if (activeRequest) activeRequest.abort();
+
+        const controller = new AbortController();
+        activeRequest = controller;
 
         try {
-            const response = await fetch(form.action || window.location.href, {
-                method: 'POST',
-                body: new FormData(form),
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            const response = await fetch(url, {
+                headers: { Accept: 'text/html' },
+                credentials: 'same-origin',
+                signal: controller.signal
             });
 
-            if (!response.ok) {
-                throw new Error('Unable to load the report.');
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (response.redirected) {
+                window.location.assign(response.url);
+                return;
             }
 
             const html = await response.text();
             const nextDocument = new DOMParser().parseFromString(html, 'text/html');
-            const nextResults = nextDocument.getElementById('report-results');
+            const nextMain = nextDocument.querySelector('main.main');
 
-            if (!nextResults) {
-                throw new Error('Invalid report response.');
+            if (!nextMain) throw new Error('Invalid report response.');
+
+            currentMain.replaceWith(nextMain);
+            document.title = nextDocument.title || document.title;
+
+            if (updateHistory) {
+                window.history.pushState({ reportAjax: true }, '', url);
             }
 
-            results.replaceWith(nextResults);
+            nextMain.setAttribute('tabindex', '-1');
+            bindAjaxForm(nextMain);
+            nextMain.focus({ preventScroll: true });
+            document.dispatchEvent(new CustomEvent('report:updated'));
         } catch (error) {
-            results.innerHTML = '<div class="error-box" role="alert">' +
-                'Unable to load the report. Please try again.' +
-                '</div>';
+            if (error.name === 'AbortError') return;
+
+            const main = document.querySelector('main.main') || currentMain;
+            const oldError = main.querySelector('.ajax-error-box');
+            if (oldError) oldError.remove();
+
+            const errorBox = document.createElement('div');
+            errorBox.className = 'error-box ajax-error-box';
+            errorBox.setAttribute('role', 'alert');
+            errorBox.textContent =
+                'Unable to update the report. Please check your connection and try again.';
+            main.prepend(errorBox);
         } finally {
-            button.disabled = false;
-            button.textContent = originalLabel;
+            if (activeRequest === controller) activeRequest = null;
         }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const main = document.querySelector('main.main');
+        if (main) bindAjaxForm(main);
     });
-});
+
+    window.addEventListener('popstate', function () {
+        loadReport(window.location.href, false);
+    });
+})();
 </script>
 
 </body>

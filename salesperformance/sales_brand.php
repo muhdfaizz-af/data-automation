@@ -361,16 +361,12 @@ function getSalesByBrand(
 $today = new DateTimeImmutable('today');
 $yesterday = $today->modify('-1 day');
 
-$defaultFrom = $today->modify('-3 days')->format('Y-m-d');
+$defaultFrom = $yesterday->modify('first day of this month')->format('Y-m-d');
 $defaultTo = $yesterday->format('Y-m-d');
 
-$requestData = $_SERVER['REQUEST_METHOD'] === 'POST'
-    ? $_POST
-    : $_GET;
-
-$from = is_string($requestData['from'] ?? null) ? $requestData['from'] : $defaultFrom;
-$to = is_string($requestData['to'] ?? null) ? $requestData['to'] : $defaultTo;
-$companyFilter = normalizeCompany($requestData['company'] ?? 'all');
+$from = is_string($_GET['from'] ?? null) ? $_GET['from'] : $defaultFrom;
+$to = is_string($_GET['to'] ?? null) ? $_GET['to'] : $defaultTo;
+$companyFilter = normalizeCompany($_GET['company'] ?? 'all');
 
 $errors = [];
 
@@ -443,11 +439,13 @@ if ($isAjax) {
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-    --red: #E0202E;--red-dark: #8E1620;--ink: #1B1B1F;
-    --gray-700: #4A4A52;--gray-500: #8A8A93;--gray-300: #D8D8DE;
-    --gray-100: #F2F2F4;--bg: #F5F5F7;--white: #FFFFFF;--green: #059669;
-    --radius-lg: 18px;--radius-md: 12px;--shadow-card: 0 8px 24px rgba(30, 30, 40, .06);
-    --sidebar-w: 256px;--sidebar-w-collapsed: 76px;--topbar-h: 64px;
+    --red: #E0202E;--red-dark: #8E1620;
+    --ink: #1B1B1F;--gray-700: #4A4A52;--gray-500: #8A8A93;
+    --gray-300: #D8D8DE;--gray-100: #F2F2F4;--bg: #F5F5F7;
+    --white: #FFFFFF;
+    --radius-lg: 18px;--radius-md: 12px;
+    --shadow-card: 0 8px 24px rgba(30, 30, 40, .06);--sidebar-w: 260px;
+    --sidebar-w-collapsed: 82px;--topbar-h: 64px;
 }
 *,*::before,*::after {box-sizing: border-box;margin: 0;padding: 0;}
 body {background: var(--bg);color: var(--ink);font-family: "Plus Jakarta Sans", sans-serif;}
@@ -455,33 +453,41 @@ body {background: var(--bg);color: var(--ink);font-family: "Plus Jakarta Sans", 
 .layout {display: flex;min-height: calc(100vh - var(--topbar-h));margin-top: var(--topbar-h);}
 .main {min-width: 0;flex: 1;margin-left: var(--sidebar-w);padding: 28px 32px 48px;transition: margin-left .25s ease;}
 
+/* ── SIDE BAR ── */
 body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 
+/* ── PAGE HEADER ── */
 .page-header {margin-bottom: 24px;}
 .page-header h1 {margin-bottom: 5px;font-size: 25px;font-weight: 800;}
 .page-header p {color: var(--gray-500);font-size: 13px;}
 
+/* ── CARD SECTION ── */
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
 .card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
-.card-subtitle {color: var(--gray-500);font-size: 12px;}
+.card-subtitle {color: var(--gray-500);font-size: 12px; margin-bottom: 10px;}
 
+/* ── FILTER SECTION ── */
 .filter-grid {display: grid;grid-template-columns:repeat(2, minmax(180px, 1fr))minmax(180px, 240px)auto;gap: 16px;align-items: end;margin-top: 20px;}
 .field {display: flex;min-width: 0;flex-direction: column;gap: 7px;}
 .field label {color: var(--gray-700);font-size: 10.5px;font-weight: 800;text-transform: uppercase;}
 .field input,.field select {width: 100%;min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;background: var(--white);color: var(--ink);font: inherit;font-size: 13px;}
 
-.apply-button {min-height: 44px;padding: 10px 22px;border: 0;border-radius: 9px;background: var(--red);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;display: inline-flex;align-items: center;justify-content: center;gap: 8px;}
+/* ── APPLY BUTTON ── */
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
 .apply-button:disabled {opacity: .7;cursor: default;}
 
+/* ── ERROR BOX ── */
 .error-box {margin-bottom: 20px;padding: 14px 17px;border: 1px solid #FECACA;border-radius: 10px;background: #FEF2F2;color: #991B1B;font-size: 12px;}
 .error-box ul {padding-left: 18px;}
 
+/* ── SUMMARY SECTION ── */
 .summary-grid {display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 16px;margin-bottom: 24px;}
 .summary-card {padding: 19px;border: 1px solid var(--gray-100);border-radius: var(--radius-md);background: var(--white);box-shadow: var(--shadow-card);}
 .summary-label {margin-bottom: 5px;color: var(--gray-500);font-size: 10px;font-weight: 800;text-transform: uppercase;}
 .summary-value {font-size: 21px;font-weight: 800;}
 
+/* ── TABLE SECTION ── */
 .table-wrap {overflow: hidden;border: 1px solid #E6E6EA;border-radius: 12px;background: var(--white);}
 .brand-table {width: 100%;border-collapse: separate;border-spacing: 0;}
 .brand-table th,.brand-table td {padding: 14px 16px;border-bottom: 1px solid #ECECF0;text-align: left;font-size: 12px;vertical-align: middle;}
@@ -493,6 +499,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .brand-name {font-weight: 800;}
 .brand-total {font-weight: 800;white-space: nowrap;}
 
+/* ── PERCENTAGE INDICATOR ── */
 .percentage-bar {display: inline-flex;width: 100%;max-width: 170px;align-items: center;justify-content: flex-end;gap: 9px;}
 .percentage-track {width: 90px;height: 7px;overflow: hidden;border-radius: 20px;background: var(--gray-100);}
 .percentage-fill {height: 100%;border-radius: 20px;background: var(--red);}
@@ -503,11 +510,11 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .apply-button.is-loading .spinner {display: inline-block;}
 .report-loading td {padding: 40px 16px;text-align: center;color: var(--gray-500);font-size: 12px;}
 @keyframes spin {to {transform: rotate(360deg);}}
-
 @media (max-width: 950px) {.filter-grid {grid-template-columns: repeat(2, minmax(0, 1fr));}}
 @media (max-width: 900px) {.main,body.sidebar-collapsed .main {margin-left: 0;padding: 20px;}}
 @media (max-width: 650px) {.filter-grid,.summary-grid {grid-template-columns: 1fr;}.apply-button {width: 100%;}.table-wrap {overflow-x: auto;}.brand-table {min-width: 650px;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 
 <body>
@@ -609,6 +616,7 @@ include __DIR__ . '/../includes/sidebar.php';
 <script>
 // Same URL as the current page — no separate API file needed.
 const API_URL = window.location.pathname;
+const PAGE_URL = window.location.pathname;
 
 const form = document.getElementById('filterForm');
 const applyButton = document.getElementById('applyButton');
@@ -695,19 +703,16 @@ function renderReport(data) {
         `Event Ticket appears only when ticket transactions exist during the selected period.`;
 }
 
-async function loadReport(params) {
+async function loadReport(params, updateUrl) {
     const requestId = ++currentRequestId;
     setLoading(true);
     tableBody.innerHTML = '<tr class="report-loading"><td>Loading report…</td></tr>';
 
+    const query = new URLSearchParams(params).toString();
+
     try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            body: new URLSearchParams(params),
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
-            }
+        const response = await fetch(`${API_URL}?${query}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
 
         if (requestId !== currentRequestId) return;
@@ -733,6 +738,11 @@ async function loadReport(params) {
 
         renderErrors([]);
         renderReport(data);
+
+        if (updateUrl) {
+            const urlParams = new URLSearchParams(params);
+            history.replaceState(null, '', `${PAGE_URL}?${urlParams.toString()}`);
+        }
     } catch (err) {
         if (requestId !== currentRequestId) return;
         renderErrors(['Unable to load the report. Please check your connection and try again.']);
@@ -750,14 +760,14 @@ form.addEventListener('submit', function (e) {
         to: document.getElementById('to').value,
         company: document.getElementById('company').value,
     };
-    loadReport(params);
+    loadReport(params, true);
 });
 
 loadReport({
     from: document.getElementById('from').value,
     to: document.getElementById('to').value,
     company: document.getElementById('company').value,
-});
+}, false);
 </script>
 
 </body>

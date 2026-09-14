@@ -58,17 +58,6 @@ $adminUsername = $_SESSION['admin_username'] ?? '';
 $activeNav = 'asd_comparison';
 $navBasePath = '../';
 
-// Detect an AJAX request (fetch call from the filter form).
-$isAjaxRequest =
-    (
-        !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
-        strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
-    ) ||
-    (
-        isset($_GET['ajax']) &&
-        $_GET['ajax'] === '1'
-    );
-
 // Create the PDO database connection.
 function getDBConnection(): ?PDO
 {
@@ -329,195 +318,6 @@ function changeClass(?float $change): string
     return $change > 0 ? 'positive' : 'negative';
 }
 
-// Renders the error box markup (used by both the full page and the AJAX response).
-function renderErrorsBox(array $errors): void
-{
-    if (empty($errors)) {
-        return;
-    }
-    ?>
-    <div class="error-box" role="alert">
-        <ul>
-            <?php foreach ($errors as $error): ?>
-                <li><?= htmlspecialchars($error) ?></li>
-            <?php endforeach; ?>
-        </ul>
-    </div>
-    <?php
-}
-
-/**
- * Renders the period headings, metric cards and country breakdown table.
- * Used by both the full page and the AJAX response.
- */
-function renderReportResults(
-    array $errors,
-    string $periodALabel,
-    string $periodBLabel,
-    array $periodA,
-    array $periodB,
-    ?float $salesChange,
-    ?float $agentsChange,
-    ?float $asdChange,
-    array $countryBreakdown,
-    string $periodAMonthName,
-    string $periodBMonthName
-): void {
-    if (!empty($errors)) {
-        return;
-    }
-    ?>
-
-    <div class="period-heading-grid">
-        <div class="period-heading a">
-            <div class="period-heading-name">Last Month</div>
-            <div class="period-heading-date">
-                <?= htmlspecialchars($periodALabel) ?>
-            </div>
-        </div>
-
-        <div class="period-heading b">
-            <div class="period-heading-name">Current Month</div>
-            <div class="period-heading-date">
-                <?= htmlspecialchars($periodBLabel) ?>
-            </div>
-        </div>
-    </div>
-
-    <section class="metric-grid">
-
-    <article class="metric-card">
-        <div class="metric-name">Total Sales</div>
-
-        <div class="metric-values">
-            <div>
-                <div class="metric-period">Last Month</div>
-                <div class="metric-value">
-                    RM<?= number_format($periodA['total_sales'], 2) ?>
-                </div>
-            </div>
-
-            <div>
-                <div class="metric-period">Current Month</div>
-                <div class="metric-value">
-                    RM<?= number_format($periodB['total_sales'], 2) ?>
-                </div>
-            </div>
-        </div>
-
-        <div class="metric-change <?= changeClass($salesChange) ?>">
-        <?= htmlspecialchars(formatMetricDifference(
-            $periodA['total_sales'],
-            $periodB['total_sales'],
-            true,
-            2
-        )) ?>
-    </div>
-    </article>
-
-    <article class="metric-card">
-        <div class="metric-name">Active Agents</div>
-
-        <div class="metric-values">
-            <div>
-                <div class="metric-period">Last Month</div>
-                <div class="metric-value">
-                    <?= number_format($periodA['active_agents']) ?>
-                </div>
-            </div>
-
-            <div>
-                <div class="metric-period">Current Month</div>
-                <div class="metric-value">
-                    <?= number_format($periodB['active_agents']) ?>
-                </div>
-            </div>
-        </div>
-
-        <div class="metric-change <?= changeClass($agentsChange) ?>">
-            <?= htmlspecialchars(formatMetricDifference(
-                (float)$periodA['active_agents'],
-                (float)$periodB['active_agents'],
-                false,
-                0
-            )) ?>
-        </div>
-    </article>
-
-    <article class="metric-card">
-        <div class="metric-name">Average Sales per Agent (ASD)</div>
-
-        <div class="metric-values">
-            <div>
-                <div class="metric-period">Last Month</div>
-
-                <div class="metric-value">
-                    RM<?= number_format($periodA['asd'], 2) ?>
-                </div>
-            </div>
-
-            <div>
-                <div class="metric-period">Current Month</div>
-
-                <div class="metric-value">
-                    RM<?= number_format($periodB['asd'], 2) ?>
-                </div>
-            </div>
-        </div>
-
-        <div class="metric-change <?= changeClass($asdChange) ?>">
-            <?= htmlspecialchars(formatMetricDifference(
-                $periodA['asd'],
-                $periodB['asd'],
-                true,
-                2
-            )) ?>
-        </div>
-    </article>
-
-    </section>
-
-    <section class="card">
-        <div class="card-title">Calculation Breakdown</div>
-        <div class="card-subtitle">
-            Active Agents and ASD by country. Singapore sales are converted
-            to MYR before ASD is calculated.
-        </div>
-
-        <div class="table-wrap">
-            <table class="comparison-table country-breakdown-table">
-                <thead>
-                    <tr>
-                        <th>Country</th>
-                        <th>Active Agent <?= htmlspecialchars($periodAMonthName) ?></th>
-                        <th>Active Agent <?= htmlspecialchars($periodBMonthName) ?></th>
-                        <th>Difference (%)</th>
-                        <th>ASD <?= htmlspecialchars($periodAMonthName) ?></th>
-                        <th>ASD <?= htmlspecialchars($periodBMonthName) ?></th>
-                        <th>Difference (%)</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    <?php foreach ($countryBreakdown as $country): ?>
-                        <tr>
-                            <td><?= htmlspecialchars($country['label']) ?></td>
-                            <td><?= number_format($country['period_a']['active_agents']) ?></td>
-                            <td><?= number_format($country['period_b']['active_agents']) ?></td>
-                            <td class="<?= changeClass($country['agent_change']) ?>"><?= formatChange($country['agent_change']) ?></td>
-                            <td>RM<?= number_format($country['period_a']['asd'], 2) ?></td>
-                            <td>RM<?= number_format($country['period_b']['asd'], 2) ?></td>
-                            <td class="<?= changeClass($country['asd_change']) ?>"><?= formatChange($country['asd_change']) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </section>
-
-    <?php
-}
-
 /**
  * Default comparison periods:
  *
@@ -708,47 +508,6 @@ $periodAMonthName = strtoupper(
 $periodBMonthName = strtoupper(
     date('F', strtotime($periodBFrom))
 );
-
-/*
- * AJAX response.
- *
- * The filter form submits here via fetch(). We return just the two
- * fragments that can change (the error box and the results) as JSON,
- * so the page never reloads and the address bar in the browser is
- * never touched — it stays exactly as it is.
- */
-if ($isAjaxRequest) {
-    ob_start();
-    renderErrorsBox($errors);
-    $errorsHtml = ob_get_clean();
-
-    ob_start();
-    renderReportResults(
-        $errors,
-        $periodALabel,
-        $periodBLabel,
-        $periodA,
-        $periodB,
-        $salesChange,
-        $agentsChange,
-        $asdChange,
-        $countryBreakdown,
-        $periodAMonthName,
-        $periodBMonthName
-    );
-    $resultsHtml = ob_get_clean();
-
-    header('Content-Type: application/json; charset=UTF-8');
-    echo json_encode([
-        'period_a_from' => $periodAFrom,
-        'period_a_to'   => $periodATo,
-        'period_b_from' => $periodBFrom,
-        'period_b_to'   => $periodBTo,
-        'errors_html'   => $errorsHtml,
-        'results_html'  => $resultsHtml,
-    ]);
-    exit;
-}
 ?>
 
 <!DOCTYPE html>
@@ -763,16 +522,12 @@ if ($isAjaxRequest) {
 <style>
 :root {
     --red: #E0202E;--red-dark: #8E1620;
-    --ink: #1B1B1F;--gray-700: #4A4A52;--gray-500: #8A8A93;--gray-300: #D8D8DE;--gray-100: #F2F2F4;
-    --bg: #F5F5F7;--white: #FFFFFF;
-    --green: #059669;--green-soft: #ECFDF5;
-    --red-soft: #FEF2F2;
-    --blue: #2563EB;--blue-soft: #EFF6FF;
-    --gold: #D97706;--gold-soft: #FFFBEB;
+    --ink: #1B1B1F;--gray-700: #4A4A52;--gray-500: #8A8A93;
+    --gray-300: #D8D8DE;--gray-100: #F2F2F4;--bg: #F5F5F7;
+    --white: #FFFFFF;
     --radius-lg: 18px;--radius-md: 12px;
-    --sidebar-w: 256px;--sidebar-w-collapsed: 76px;--topbar-h: 64px;
-    --shadow: 0 1px 2px rgba(20, 20, 30, .04), 0 8px 24px -12px rgba(20, 20, 30, .10);
-    --shadow-card: 0 2px 8px rgba(20, 20, 30, .06);
+    --shadow-card: 0 8px 24px rgba(30, 30, 40, .06);--sidebar-w: 260px;
+    --sidebar-w-collapsed: 82px;--topbar-h: 64px;
 }
 *,*::before,*::after {box-sizing: border-box;margin: 0;padding: 0;}
 body {min-height: 100vh;background: var(--bg);color: var(--ink);font-family: 'Plus Jakarta Sans', sans-serif;}
@@ -790,7 +545,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .page-header p {color: var(--gray-500);font-size: 13.5px;}
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
 .card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
-.card-subtitle {color: var(--gray-500);font-size: 12px;}
+.card-subtitle {color: var(--gray-500);font-size: 12px; margin-bottom: 10px;}
 .form-grid {display: grid;grid-template-columns: 1fr 1fr 190px auto;gap: 18px;align-items: end;margin-top: 20px;}
 .period-box {padding: 16px;border-radius: var(--radius-md);background: var(--gray-100);}
 .period-title {margin-bottom: 12px;font-size: 13px;font-weight: 800;}
@@ -802,7 +557,6 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .field input:focus,.field select:focus {border-color: var(--red);box-shadow: 0 0 0 3px rgba(224, 32, 46, .10);}
 .apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
-.apply-button:disabled {opacity: .6;cursor: not-allowed;}
 .error-box {margin-bottom: 20px;padding: 13px 15px;border: 1px solid #FECACA;border-radius: 10px;background: var(--red-soft);color: #991B1B;font-size: 13px;font-weight: 600;}
 .error-box ul {padding-left: 18px;}
 .definition {display: flex;gap: 12px;align-items: center;margin-bottom: 24px;padding: 15px 18px;border-radius: 10px;background: var(--white);box-shadow: var(--shadow-card);color: var(--gray-700);font-size: 13px;}
@@ -890,6 +644,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 @media (max-width:800px) {.period-filter-grid,.order-type-groups,.metric-grid {grid-template-columns:1fr;}.order-type-header,.filter-footer {flex-direction:column;align-items:stretch;}.checkbox-actions {align-self:flex-start;}.apply-button {width:100%;}}
 @media (max-width:500px) {.date-grid {grid-template-columns:1fr;}.company-field {width:100%;}}
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 <body>
 <script>
@@ -917,9 +672,15 @@ include __DIR__ . '/../includes/sidebar.php';
         </p>
      </div>
 
-    <div id="report-errors">
-        <?php renderErrorsBox($errors); ?>
-    </div>
+     <?php if (!empty($errors)): ?>
+        <div class="error-box" role="alert">
+            <ul>
+                <?php foreach ($errors as $error): ?>
+                    <li><?= htmlspecialchars($error) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
 
     <section class="card">
         <div class="card-title">Comparison Filters</div>
@@ -966,68 +727,267 @@ include __DIR__ . '/../includes/sidebar.php';
         </form>
     </section>
 
-    <div id="report-results">
-        <?php renderReportResults(
-            $errors,
-            $periodALabel,
-            $periodBLabel,
-            $periodA,
-            $periodB,
-            $salesChange,
-            $agentsChange,
-            $asdChange,
-            $countryBreakdown,
-            $periodAMonthName,
-            $periodBMonthName
-        ); ?>
-    </div>
+            <?php if (empty($errors)): ?>
+
+            <div class="period-heading-grid">
+                <div class="period-heading a">
+                    <div class="period-heading-name">Last Month</div>
+                    <div class="period-heading-date">
+                        <?= htmlspecialchars($periodALabel) ?>
+                    </div>
+                </div>
+
+                <div class="period-heading b">
+                    <div class="period-heading-name">Current Month</div>
+                    <div class="period-heading-date">
+                        <?= htmlspecialchars($periodBLabel) ?>
+                    </div>
+                </div>
+            </div>
+
+            <section class="metric-grid">
+
+            <article class="metric-card">
+                <div class="metric-name">Total Sales</div>
+
+                <div class="metric-values">
+                    <div>
+                        <div class="metric-period">Last Month</div>
+                        <div class="metric-value">
+                            RM<?= number_format($periodA['total_sales'], 2) ?>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="metric-period">Current Month</div>
+                        <div class="metric-value">
+                            RM<?= number_format($periodB['total_sales'], 2) ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-change <?= changeClass($salesChange) ?>">
+                <?= htmlspecialchars(formatMetricDifference(
+                    $periodA['total_sales'],
+                    $periodB['total_sales'],
+                    true,
+                    2
+                )) ?>
+            </div>
+            </article>
+
+            <article class="metric-card">
+                <div class="metric-name">Active Agents</div>
+
+                <div class="metric-values">
+                    <div>
+                        <div class="metric-period">Last Month</div>
+                        <div class="metric-value">
+                            <?= number_format($periodA['active_agents']) ?>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="metric-period">Current Month</div>
+                        <div class="metric-value">
+                            <?= number_format($periodB['active_agents']) ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-change <?= changeClass($agentsChange) ?>">
+                    <?= htmlspecialchars(formatMetricDifference(
+                        (float)$periodA['active_agents'],
+                        (float)$periodB['active_agents'],
+                        false,
+                        0
+                    )) ?>
+                </div>
+            </article>
+
+            <article class="metric-card">
+                <div class="metric-name">Average Sales per Agent (ASD)</div>
+
+                <div class="metric-values">
+                    <div>
+                        <div class="metric-period">Last Month</div>
+
+                        <div class="metric-value">
+                            RM<?= number_format($periodA['asd'], 2) ?>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="metric-period">Current Month</div>
+
+                        <div class="metric-value">
+                            RM<?= number_format($periodB['asd'], 2) ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-change <?= changeClass($asdChange) ?>">
+                    <?= htmlspecialchars(formatMetricDifference(
+                        $periodA['asd'],
+                        $periodB['asd'],
+                        true,
+                        2
+                    )) ?>
+                </div>
+            </article>
+
+            </section>
+
+        <section class="card">
+            <div class="card-title">Calculation Breakdown</div>
+            <div class="card-subtitle">
+                Active Agents and ASD by country. Singapore sales are converted
+                to MYR before ASD is calculated.
+            </div>
+
+            <div class="table-wrap">
+                <table class="comparison-table country-breakdown-table">
+                    <thead>
+                        <tr>
+                            <th>Country</th>
+                            <th>Active Agent <?= htmlspecialchars($periodAMonthName) ?></th>
+                            <th>Active Agent <?= htmlspecialchars($periodBMonthName) ?></th>
+                            <th>Difference (%)</th>
+                            <th>ASD <?= htmlspecialchars($periodAMonthName) ?></th>
+                            <th>ASD <?= htmlspecialchars($periodBMonthName) ?></th>
+                            <th>Difference (%)</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <?php foreach ($countryBreakdown as $country): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($country['label']) ?></td>
+                                <td><?= number_format($country['period_a']['active_agents']) ?></td>
+                                <td><?= number_format($country['period_b']['active_agents']) ?></td>
+                                <td class="<?= changeClass($country['agent_change']) ?>"><?= formatChange($country['agent_change']) ?></td>
+                                <td>RM<?= number_format($country['period_a']['asd'], 2) ?></td>
+                                <td>RM<?= number_format($country['period_b']['asd'], 2) ?></td>
+                                <td class="<?= changeClass($country['asd_change']) ?>"><?= formatChange($country['asd_change']) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    <?php endif; ?>
 
 </main>
 </div>
 
 <script>
 (function () {
-    var form = document.getElementById('asdFilterForm');
-    if (!form) return;
+    'use strict';
 
-    var errorsContainer = document.getElementById('report-errors');
-    var resultsContainer = document.getElementById('report-results');
-    var submitButton = form.querySelector('.apply-button');
+    let activeRequest = null;
 
-    function loadReport(formData) {
-        var params = new URLSearchParams(formData);
-        params.set('apply', '1');
+    function bindAjaxForm(scope) {
+        scope.querySelectorAll('form[method="get"], form:not([method])').forEach(function (form) {
+            if (form.dataset.ajaxBound === '1') return;
 
-        // Only used as the fetch target — the address bar is never touched.
-        var url = 'asd_comparison.php?' + params.toString();
+            form.dataset.ajaxBound = '1';
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
 
-        if (submitButton) submitButton.disabled = true;
+                if (!form.reportValidity()) return;
 
-        fetch(url, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(function (response) {
-            if (!response.ok) throw new Error('Request failed');
-            return response.json();
-        })
-        .then(function (data) {
-            if (errorsContainer) errorsContainer.innerHTML = data.errors_html || '';
-            if (resultsContainer) resultsContainer.innerHTML = data.results_html || '';
-        })
-        .catch(function () {
-            if (errorsContainer) {
-                errorsContainer.innerHTML =
-                    '<div class="error-box" role="alert"><ul><li>Unable to load the ASD report data.</li></ul></div>';
-            }
-        })
-        .finally(function () {
-            if (submitButton) submitButton.disabled = false;
+                const url = new URL(form.action || window.location.href, window.location.href);
+                url.search = new URLSearchParams(new FormData(form)).toString();
+
+                const button = form.querySelector('button[type="submit"], input[type="submit"]');
+                const originalText = button
+                    ? (button.tagName === 'INPUT' ? button.value : button.textContent)
+                    : '';
+
+                if (button) {
+                    button.disabled = true;
+                    if (button.tagName === 'INPUT') button.value = 'Loading...';
+                    else button.textContent = 'Loading...';
+                }
+
+                loadReport(url.toString(), true).finally(function () {
+                    if (!button || !button.isConnected) return;
+                    button.disabled = false;
+                    if (button.tagName === 'INPUT') button.value = originalText;
+                    else button.textContent = originalText;
+                });
+            });
         });
     }
 
-    form.addEventListener('submit', function (e) {
-        e.preventDefault();
-        loadReport(new FormData(form));
+    async function loadReport(url, updateHistory) {
+        const currentMain = document.querySelector('main.main');
+        if (!currentMain) {
+            window.location.assign(url);
+            return;
+        }
+
+        if (activeRequest) activeRequest.abort();
+
+        const controller = new AbortController();
+        activeRequest = controller;
+
+        try {
+            const response = await fetch(url, {
+                headers: { Accept: 'text/html' },
+                credentials: 'same-origin',
+                signal: controller.signal
+            });
+
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (response.redirected) {
+                window.location.assign(response.url);
+                return;
+            }
+
+            const html = await response.text();
+            const nextDocument = new DOMParser().parseFromString(html, 'text/html');
+            const nextMain = nextDocument.querySelector('main.main');
+
+            if (!nextMain) throw new Error('Invalid report response.');
+
+            currentMain.replaceWith(nextMain);
+            document.title = nextDocument.title || document.title;
+
+            if (updateHistory) {
+                window.history.pushState({ reportAjax: true }, '', url);
+            }
+
+            nextMain.setAttribute('tabindex', '-1');
+            bindAjaxForm(nextMain);
+            nextMain.focus({ preventScroll: true });
+            document.dispatchEvent(new CustomEvent('report:updated'));
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+
+            const main = document.querySelector('main.main') || currentMain;
+            const oldError = main.querySelector('.ajax-error-box');
+            if (oldError) oldError.remove();
+
+            const errorBox = document.createElement('div');
+            errorBox.className = 'error-box ajax-error-box';
+            errorBox.setAttribute('role', 'alert');
+            errorBox.textContent =
+                'Unable to update the report. Please check your connection and try again.';
+            main.prepend(errorBox);
+        } finally {
+            if (activeRequest === controller) activeRequest = null;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const main = document.querySelector('main.main');
+        if (main) bindAjaxForm(main);
+    });
+
+    window.addEventListener('popstate', function () {
+        loadReport(window.location.href, false);
     });
 })();
 </script>

@@ -302,50 +302,35 @@ function isCategoryQuantityRow(
 
     return match ($category) {
         // Reference quantity for BCDB comes from BCD-002
-        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' =>
-            $itemCode === 'BCD-002',
+        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' => $itemCode === 'BCD-002',
 
         // CA-6 is the loose component generated from Unicorn cartons and packs. Not count CA-006/CAC-011
-        'UNICORN STRAWBERRY CHOCOLATE TUB' =>
-            $itemCode === 'CA-6',
+        'UNICORN STRAWBERRY CHOCOLATE TUB' => $itemCode === 'CA-6',
 
-        'CUTIE MINI CHOCO CRUNCH TUB' =>
-            $itemCode === 'CA-9',
+        'CUTIE MINI CHOCO CRUNCH TUB' => $itemCode === 'CA-9',
 
-        'CUTIE CHOCO BALL TUB' =>
-            $itemCode === 'CA-8',
+        'CUTIE CHOCO BALL TUB' => $itemCode === 'CA-8',
 
-        'CUTIE MINI CHOCO DORAYAKI TUB' =>
-            $itemCode === 'CA-13',
+        'CUTIE MINI CHOCO DORAYAKI TUB' => $itemCode === 'CA-13',
 
-        'CUTIE CHOCO RICE TUB' =>
-            $itemCode === 'CA-12',
+        'CUTIE CHOCO RICE TUB' => $itemCode === 'CA-12',
 
-        'PISTACHIO DREAM TUB' =>
-            $itemCode === 'CA-15',
+        'PISTACHIO DREAM TUB' => $itemCode === 'CA-15',
 
-        'COTTON CANDY CHOCOLATE TUB' =>
-            $itemCode === 'CA-10',
+        'COTTON CANDY CHOCOLATE TUB' => $itemCode === 'CA-10',
 
         // Reference Zeky quantity comes from its loose component
-        'ZEKY BRAIN HERO' =>
-            $itemCode === 'ZEKY-BH',
+        'ZEKY BRAIN HERO' => $itemCode === 'ZEKY-BH',
 
         // Brazillian Coffee loose component
-        'BRAZILIAN COFFEE DRINK' =>
-            $itemCode === 'BRC-001',
+        'BRAZILIAN COFFEE DRINK' => $itemCode === 'BRC-001',
 
         // Nafesa scarves
-        'SCARF' =>
-            $productType === 'NORMAL' ||
-            (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode),
-
-        'INNER' =>
-            $productType === 'NORMAL',
+        'SCARF' => $productType === 'NORMAL' || (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode),
+        'INNER' => $productType === 'NORMAL',
 
         // Other categories use normal/loose rows only
-        default =>
-            $productType === 'NORMAL',
+        default => $productType === 'NORMAL',
     };
 }
 
@@ -557,9 +542,7 @@ function splitRankings(array $products): array
      */
     $remainingProducts = array_slice($products, RANKING_LIMIT);
 
-    $bottom = array_reverse(
-        array_slice($remainingProducts, -RANKING_LIMIT)
-    );
+    $bottom = array_reverse(array_slice($remainingProducts, -RANKING_LIMIT));
 
     return [
         'top'   => $top,
@@ -615,16 +598,12 @@ $defaultFrom = $yesterday
 
 $defaultTo = $yesterday->format('Y-m-d');
 
-$requestData = $_SERVER['REQUEST_METHOD'] === 'POST'
-    ? $_POST
-    : $_GET;
-
-$from = is_string($requestData['from'] ?? null)
-    ? $requestData['from']
+$from = is_string($_GET['from'] ?? null)
+    ? $_GET['from']
     : $defaultFrom;
 
-$to = is_string($requestData['to'] ?? null)
-    ? $requestData['to']
+$to = is_string($_GET['to'] ?? null)
+    ? $_GET['to']
     : $defaultTo;
 
 $errors = [];
@@ -644,6 +623,8 @@ $rankings = [
 $overallSales = 0.00;
 $topSales = 0.00;
 $topPercentage = 0.00;
+$bttomSales = 0.00;
+$bottomPercentage = 0.00;
 
 $pdo = getDBConnection();
 
@@ -673,13 +654,28 @@ if(empty($errors) && $pdo) {
         $rankings = splitRankings($products);
 
         $topSales = round(
-            array_sum(array_column($rankings['top'], 'total_sales')),
-            2
+            array_sum(array_column($rankings['top'], 'total_sales')), 2
         );
 
         $topPercentage = $overallSales > 0
             ? round(($topSales / $overallSales) * 100, 2)
             : 0.00;
+        $bottomSales = round(
+            array_sum(
+                array_column(
+                    $rankings['bottom'],
+                    'total_sales'
+                )
+            ),
+            2
+        );
+
+        // Calculate the Bottom 10 contribution to overall sales
+        $bottomPercentage =$overallSales > 0
+        ? round(
+            ($bottomSales / $overallSales) * 100, 2
+        )
+        : 0.00;
     } catch (Throwable $e) {
         error_log(
             'Overall Top/Bottom Product report failed: ' .
@@ -829,7 +825,7 @@ include __DIR__ . '/../includes/sidebar.php';
             Select the Tax Invoice reporting period.
         </div>
 
-        <form method="post" action="" class="filter-grid" id="report-filter">
+        <form method="get" action="" class="filter-grid">
             <div class="field">
                 <label for="from">From</label>
                 <input type="date" id="from" name="from" value="<?= htmlspecialchars($from) ?>" required>
@@ -846,7 +842,6 @@ include __DIR__ . '/../includes/sidebar.php';
         </form>
     </section>
 
-    <div id="report-results">
     <?php if (empty($errors)): ?>
         <section class="summary-grid">
             <article class="summary-card">
@@ -908,7 +903,22 @@ include __DIR__ . '/../includes/sidebar.php';
                                 <th>(%)</th>
                             </tr>
                         </thead>
-                        <tbody><?php renderProductRows($rankings['bottom']);?>
+                        <tbody>
+                            <?php renderProductRows($rankings['bottom']); ?>
+
+                            <?php if (!empty($rankings['bottom'])): ?>
+                                <tr class="total-row">
+                                    <td colspan="3">Bottom 10 Sales</td>
+                                    <td>RM<?= number_format($bottomSales, 2) ?></td>
+                                    <td><?= number_format($bottomPercentage, 2) ?>%</td>
+                                </tr>
+
+                                <tr class="total-row">
+                                    <td colspan="3">Overall Sales</td>
+                                    <td>RM<?= number_format($overallSales, 2) ?></td>
+                                    <td><?= $overallSales > 0 ? '100.00%' : '0.00%' ?></td>
+                                </tr>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
@@ -923,53 +933,117 @@ include __DIR__ . '/../includes/sidebar.php';
             are excluded.
         </div>
     <?php endif; ?>
-    </div>
     </main>
     </div>
-</body>
 <script>
-    document
-        .getElementById('report-filter')
-        .addEventListener('submit', async function(event) {
-            event.preventDefault();
+(function () {
+    'use strict';
 
-            const form = event.currentTarget;
-            const button = form.querySelector('button[type="submit"]');
-            const results = document.getElementById('report-results');
-            const originalLabel = button.textContent;
+    let activeRequest = null;
 
-            button.disabled = true;
-            button.textContent = 'Loading...';
+    function bindAjaxForm(scope) {
+        scope.querySelectorAll('form[method="get"], form:not([method])').forEach(function (form) {
+            if (form.dataset.ajaxBound === '1') return;
 
-            try {
-                const response = await fetch(form.action || window.location.href, {
-                    method: 'POST',
-                    body: new FormData(form),
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            form.dataset.ajaxBound = '1';
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+
+                if (!form.reportValidity()) return;
+
+                const url = new URL(form.action || window.location.href, window.location.href);
+                url.search = new URLSearchParams(new FormData(form)).toString();
+
+                const button = form.querySelector('button[type="submit"], input[type="submit"]');
+                const originalText = button
+                    ? (button.tagName === 'INPUT' ? button.value : button.textContent)
+                    : '';
+
+                if (button) {
+                    button.disabled = true;
+                    if (button.tagName === 'INPUT') button.value = 'Loading...';
+                    else button.textContent = 'Loading...';
+                }
+
+                loadReport(url.toString(), true).finally(function () {
+                    if (!button || !button.isConnected) return;
+                    button.disabled = false;
+                    if (button.tagName === 'INPUT') button.value = originalText;
+                    else button.textContent = originalText;
                 });
-
-                if (!response.ok) {
-                    throw new Error('Unable to load the report.');
-                }
-
-                const html = await response.text();
-                const documentParser = new DOMParser();
-                const nextDocument = documentParser.parseFromString(html, 'text/html');
-                const nextResults = nextDocument.getElementById('report-results');
-
-                if (!nextResults) {
-                    throw new Error('Invalid report response.');
-                }
-
-                results.replaceWith(nextResults);
-            } catch (error) {
-                results.innerHTML = '<div class="error-box" role="alert">' +
-                    'Unable to load the report. Please try again.' +
-                    '</div>';
-            } finally {
-                button.disabled = false;
-                button.textContent = originalLabel;
-            }
+            });
         });
+    }
+
+    async function loadReport(url, updateHistory) {
+        const currentMain = document.querySelector('main.main');
+        if (!currentMain) {
+            window.location.assign(url);
+            return;
+        }
+
+        if (activeRequest) activeRequest.abort();
+
+        const controller = new AbortController();
+        activeRequest = controller;
+
+        try {
+            const response = await fetch(url, {
+                headers: { Accept: 'text/html' },
+                credentials: 'same-origin',
+                signal: controller.signal
+            });
+
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (response.redirected) {
+                window.location.assign(response.url);
+                return;
+            }
+
+            const html = await response.text();
+            const nextDocument = new DOMParser().parseFromString(html, 'text/html');
+            const nextMain = nextDocument.querySelector('main.main');
+
+            if (!nextMain) throw new Error('Invalid report response.');
+
+            currentMain.replaceWith(nextMain);
+            document.title = nextDocument.title || document.title;
+
+            if (updateHistory) {
+                window.history.pushState({ reportAjax: true }, '', url);
+            }
+
+            nextMain.setAttribute('tabindex', '-1');
+            bindAjaxForm(nextMain);
+            nextMain.focus({ preventScroll: true });
+            document.dispatchEvent(new CustomEvent('report:updated'));
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+
+            const main = document.querySelector('main.main') || currentMain;
+            const oldError = main.querySelector('.ajax-error-box');
+            if (oldError) oldError.remove();
+
+            const errorBox = document.createElement('div');
+            errorBox.className = 'error-box ajax-error-box';
+            errorBox.setAttribute('role', 'alert');
+            errorBox.textContent =
+                'Unable to update the report. Please check your connection and try again.';
+            main.prepend(errorBox);
+        } finally {
+            if (activeRequest === controller) activeRequest = null;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const main = document.querySelector('main.main');
+        if (main) bindAjaxForm(main);
+    });
+
+    window.addEventListener('popstate', function () {
+        loadReport(window.location.href, false);
+    });
+})();
 </script>
+</body>
 </html>

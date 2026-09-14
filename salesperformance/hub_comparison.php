@@ -832,38 +832,6 @@ svg{display:block;}
 </main>
 </div><!-- layout -->
 
-<script>
-function openDrawer(){
-    const d = document.getElementById('sidebarDrawer');
-    const o = document.getElementById('drawerOverlay');
-    if (!d || !o) return;
-    d.classList.add('open');
-    o.style.display = 'block';
-    requestAnimationFrame(() => o.classList.add('open'));
-    document.body.style.overflow = 'hidden';
-}
-function closeDrawer(){
-    const d = document.getElementById('sidebarDrawer');
-    const o = document.getElementById('drawerOverlay');
-    if (!d || !o) return;
-    d.classList.remove('open');
-    o.classList.remove('open');
-    setTimeout(() => { o.style.display = 'none'; }, 260);
-    document.body.style.overflow = '';
-}
-document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeDrawer(); });
-function toggleSidebarOnDesktop(){
-    if (window.innerWidth >= 900) {
-        const collapsed = document.body.classList.toggle('sidebar-collapsed');
-        try {
-            if (collapsed) localStorage.setItem('adminSidebarCollapsed', '1');
-            else localStorage.removeItem('adminSidebarCollapsed');
-        } catch (e) {}
-    } else {
-        openDrawer();
-    }
-}
-
 // ════════════════════════════════════════════════════
 // HUB META (mirrors PHP HUBS constant)
 // ════════════════════════════════════════════════════
