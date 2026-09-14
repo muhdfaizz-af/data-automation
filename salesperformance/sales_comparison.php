@@ -1012,6 +1012,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 </main>
 </div><!-- layout -->
 
+<script>
 function formatRM(n){
     return 'RM ' + Number(n || 0).toLocaleString('en-MY', {minimumFractionDigits:2, maximumFractionDigits:2});
 }

@@ -832,15 +832,11 @@ svg{display:block;}
 </main>
 </div><!-- layout -->
 
+<script>
 // ════════════════════════════════════════════════════
 // HUB META (mirrors PHP HUBS constant)
 // ════════════════════════════════════════════════════
-const HUBS = {
-    west:      { label: 'West Malaysia', color: '#2563EB', hover: '#1D4ED8' },
-    east:      { label: 'East Malaysia',  color: '#00B4B4', hover: '#008A8A' },
-    brunei:    { label: 'Brunei',         color: '#E0202E', hover: '#8E1620' },
-    singapore: { label: 'Singapore',      color: '#F5A623', hover: '#c97e0e' },
-};
+const HUBS = <?= json_encode(HUBS) ?>;
 const HUB_KEYS = Object.keys(HUBS);
 
 function formatRM(n){
