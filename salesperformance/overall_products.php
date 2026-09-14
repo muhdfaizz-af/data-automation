@@ -131,6 +131,7 @@ function validatePeriod(string $from, string $to): string
 function cleanProductName(string $description): string
 {
     $description = trim($description);
+    $description = preg_replace('/\s*\((?:NORMAL|COMPOSITE)\)\s*/i', ' ', $description);
     $description = preg_replace('/^\s*\(PREORDER\)\s*/i', '', $description);
     $description = preg_replace('/\s*\(FULFILMENT[^)]*\)\s*/i', '', $description);
     $description = preg_replace('/\s+/', ' ', $description);
@@ -178,8 +179,9 @@ function identifyProductCategory(
 
     // Belgian Chocolate Drink family
     if (
-        preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002)(?:-|$)/', $itemCode) ||
-        str_contains($description, '(BCDB) BOX BELGIAN CHOCOLATE DRINK')
+        preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002|Q-BCD-002)(?:-|$)/', $itemCode) ||
+        str_contains($description, '(BCDB) BOX BELGIAN CHOCOLATE DRINK') ||
+        str_contains($description, 'BELGIAN CHOCOLATE DRINK')
     ) {
         return '(BCDB) BOX BELGIAN CHOCOLATE DRINK';
     }
@@ -278,7 +280,7 @@ function identifyProductCategory(
 
     // Other Choco Albab products are consolidate by cleaned name
     if ($brand === 'CHOCO ALBAB') {
-        return $productType === 'NORMAL'
+        return in_array($productType, ['NORMAL', 'COMPOSITE'], true)
             ? cleanProductName($description)
             : null;
     }
@@ -411,9 +413,6 @@ function getOverallProducts(
                 $sales *= SGD_TO_MYR_RATE;
             }
 
-            // Overall sales includes every MY/SG Tax Invoice line in scope.
-            $overallSales += $sales;
-
             $upperDescription = strtoupper($description);
 
             // Mixed cartons are divided equally between their two products.
@@ -441,6 +440,9 @@ function getOverallProducts(
             }
 
             foreach ($allocations as $category => $salesShare) {
+                // Overall sales includes invoice amounts linked to qualifying SKU categories.
+                $overallSales += $sales * $salesShare;
+
                 if (!isset($categories[$category])) {
                     $categories[$category] = [
                         'category'       => $category,
