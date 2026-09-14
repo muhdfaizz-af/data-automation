@@ -206,7 +206,8 @@ COMMENT='Stores manual/external sales channel names';
 INSERT IGNORE INTO `sales_channels` (`channel_code`, `channel_name`) VALUES
 ('MODERN TRADE', 'OTHER SALES'),
 ('TIKTOK', 'OTHER SALES'),
-('SHOPEE', 'OTHER SALES');
+('SHOPEE', 'OTHER SALES'),
+('WAREHOUSE', 'OTHER SALES');
 
 -- ============================================================
 -- Table: manual_sales (UPDATED - with company_id)
@@ -218,7 +219,7 @@ CREATE TABLE `manual_sales` (
   `sales_channel_id` BIGINT UNSIGNED NOT NULL,
   `sales_date` DATE NOT NULL,
   `amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-  `brand` ENUM('CHOCO ALBAB', 'NAFESA', 'ZEKY') NOT NULL DEFAULT 'CHOCO ALBAB',
+  `brand` ENUM('CHOCO ALBAB', 'NAFESA', 'ZEKY') DEFAULT NULL,
   `remarks` TEXT DEFAULT NULL,
   `entered_by` BIGINT UNSIGNED DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
