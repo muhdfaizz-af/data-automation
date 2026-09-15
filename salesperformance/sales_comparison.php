@@ -675,26 +675,135 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .chart-type-select:focus{border-color:var(--red);}
 
 /* ── CHART AREA ── */
-.chart-wrap{position:relative;height:280px;transition:opacity .15s;}
+.chart-wrap{position:relative;height:320px;padding:18px 8px 0;transition:opacity .15s;}
 .chart-wrap.is-loading{opacity:.35;pointer-events:none;}
 .chart-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--gray-500);font-size:13px;font-weight:600;text-align:center;}
 .chart-empty.show{display:flex;}
 
-/* ── BREAKDOWN TABLE (per section, full card width, mirrors the chart's current filtered range) ── */
-.comparison-table-wrap{margin-top:20px;width:100%;}
+/* ════════════════════════════════════════════════════
+   BREAKDOWN TABLE — polished, section-aware design
+   ════════════════════════════════════════════════════ */
+.comparison-table-wrap{margin-top:24px;width:100%;}
 .comparison-table-wrap.is-loading{opacity:.35;pointer-events:none;}
-.comparison-table-title{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px;}
-.comparison-table-scroll{overflow-x:auto;border:1px solid var(--gray-100);border-radius:var(--radius-md);width:100%;}
-.comparison-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:auto;}
-.comparison-table thead th{background:var(--green);color:#fff;text-align:left;padding:12px 16px;font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.3px;white-space:nowrap;}
-.comparison-table tbody td{padding:11px 16px;border-top:1px solid var(--gray-100);white-space:nowrap;}
-.comparison-table tbody tr:hover{background:var(--gray-100);}
-.comparison-table td.col-total{font-weight:700;}
-.change-positive{color:var(--green);font-weight:700;}
-.change-negative{color:var(--red);font-weight:700;}
-.change-neutral{color:var(--gray-500);font-weight:600;}
+.comparison-table-title{
+  font-size:11px;font-weight:800;color:var(--gray-700);
+  text-transform:uppercase;letter-spacing:.5px;
+  margin-bottom:10px;display:flex;align-items:center;gap:8px;
+}
+.comparison-table-title::before{
+  content:"";width:3px;height:14px;border-radius:2px;background:var(--gray-300);
+}
+#dailyCard .comparison-table-title::before{background:var(--red);}
+.card-teal .comparison-table-title::before{background:var(--teal);}
+.card-gold .comparison-table-title::before{background:var(--gold);}
 
-@media(max-width:600px){.main{padding:16px 14px 40px;} .stats-row{flex-direction:column;align-items:flex-start;} .global-filter-hint{margin-left:0;max-width:none;}}
+.comparison-table-scroll{
+  overflow-x:auto;border:1px solid var(--gray-100);
+  border-radius:var(--radius-md);background:#fff;
+  box-shadow:0 1px 2px rgba(20,20,30,.03);
+}
+.comparison-table{
+  width:100%;border-collapse:separate;border-spacing:0;
+  font-size:12.5px;
+}
+.comparison-table thead th{
+  padding:12px 16px;
+  background:#F9F9FB;
+  color:var(--gray-700);
+  font-size:10px;font-weight:800;text-align:left;
+  text-transform:uppercase;letter-spacing:.5px;
+  white-space:nowrap;
+  border-bottom:1.5px solid var(--gray-300);
+  position:sticky;top:0;z-index:1;
+}
+.comparison-table thead th:not(:first-child){text-align:right;}
+
+/* header colour per section */
+#dailyCard .comparison-table thead th{
+  background:linear-gradient(180deg,#FFF5F6,#FDEDEE);
+  color:var(--red-dark);
+  border-bottom-color:#F5C2C7;
+}
+.card-teal .comparison-table thead th{
+  background:linear-gradient(180deg,#F0FDFD,#E0F7F7);
+  color:var(--teal-dark);
+  border-bottom-color:#A8E6E6;
+}
+.card-gold .comparison-table thead th{
+  background:linear-gradient(180deg,#FFF9EE,#FEF3DC);
+  color:#8A5A0E;
+  border-bottom-color:#F3D9A3;
+}
+
+.comparison-table tbody td{
+  padding:11px 16px;
+  border-top:1px solid var(--gray-100);
+  white-space:nowrap;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+.comparison-table tbody td:not(:first-child){text-align:right;}
+
+/* zebra striping */
+.comparison-table tbody tr:nth-child(even){background:#FAFAFC;}
+
+/* hover */
+.comparison-table tbody tr{transition:background .15s ease;}
+.comparison-table tbody tr:hover{background:#FFF0F1;}
+.card-teal .comparison-table tbody tr:hover{background:#EAFBFA;}
+.card-gold .comparison-table tbody tr:hover{background:#FFF8E9;}
+
+/* first column — period label */
+.comparison-table tbody td:first-child{
+  font-weight:700;color:var(--ink);
+  border-right:1px solid var(--gray-100);
+}
+/* Total sales column — section colour */
+.comparison-table tbody td.col-total{
+  font-weight:800;
+  color:var(--red-dark);
+}
+.card-teal .comparison-table tbody td.col-total{color:var(--teal-dark);}
+.card-gold .comparison-table tbody td.col-total{color:#8A5A0E;}
+
+/* Difference badges (pill style) */
+.change-positive,
+.change-negative,
+.change-neutral{
+  display:inline-flex;align-items:center;justify-content:flex-end;gap:3px;
+  min-width:72px;
+  padding:3px 9px;border-radius:999px;
+  font-size:11.5px;font-weight:800;
+  line-height:1.2;
+}
+.change-positive{color:#065F46;background:#D1FAE5;}
+.change-negative{color:#991B1B;background:#FEE2E2;}
+.change-neutral {color:#6B7280;background:#F3F4F6;font-weight:700;}
+
+/* footer total */
+.comparison-table tfoot td{
+  padding:13px 16px;
+  font-weight:800;
+  border-top:2px solid var(--ink);
+  background:#F9F9FB;
+  color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+.comparison-table tfoot td:not(:first-child){text-align:right;}
+.comparison-table tfoot td.col-total{
+  color:var(--red-dark);font-size:13px;
+}
+.card-teal .comparison-table tfoot td.col-total{color:var(--teal-dark);}
+.card-gold .comparison-table tfoot td.col-total{color:#8A5A0E;}
+
+@media(max-width:600px){
+  .main{padding:16px 14px 40px;}
+  .stats-row{flex-direction:column;align-items:flex-start;}
+  .global-filter-hint{margin-left:0;max-width:none;}
+  .comparison-table tbody td,
+  .comparison-table thead th,
+  .comparison-table tfoot td{padding:9px 10px;font-size:11.5px;}
+  .change-positive,.change-negative,.change-neutral{padding:2px 7px;font-size:11px;min-width:60px;}
+}
 </style>
 </head>
 <body>
@@ -814,13 +923,26 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 
     <!-- Breakdown table: full card width, mirrors dailyForm's current filtered range -->
     <div class="comparison-table-wrap" id="dailyTableWrap">
-      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-title">Daily Sales Breakdown</div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
-            <tr><th>Date</th><th>Total Sales</th><th>Changes (%)</th></tr>
+            <tr>
+              <th>Date</th>
+              <th>Total Sales</th>
+              <th>Difference (RM)</th>
+              <th>Difference (%)</th>
+            </tr>
           </thead>
           <tbody id="dailyTableBody"></tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="col-total" id="dailyTableTotal">—</td>
+              <td>—</td>
+              <td>—</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -881,8 +1003,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
             </div>
           </div>
           <select class="chart-type-select" data-chart="monthly">
-            <option value="line" selected>Line Chart</option>
-            <option value="bar" >Bar Chart</option>
+            <option value="line" >Line Chart</option>
+            <option value="bar" selected>Bar Chart</option>
           </select>
         </div>
         <div class="chart-wrap" id="monthlyChartWrap">
@@ -894,13 +1016,26 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 
     <!-- Breakdown table: full card width, mirrors monthlyForm's current filtered range -->
     <div class="comparison-table-wrap" id="monthlyTableWrap">
-      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-title">Monthly Sales Breakdown</div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
-            <tr><th>Month</th><th>Total Sales</th><th>Changes (%)</th></tr>
+            <tr>
+              <th>Month</th>
+              <th>Total Sales</th>
+              <th>Difference (RM)</th>
+              <th>Difference (%)</th>
+            </tr>
           </thead>
           <tbody id="monthlyTableBody"></tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="col-total" id="monthlyTableTotal">—</td>
+              <td>—</td>
+              <td>—</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -995,15 +1130,28 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
       </div>
     </div>
 
-    <!-- Breakdown table: full card width, mirrors yearlyForm's current filtered range, with actual date detail -->
+    <!-- Breakdown table: full card width, mirrors yearlyForm's current filtered range -->
     <div class="comparison-table-wrap" id="yearlyTableWrap">
-      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-title">Yearly Sales Breakdown</div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
-            <tr><th>Year</th><th>Total Sales</th><th>Changes (%)</th></tr>
+            <tr>
+              <th>Year</th>
+              <th>Total Sales</th>
+              <th>Difference (RM)</th>
+              <th>Difference (%)</th>
+            </tr>
           </thead>
           <tbody id="yearlyTableBody"></tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="col-total" id="yearlyTableTotal">—</td>
+              <td>—</td>
+              <td>—</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -1020,6 +1168,7 @@ function formatRM(n){
 function chartBaseOptions(){
     return {
         responsive:true, maintainAspectRatio:false,
+    layout:{padding:{top:24,right:10,left:4,bottom:4}},
         plugins:{
             legend:{display:false},
             tooltip:{
@@ -1031,10 +1180,47 @@ function chartBaseOptions(){
         },
         scales:{
             x:{ grid:{display:false}, ticks:{font:{family:"'Plus Jakarta Sans'", weight:'600', size:11}} },
-            y:{ beginAtZero:true, grid:{color:'#F2F2F4'}, ticks:{font:{family:"'Plus Jakarta Sans'"}, callback:(v)=> 'RM ' + v.toLocaleString('en-MY')} }
+            y:{ beginAtZero:true, grace:'12%', grid:{color:'#F2F2F4'}, ticks:{font:{family:"'Plus Jakarta Sans'"}, callback:(v)=> 'RM ' + v.toLocaleString('en-MY')} }
         }
     };
 }
+
+  const barValueLabels = {
+    id: 'barValueLabels',
+    afterDatasetsDraw(chart) {
+      if (chart.config.type !== 'bar') return;
+
+      const context = chart.ctx;
+      context.save();
+      context.font = "700 12px 'Plus Jakarta Sans', sans-serif";
+      context.fillStyle = '#4A4A52';
+      context.textAlign = 'center';
+      context.textBaseline = 'bottom';
+
+      const occupiedLabels = [];
+      chart.data.datasets.forEach((dataset, datasetIndex) => {
+        const meta = chart.getDatasetMeta(datasetIndex);
+        meta.data.forEach((bar, index) => {
+          const value = Number(dataset.data[index] || 0);
+          if (value <= 0) return;
+
+          const text = formatRM(value);
+          const textWidth = context.measureText(text).width;
+          const left = bar.x - textWidth / 2;
+          const right = bar.x + textWidth / 2;
+          const hasCollision = occupiedLabels.some(label => left < label.right + 6 && right > label.left - 6);
+
+          // Skip tightly packed labels rather than letting values overlap.
+          if (hasCollision && bar.width < textWidth) return;
+
+          context.fillText(text, bar.x, bar.y - 8);
+          occupiedLabels.push({ left, right });
+        });
+      });
+
+      context.restore();
+    }
+  };
 
 function makeDataset(type, label, data, color, hoverColor, ctx){
     if (type === 'line') {
@@ -1092,7 +1278,8 @@ function renderChart(key, type){
     chartInstances[key] = new Chart(ctx, {
         type: type === 'line' ? 'line' : 'bar',
         data:{ labels, datasets:[ makeDataset(type, label, values, color, hover, ctx) ] },
-        options: chartBaseOptions()
+      options: chartBaseOptions(),
+      plugins: type === 'bar' ? [barValueLabels] : []
     });
 }
 
@@ -1127,7 +1314,7 @@ function buildPeriodLabel(key, label, rowKey){
 
 // ════════════════════════════════════════════════════
 // BREAKDOWN TABLE — mirrors chartData[key], one row per label,
-// "Changes (%)" compares each row to the row before it in the SAME range.
+// "Difference (RM)" compares each row to the row before it in the SAME range.
 // ════════════════════════════════════════════════════
 function renderTable(key){
     const tbody = document.getElementById(key + 'TableBody');
@@ -1136,42 +1323,56 @@ function renderTable(key){
     const { labels, values, keys } = chartData[key];
 
     if (!labels.length) {
-        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--gray-500);padding:16px;">No data in this range.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--gray-500);padding:16px;">No data in this range.</td></tr>';
+        const totalCellEmpty = document.getElementById(key + 'TableTotal');
+        if (totalCellEmpty) totalCellEmpty.textContent = formatRM(0);
         return;
     }
 
     let rowsHtml = '';
     let prevValue = null;
+    let grandTotal = 0;
 
     labels.forEach(function(label, i){
         const value = Number(values[i]) || 0;
+        grandTotal += value;
         const rowKey = keys && keys[i] !== undefined ? keys[i] : null;
         const periodLabel = buildPeriodLabel(key, label, rowKey);
-        let changeCell = '<span class="change-neutral">–</span>';
+        let differenceRmCell = '<span class="change-neutral">–</span>';
+        let differencePctCell = '<span class="change-neutral">–</span>';
 
         if (prevValue !== null) {
-            if (prevValue === 0) {
-                changeCell = value > 0
-                    ? '<span class="change-positive">New</span>'
-                    : '<span class="change-neutral">0.00%</span>';
-            } else {
-                const pct = ((value - prevValue) / prevValue) * 100;
-                const cls = pct > 0 ? 'change-positive' : (pct < 0 ? 'change-negative' : 'change-neutral');
-                const sign = pct > 0 ? '+' : '';
-                changeCell = '<span class="' + cls + '">' + sign + pct.toFixed(2) + '%</span>';
-            }
+          const difference = value - prevValue;
+          const cls = difference > 0 ? 'change-positive' : (difference < 0 ? 'change-negative' : 'change-neutral');
+          const sign = difference > 0 ? '+' : (difference < 0 ? '-' : '');
+          differenceRmCell = '<span class="' + cls + '">' + sign + formatRM(Math.abs(difference)) + '</span>';
+
+          if (prevValue === 0) {
+            differencePctCell = value > 0
+              ? '<span class="change-positive">New</span>'
+              : '<span class="change-neutral">0.00%</span>';
+          } else {
+            const percentage = (difference / Math.abs(prevValue)) * 100;
+            const percentageSign = percentage > 0 ? '+' : '';
+            differencePctCell = '<span class="' + cls + '">' + percentageSign + percentage.toFixed(2) + '%</span>';
+          }
         }
 
         rowsHtml += '<tr>'
             + '<td>' + periodLabel + '</td>'
             + '<td class="col-total">' + formatRM(value) + '</td>'
-            + '<td>' + changeCell + '</td>'
+            + '<td>' + differenceRmCell + '</td>'
+            + '<td>' + differencePctCell + '</td>'
             + '</tr>';
 
         prevValue = value;
     });
 
     tbody.innerHTML = rowsHtml;
+
+    // Update footer total
+    const totalCell = document.getElementById(key + 'TableTotal');
+    if (totalCell) totalCell.textContent = formatRM(grandTotal);
 }
 
 // ════════════════════════════════════════════════════

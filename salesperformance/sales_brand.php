@@ -841,13 +841,10 @@ function buildBrandSummary(data) {
         .sort((a, b) => b.total - a.total);
 }
 
-// Round an axis maximum up to a clean number
+// Keep a small headroom above the highest bar without adding a full empty interval.
 function niceMax(value) {
     if (value <= 0) return 100;
-    const pow = Math.pow(10, Math.floor(Math.log10(value)));
-    const n = value / pow;
-    const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
-    return step * pow;
+    return value * 1.08;
 }
 
 function shortMoney(amount) {
@@ -880,7 +877,7 @@ function renderBrandBarChart(rows) {
     }
 
     const groupW = plotW / rows.length;
-    const barW = Math.max(12, Math.min(30, groupW / 2 - 16));
+    const barW = Math.max(14, Math.min(36, groupW / 2 - 12));
     const barGap = 4;
 
     rows.forEach((row, i) => {
@@ -896,7 +893,7 @@ function renderBrandBarChart(rows) {
             if (h > 0) {
                 svg += `<rect x="${bar.x}" y="${top}" width="${barW}" height="${h}" fill="${bar.color}" rx="3"/>`;
             }
-            svg += `<text x="${bar.x + barW / 2}" y="${top - 7}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#4A4A52">${escapeHtml(shortMoney(bar.value))}</text>`;
+            svg += `<text x="${bar.x + barW / 2}" y="${top - 8}" text-anchor="middle" font-size="11" font-weight="700" fill="#4A4A52">${escapeHtml(shortMoney(bar.value))}</text>`;
         });
 
         svg += `<text x="${cx}" y="${padT + plotH + 20}" text-anchor="middle" font-size="11" font-weight="700" fill="#4A4A52">${escapeHtml(row.brand)}</text>`;

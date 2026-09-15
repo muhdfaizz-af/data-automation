@@ -173,6 +173,20 @@ function identifyProductCategory(
         ' BOARD ',
     ];
 
+    // JOY CUP composite descriptions are the sales categories; their
+    // quantities come from the matching BPC loose component rows.
+    if ($itemCode === 'BPCC-001' || str_contains($description, 'JOY CUP 12 OZ DOME SET')) {
+        return 'JOY CUP 12 OZ DOME SET (100PCS)';
+    }
+
+    if ($itemCode === 'BPCC-002' || str_contains($description, 'JOY CUP 12 OZ SIPPY SET')) {
+        return 'JOY CUP 12 OZ SIPPY SET (100PCS)';
+    }
+
+    if ($itemCode === 'BPCC-003' || str_contains($description, 'JOY CUP 16 OZ DOME SET')) {
+        return 'JOY CUP 16 OZ DOME SET (100PCS)';
+    }
+
     foreach ($excludedTerms as $term) {
         if (str_contains($description, $term)) {
             return null;
@@ -328,12 +342,8 @@ function isCategoryQuantityRow(
     }
 
     return match ($category) {
-        // Reference quantity for BCDB comes from BCD-002
-        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' => in_array(
-            $itemCode,
-            ['BCD-002', 'JOY-BUNDLE-1'],
-            true
-        ),
+        // Joy bundles already have their loose BCD quantity recorded separately.
+        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' => $itemCode === 'BCD-002',
         
         // CA-6 is the loose component generated from Unicorn cartons and packs. Not count CA-006/CAC-011
         'UNICORN STRAWBERRY CHOCOLATE TUB' => $itemCode === 'CA-6',
@@ -418,6 +428,7 @@ function getOverallProducts(
 
     $sql = "
     SELECT
+        oi.order_id,
         UPPER(TRIM(COALESCE(oi.brand, ''))) AS brand,
         oi.product_type,
         oi.item_code,
@@ -451,6 +462,7 @@ function getOverallProducts(
             )
 
             GROUP BY
+                oi.order_id,
                 UPPER(TRIM(COALESCE(oi.brand, ''))),
                 oi.product_type,
                 oi.item_code,
@@ -465,6 +477,23 @@ function getOverallProducts(
     $categories = [];
     $overallSales = 0.00;
     $soldScarfCodes = [];
+    $joyBundleOrderIds = [];
+    $joyCupLooseQuantities = [];
+
+    foreach ($rows as $row) {
+        $itemCode = strtoupper(trim((string)$row['item_code']));
+        $orderId = (int)$row['order_id'];
+
+        if ($itemCode === 'JOY-BUNDLE-1') {
+            $joyBundleOrderIds[$orderId] = true;
+        }
+
+        if (in_array($itemCode, ['BPC-001', 'BPC-002'], true)) {
+            $joyCupLooseQuantities[$orderId][$itemCode] =
+                ($joyCupLooseQuantities[$orderId][$itemCode] ?? 0) +
+                (int)$row['row_quantity'];
+        }
+    }
 
     /*
      * Record every Nafesa scarf master code with positive sales. 
@@ -507,8 +536,32 @@ function getOverallProducts(
         $description = (string)($row['item_description'] ?? '');
         $productType = (string)($row['product_type'] ?? '');
         $sales = (float)$row['invoice_sales'];
+        $normalizedItemCode = strtoupper(trim($itemCode));
+        $isJoyBundle = $normalizedItemCode === 'JOY-BUNDLE-1';
+        $isJoyBundleLoose =
+            $normalizedItemCode === 'BCD-002' &&
+            isset($joyBundleOrderIds[(int)$row['order_id']]);
+        $joyCupQuantitySource = match ($normalizedItemCode) {
+            'BPCC-001', 'BPCC-002' => 'BPC-001',
+            'BPCC-003' => 'BPC-002',
+            default => null,
+        };
 
-        if ($row['company_code'] === 'SG') {
+        $category = identifyProductCategory(
+            $brand,
+            $itemCode,
+            $description,
+            $productType
+        );
+
+        // Only JOY-BUNDLE-1 uses its loose BCD quantity for sales.
+        if ($isJoyBundle) {
+            continue;
+        }
+
+        if ($isJoyBundleLoose) {
+            $sales = (float)$row['row_quantity'] * BCD_UNIT_PRICE_MYR;
+        } elseif ($row['company_code'] === 'SG') {
             $sales *= SGD_TO_MYR_RATE;
         }
 
@@ -527,13 +580,6 @@ function getOverallProducts(
                 'CUTIE MINI CHOCO DORAYAKI TUB' => 0.5,
             ];
         } else {
-            $category = identifyProductCategory(
-                $brand,
-                $itemCode,
-                $description,
-                $productType
-            );
-
             $allocations = $category === null
                 ? []
                 : [$category => 1.0];
@@ -574,6 +620,15 @@ function getOverallProducts(
             ) {
                 $categories[$category]['total_quantity'] +=
                     (int)$row['row_quantity'];
+            }
+
+            if (
+                $salesShare === 1.0 &&
+                $joyCupQuantitySource !== null &&
+                isset($joyCupLooseQuantities[(int)$row['order_id']][$joyCupQuantitySource])
+            ) {
+                $categories[$category]['total_quantity'] +=
+                    $joyCupLooseQuantities[(int)$row['order_id']][$joyCupQuantitySource];
             }
 
             $normalizedSourceCode = strtoupper(trim($itemCode));
@@ -762,7 +817,9 @@ if(empty($errors) && $pdo) {
         );
 
         $products = $productReport['products'];
-        $overallSales = getDailySalesTotal($pdo, $from, $to);
+        // Keep the displayed total aligned with item-level adjustments,
+        // including loose BCDB pricing and excluded composite bundles.
+        $overallSales = $productReport['overall_sales'];
 
         foreach ($products as &$product) {
             $product['percentage'] = $overallSales > 0

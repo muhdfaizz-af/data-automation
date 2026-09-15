@@ -1,8 +1,8 @@
 <?php
 /**
- * Manual Sales by Channel
+ * Sales by Channel
  *
- * Displays manual_sales only, grouped by sales channel.
+ * Displays manual sales and system invoice sales, grouped by sales channel.
  * Daily / Month-to-Date / Year-to-Date comparison, as of a Reporting Date —
  * same shape as the Sales by Hub report (3.4 Comparison Sales by Hub).
  */
@@ -74,6 +74,17 @@ function normalizeCompany(mixed $company): string
         : 'all';
 }
 
+function normalizeSalesChannel(string $channel): string
+{
+    $channel = strtoupper(trim($channel));
+
+    return match ($channel) {
+        'AGENT SALES', 'SPC SALES', 'DISTRIBUTOR', 'PRIVILEGE MEMBER' => 'AGENT & SPC SALES',
+        'TIKTOK', 'SHOPEE' => 'ONLINE SALES',
+        default => $channel,
+    };
+}
+
 /**
  * Clamp/validate the single Reporting Date filter: must be a real date,
  * not in the future, and not before 2000-01-01. Falls back to yesterday.
@@ -125,7 +136,46 @@ function getManualChannelRangeTotals(PDO $pdo, string $from, string $to, string 
 
     $totals = [];
     foreach ($statement->fetchAll() as $row) {
-        $totals[(string)$row['channel_code']] = round((float)$row['total_sales'], 2);
+        $code = normalizeSalesChannel((string)$row['channel_code']);
+        $totals[$code] = ($totals[$code] ?? 0.0) + (float)$row['total_sales'];
+    }
+
+    $systemParams = ['system_from_date' => $from . ' 00:00:00', 'system_to_date' => $to . ' 23:59:59'];
+    $systemCompanyCondition = '';
+    if ($companyFilter !== 'all') {
+        $systemCompanyCondition = ' AND c.company_code = :system_company_code';
+        $systemParams['system_company_code'] = $companyFilter;
+    }
+
+    $systemStatement = $pdo->prepare(
+        "SELECT CASE UPPER(TRIM(o.member_type))
+                    WHEN 'DISTRIBUTOR' THEN 'AGENT SALES'
+                    WHEN 'PRIVILEGE MEMBER' THEN 'SPC SALES'
+                END AS channel_code,
+                COALESCE(SUM(
+                    CASE WHEN c.company_code = 'SG'
+                         THEN o.sub_total * " . SGD_TO_MYR_RATE . "
+                         ELSE o.sub_total END
+                ), 0) AS total_sales
+         FROM orders o
+         INNER JOIN companies c ON c.id = o.company_id
+         WHERE o.order_datetime >= :system_from_date
+           AND o.order_datetime <= :system_to_date
+           AND o.order_status = 'confirmed'
+           AND c.company_code IN ('MY', 'SG')
+           AND UPPER(TRIM(o.member_type)) IN ('DISTRIBUTOR', 'PRIVILEGE MEMBER')
+           {$systemCompanyCondition}
+         GROUP BY channel_code"
+    );
+    $systemStatement->execute($systemParams);
+
+    foreach ($systemStatement->fetchAll() as $row) {
+        $code = normalizeSalesChannel((string)$row['channel_code']);
+        $totals[$code] = ($totals[$code] ?? 0.0) + (float)$row['total_sales'];
+    }
+
+    foreach ($totals as $code => $total) {
+        $totals[$code] = round($total, 2);
     }
 
     return $totals;
@@ -163,6 +213,8 @@ if (empty($errors)) {
             $params = [
                 'from_date' => $yearFrom,
                 'to_date' => $reportDate,
+                'system_from_date' => $yearFrom . ' 00:00:00',
+                'system_to_date' => $reportDate . ' 23:59:59',
             ];
 
             if ($companyFilter !== 'all') {
@@ -172,6 +224,10 @@ if (empty($errors)) {
                     WHERE filtered_company.company_code = :company_code
                 )';
                 $params['company_code'] = $companyFilter;
+                $systemCompanyCondition = ' AND c.company_code = :system_company_code';
+                $params['system_company_code'] = $companyFilter;
+            } else {
+                $systemCompanyCondition = '';
             }
 
             // One query for Jan 1 -> Reporting Date, per channel per day. Daily / MTD / YTD
@@ -193,12 +249,42 @@ if (empty($errors)) {
                     ON c.id = ms.company_id
                    {$companyCondition}
                 WHERE sc.is_active = 1
-                ORDER BY sc.channel_code ASC, ms.sales_date ASC
+
+                UNION ALL
+
+                SELECT
+                    CASE UPPER(TRIM(o.member_type))
+                        WHEN 'DISTRIBUTOR' THEN 'AGENT SALES'
+                        WHEN 'PRIVILEGE MEMBER' THEN 'SPC SALES'
+                    END AS channel_code,
+                    CASE UPPER(TRIM(o.member_type))
+                        WHEN 'DISTRIBUTOR' THEN 'AGENT SALES'
+                        WHEN 'PRIVILEGE MEMBER' THEN 'SPC SALES'
+                    END AS channel_name,
+                    DATE(o.order_datetime) AS sales_date,
+                    o.sub_total AS amount,
+                    c.company_code
+                FROM orders o
+                INNER JOIN companies c ON c.id = o.company_id
+                WHERE o.order_datetime >= :system_from_date
+                  AND o.order_datetime <= :system_to_date
+                  AND o.order_status = 'confirmed'
+                  AND c.company_code IN ('MY', 'SG')
+                  AND UPPER(TRIM(o.member_type)) IN ('DISTRIBUTOR', 'PRIVILEGE MEMBER')
+                  {$systemCompanyCondition}
+
+                ORDER BY channel_code ASC, sales_date ASC
             ";
 
             $statement = $pdo->prepare($sql);
             $statement->execute($params);
             $rows = $statement->fetchAll();
+
+            foreach ($rows as &$row) {
+                $row['channel_code'] = normalizeSalesChannel((string)$row['channel_code']);
+                $row['channel_name'] = normalizeSalesChannel((string)$row['channel_name']);
+            }
+            unset($row);
 
             // Master channel list, in stable channel_code order -> assign a stable color to each
             $channelMeta = [];
@@ -356,8 +442,8 @@ if (empty($errors)) {
                 'change' => $yearlyPreviousTotal > 0 ? round(($yearlyCurrentTotal - $yearlyPreviousTotal) / $yearlyPreviousTotal * 100, 2) : null,
             ];
         } catch (Throwable $e) {
-            error_log('Manual sales channel report failed: ' . $e->getMessage());
-            $errors[] = 'Unable to load the manual sales channel report.';
+            error_log('Sales channel report failed: ' . $e->getMessage());
+            $errors[] = 'Unable to load the sales channel report.';
         }
     }
 }
@@ -504,7 +590,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
     <div class="page-header">
         <div>
             <h1>Sales Channel</h1>
-            <p>Manual sales only, grouped by external sales channel.</p>
+            <p>Manual and system invoice sales, grouped by sales channel.</p>
         </div>
         <span class="page-header-badge">Live report</span>
     </div>
@@ -523,7 +609,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
             <div class="report-icon ri-dark"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></div>
             <div>
                 <div class="report-card-title">Report Filters</div>
-                <div class="report-card-sub">Daily = the selected date, Monthly = MTD, Yearly = YTD (up to the selected date). System order sales are not included.</div>
+                <div class="report-card-sub">Daily = the selected date, Monthly = MTD, Yearly = YTD (up to the selected date). Includes manual and system invoice sales.</div>
             </div>
         </div>
         <form method="get" class="global-filter-row">
@@ -719,12 +805,11 @@ function renderChannelRing(canvasId, labels, values, colors) {
         return;
     }
     new Chart(canvas.getContext('2d'), {
-        type: 'doughnut',
+        type: 'pie',
         data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: '#fff', borderWidth: 2 }] },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '62%',
             plugins: {
                 legend: { position: 'bottom', labels: { boxWidth: 9, boxHeight: 9, font: { family: "'Plus Jakarta Sans'", weight: '600', size: 11 }, padding: 10 } },
                 tooltip: {

@@ -149,6 +149,7 @@ function getAsdMetrics(
             ->modify('+1 day')
             ->format('Y-m-d 00:00:00'),
         'order_status'  => 'Confirmed',
+        'member_type' => 'Distributor',
     ];
 
     $orderTypePlaceholders = [];
@@ -231,8 +232,12 @@ function getAsdMetrics(
 
         WHERE o.order_datetime >= :from_date
           AND o.order_datetime < :to_exclusive
-          AND o.order_type IN ({$orderTypeInClause})
           AND o.order_status = :order_status
+          AND o.order_type IN ({$orderTypeInClause})
+
+          AND UPPER(TRIM(COALESCE(o.member_type, ''))) = 
+          UPPER(:member_type)
+          
           {$companyCondition}
     ";
 
