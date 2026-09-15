@@ -220,7 +220,7 @@ function canonicalizeItemCode(string $code): string
         return PRODUCT_CODE_MAP[$code];
     }
 
-    $code = preg_replace('/^(?:PRE|PREORDER)-/i', '', $code);
+    $code = preg_replace('/^(?:(?:PREORDER|PRE|Q)-)+/i', '', $code);
 
     return $code ?: 'UNKNOWN';
 }
@@ -286,9 +286,12 @@ function shouldUseNafesaQuantity(
             }
         }
 
-        if ($itemCode === 'STK-NF' || preg_match('/^STK-NF(?:-|$)/', $itemCode) === 1) {
-            return true;
-        }
+    if (
+        $itemCode === 'STK-NF' ||
+        preg_match('/^STK-NF(?:-|$)/', $itemCode) === 1
+    ) {
+        return false;
+    }
 
         return $productType === 'NORMAL' || preg_match('/^STK-N(?!F(?:-|$))/', $itemCode) === 1;
     }
@@ -318,11 +321,18 @@ function classifyNafesaProduct(
     }
 
     if ($brand === 'STK') {
-        if (preg_match('/^STK-N(?:F(?:-|$)|MJ|RQ|RW|[A-Z0-9]+)/', $itemCode)) {
-            return 'scarf';
-        }
-
+        if (
+        $itemCode === 'STK-NF' ||
+        preg_match('/^STK-NF(?:-|$)/', $itemCode)
+    ) {
         return null;
+    }
+
+    if (preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) {
+        return 'scarf';
+    }
+
+    return null;
     }
 
     if (isNafesaInnerItem($itemCode, $description)) {
