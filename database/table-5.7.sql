@@ -207,7 +207,8 @@ INSERT IGNORE INTO `sales_channels` (`channel_code`, `channel_name`) VALUES
 ('MODERN TRADE', 'OTHER SALES'),
 ('TIKTOK', 'OTHER SALES'),
 ('SHOPEE', 'OTHER SALES'),
-('WAREHOUSE', 'OTHER SALES');
+('WAREHOUSE', 'OTHER SALES'),
+('STAFF PURCHASE', 'OTHER SALES');
 
 -- ============================================================
 -- Table: manual_sales (UPDATED - with company_id)

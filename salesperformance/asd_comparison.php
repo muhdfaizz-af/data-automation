@@ -149,6 +149,7 @@ function getAsdMetrics(
             ->modify('+1 day')
             ->format('Y-m-d 00:00:00'),
         'order_status'  => 'Confirmed',
+        'member_type' => 'Distributor',
     ];
 
     $orderTypePlaceholders = [];
@@ -165,25 +166,28 @@ function getAsdMetrics(
     $companyCondition = '';
 
     /*
-     * Business country rules:
-     * - Brunei: Order ID starts with MYB OR Member ID starts with BN.
+     * Country rules are based only on the member ID prefix:
+    * - Malaysia: any member ID that is not BN or SG
+     * - Brunei: BN
+     * - Singapore: SG
+     *
+     * Do not use order ID or invoice prefix to determine country.
      */
-    if ($companyFilter === 'BN_COUNTRY') {
+    $countryPrefixes = [
+        'BN_COUNTRY' => 'BN',
+        'SG_COUNTRY' => 'SG',
+    ];
+
+    if ($companyFilter === 'MY_COUNTRY') {
         $companyCondition = "
-            AND c.company_code = 'MY'
-            AND (
-                UPPER(TRIM(COALESCE(o.order_id, ''))) LIKE 'MYB%'
-                OR UPPER(TRIM(COALESCE(o.member_code, ''))) LIKE 'BN%'
-            )
+            AND UPPER(TRIM(COALESCE(o.member_code, ''))) NOT LIKE 'BN%'
+            AND UPPER(TRIM(COALESCE(o.member_code, ''))) NOT LIKE 'SG%'
         ";
-    } elseif ($companyFilter === 'MY_COUNTRY') {
+    } elseif (isset($countryPrefixes[$companyFilter])) {
         $companyCondition = "
-            AND c.company_code = 'MY'
-            AND NOT (
-                UPPER(TRIM(COALESCE(o.order_id, ''))) LIKE 'MYB%'
-                OR UPPER(TRIM(COALESCE(o.member_code, ''))) LIKE 'BN%'
-            )
+            AND UPPER(TRIM(COALESCE(o.member_code, ''))) LIKE :member_prefix
         ";
+        $params['member_prefix'] = $countryPrefixes[$companyFilter] . '%';
     } elseif ($companyFilter !== 'all') {
         $companyCondition = ' AND c.company_code = :company_code';
         $params['company_code'] = $companyFilter;
@@ -228,8 +232,12 @@ function getAsdMetrics(
 
         WHERE o.order_datetime >= :from_date
           AND o.order_datetime < :to_exclusive
-          AND o.order_type IN ({$orderTypeInClause})
           AND o.order_status = :order_status
+          AND o.order_type IN ({$orderTypeInClause})
+
+          AND UPPER(TRIM(COALESCE(o.member_type, ''))) = 
+          UPPER(:member_type)
+          
           {$companyCondition}
     ";
 
@@ -407,7 +415,7 @@ $breakdownCountries = [
     'overall' => ['label' => 'Overall', 'filter' => 'all'],
     'malaysia' => ['label' => 'Malaysia', 'filter' => 'MY_COUNTRY'],
     'brunei' => ['label' => 'Brunei', 'filter' => 'BN_COUNTRY'],
-    'singapore' => ['label' => 'Singapore', 'filter' => 'SG'],
+    'singapore' => ['label' => 'Singapore', 'filter' => 'SG_COUNTRY'],
 ];
 
 $countryBreakdown = [];
