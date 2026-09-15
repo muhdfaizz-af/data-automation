@@ -5,7 +5,7 @@
 
 $navBasePath = $navBasePath ?? '';
 $pageTitle = $pageTitle ?? '';
-$showMobileMenu = $showMobileMenu ?? false;
+$showMobileMenu = $showMobileMenu ?? true;
 $adminUsername = $adminUsername ?? '';
 ?>
 <style>
