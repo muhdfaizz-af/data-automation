@@ -29,6 +29,8 @@ require_once __DIR__ . '/../config/db.php';
 
 define('SGD_TO_MYR_RATE', 3.27);
 define('RANKING_LIMIT', 10);
+define('BCD_UNIT_PRICE_MYR', 37.00);
+
 
 /**
  * Codes confirmed to represent the same product can be mapped here.
@@ -179,7 +181,7 @@ function identifyProductCategory(
 
     // Belgian Chocolate Drink family
     if (
-        preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002|Q-BCD-002)(?:-|$)/', $itemCode) ||
+        preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002|JOY-BUNDLE-1|Q-BCD-002)(?:-|$)/', $itemCode) ||
         str_contains($description, '(BCDB) BOX BELGIAN CHOCOLATE DRINK') ||
         str_contains($description, 'BELGIAN CHOCOLATE DRINK')
     ) {
@@ -297,15 +299,42 @@ function identifyProductCategory(
 function isCategoryQuantityRow(
     string $category,
     string $itemCode,
-    string $productType
+    string $productType,
+    string $description
 ): bool {
     $itemCode = strtoupper(trim($itemCode));
     $productType = strtoupper(trim($productType));
+    $description = strtoupper(trim($description));
+    $itemSearchText = $itemCode . ' ' . $description;
+
+    if ($category === 'SCARF') {
+        foreach ([
+            'CHARM',
+            'BRACELET',
+            'KEYCHAIN',
+            'ENAMEL PIN',
+            'HANDSOCK',
+            'HAND SOCK',
+            'STK-NMJ04-MR',
+            'STK-NMJ02-BG',
+            'STK-NMJ06-RC',
+            'STK-NRQ01-EM',
+            'STK-NRW01-EM',
+        ] as $excludedTerm) {
+            if (str_contains($itemSearchText, $excludedTerm)) {
+                return false;
+            }
+        }
+    }
 
     return match ($category) {
         // Reference quantity for BCDB comes from BCD-002
-        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' => $itemCode === 'BCD-002',
-
+        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' => in_array(
+            $itemCode,
+            ['BCD-002', 'JOY-BUNDLE-1'],
+            true
+        ),
+        
         // CA-6 is the loose component generated from Unicorn cartons and packs. Not count CA-006/CAC-011
         'UNICORN STRAWBERRY CHOCOLATE TUB' => $itemCode === 'CA-6',
 
@@ -334,6 +363,40 @@ function isCategoryQuantityRow(
         // Other categories use normal/loose rows only
         default => $productType === 'NORMAL',
     };
+}
+
+// Load the confirmed daily sales total for the selected reporting period.
+function getDailySalesTotal(
+    PDO $pdo,
+    string $from,
+    string $to
+): float {
+    $statement = $pdo->prepare(
+        "SELECT COALESCE(SUM(
+            CASE
+                WHEN c.company_code = 'SG'
+                THEN o.sub_total * :sg_rate
+                ELSE o.sub_total
+            END
+        ), 0) AS daily_sales
+        FROM orders o
+        INNER JOIN companies c ON c.id = o.company_id
+        WHERE o.order_datetime >= :from_date
+          AND o.order_datetime < :to_exclusive
+          AND o.order_status = :confirmed_status
+          AND c.company_code IN ('MY', 'SG')"
+    );
+
+    $statement->execute([
+        'sg_rate' => SGD_TO_MYR_RATE,
+        'from_date' => $from . ' 00:00:00',
+        'to_exclusive' => (new DateTimeImmutable($to))
+            ->modify('+1 day')
+            ->format('Y-m-d 00:00:00'),
+        'confirmed_status' => 'confirmed',
+    ]);
+
+    return round((float)$statement->fetchColumn(), 2);
 }
 
 // Load and consolidate loose products from Tax Invoice MY and SG
@@ -412,6 +475,12 @@ function getOverallProducts(
             if ($row['company_code'] === 'SG') {
                 $sales *= SGD_TO_MYR_RATE;
             }
+            
+            // JOY-BUNDLE-1 is a composite invoice; only its three BCD units
+            // are reported here at RM37 per unit.
+            if ($itemCode === 'JOY-BUNDLE-1') {
+                $sales = 3 * BCD_UNIT_PRICE_MYR;
+            }
 
             $upperDescription = strtoupper($description);
 
@@ -460,11 +529,14 @@ function getOverallProducts(
                     isCategoryQuantityRow(
                         $category,
                         $itemCode,
-                        $productType
+                        $productType,
+                        $description
                     )
                 ) {
                     $categories[$category]['total_quantity'] +=
-                        (int)$row['row_quantity'];
+                        (int)$row['row_quantity'] * (
+                            $itemCode === 'JOY-BUNDLE-1' ? 3 : 1
+                        );                
                 }
 
                 $categories[$category]['source_codes'][
@@ -641,7 +713,7 @@ if(empty($errors) && $pdo) {
         );
 
         $products = $productReport['products'];
-        $overallSales = $productReport['overall_sales'];
+        $overallSales = getDailySalesTotal($pdo, $from, $to);
 
         foreach ($products as &$product) {
             $product['percentage'] = $overallSales > 0
