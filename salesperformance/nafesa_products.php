@@ -1,18 +1,24 @@
 <?php
 /**
- * Top and Bottom Product Report
+ * Top and Bottom Product Report (Simplified Classification)
  *
  * Source:
  * - Tax Invoice MY and SG, stored in order_items
  *
  * Rules:
  * - Include Nafesa products only
- * - Divide products into Scarf, Inner and Hand Socks
+ * - Divide products into Scarf, Inner and Hand Socks using plain
+ *   keyword rules (see classifyNafesaProduct() below):
+ *     INNER      = description contains the standalone word INNER
+ *     HAND SOCKS = description contains the standalone word HANDSOCK
+ *     SCARF      = everything else, minus SCARF_EXCLUDED_KEYWORDS
  * - Include all regions
  * - Consolidate codes representing the same product/design
  * - Convert SG invoice amounts to MYR
  * - Rank by total sales
  * - Exclude zero/negative sales from Bottom 10
+ * - Composite quantity and sales are folded directly into the
+ *   matching loose (NORMAL) item's totals — no separate breakdown
  */
 session_start();
 error_reporting(E_ALL);
@@ -44,14 +50,34 @@ define('ALLOWED_REGIONS', [
 /**
  * Explicit aliases for codes that represent the same product.
  *
- * Add additional mappings here when the business confirms that two
- * different codes refer to the same scarf/product/design.
- *
  * Alias code => Master code
  */
 define('PRODUCT_CODE_MAP', [
     // 'OLD-CODE' => 'MASTER-CODE',
-    // 'SPECIAL-NMJ05-BL' => 'NMJ05-BL',
+]);
+
+/**
+ * Keywords that disqualify an item from the Scarf ranking
+ * (packaging, promo items, or anything else that should not be
+ * counted as a scarf). Add keywords in UPPERCASE.
+ */
+define('SCARF_EXCLUDED_KEYWORDS', [
+    'PAPERBAG',
+    'PAPER BAG',
+    'BUNTING',
+    'BROCHURE',
+    'FLYER',
+    'VOUCHER',
+    'DISPLAY',
+    'MINI RAK',
+    'MINI RACK',
+    'TABLE CLOTH',
+    'APRON',
+    'PLASTIC CUP',
+    'TUMBLER',
+    'WOVEN BAG',
+    'MENU BOARD',
+    'BOARD',
 ]);
 
 // Authentication
@@ -147,7 +173,7 @@ function validatePeriod(string $from, string $to): string
  */
 function normalizeRegion($region): string
 {
-    if(!is_string($region)) {
+    if (!is_string($region)) {
         return 'all';
     }
 
@@ -173,7 +199,7 @@ function normalizeProductType($type): string
 }
 
 /**
- * Return a user-friendly product-type level
+ * Return a user-friendly product-type label.
  */
 function getProductTypeLabel(string $type): string
 {
@@ -194,11 +220,7 @@ function canonicalizeItemCode(string $code): string
         return PRODUCT_CODE_MAP[$code];
     }
 
-    $code = preg_replace(
-        '/^(?:PRE|PREORDER)-/i',
-        '',
-        $code
-    );
+    $code = preg_replace('/^(?:PRE|PREORDER)-/i', '', $code);
 
     return $code ?: 'UNKNOWN';
 }
@@ -210,95 +232,109 @@ function cleanProductName(string $description): string
 {
     $description = trim($description);
 
-    $description = preg_replace(
-        '/^\s*\(PREORDER\)\s*/i',
-        '',
-        $description
-    );
-
-    $description = preg_replace(
-        '/\s*\(Fulfilment[^)]*\)\s*/i',
-        '',
-        $description
-    );
-
-    $description = preg_replace(
-        '/\s+/',
-        ' ',
-        $description
-    );
+    $description = preg_replace('/^\s*\(PREORDER\)\s*/i', '', $description);
+    $description = preg_replace('/\s*\(Fulfilment[^)]*\)\s*/i', '', $description);
+    $description = preg_replace('/\s+/', ' ', $description);
 
     return trim($description);
 }
 
 /**
- * Classify a Nafesa item as Scarf, Inner or Hand Socks.
+ * Match the same classification logic used by the overall product report.
  *
- * Return null for packaging, promotional items and other items that
- * should not participate in the product ranking.
- *
+ * - Nafesa inner items are identified by the confirmed INNER code ranges
+ *   or the INNER keyword in the description.
+ * - Hand Socks remain a separate category.
+ * - Everything else falls into Scarf unless explicitly excluded.
  */
+function isNafesaInnerItem(string $itemCode, string $description): bool
+{
+    $itemCode = strtoupper(trim($itemCode));
+    $description = strtoupper(trim($description));
+
+    return preg_match('/^(?:NCH|NTU|NST|NIN)/', $itemCode) === 1
+        || str_contains($description, 'INNER');
+}
+
+function shouldUseNafesaQuantity(
+    string $category,
+    string $productType,
+    string $itemCode,
+    string $description
+): bool {
+    $productType = strtoupper(trim($productType));
+    $itemCode = strtoupper(trim($itemCode));
+    $description = strtoupper(trim($description));
+    $itemSearchText = $itemCode . ' ' . $description;
+
+    if ($category === 'scarf') {
+        foreach ([
+            'CHARM',
+            'BRACELET',
+            'KEYCHAIN',
+            'ENAMEL PIN',
+            'HANDSOCK',
+            'HAND SOCK',
+            'STK-NMJ04-MR',
+            'STK-NMJ02-BG',
+            'STK-NMJ06-RC',
+            'STK-NRQ01-EM',
+            'STK-NRW01-EM',
+        ] as $excludedTerm) {
+            if (str_contains($itemSearchText, $excludedTerm)) {
+                return false;
+            }
+        }
+
+        if ($itemCode === 'STK-NF' || preg_match('/^STK-NF(?:-|$)/', $itemCode) === 1) {
+            return true;
+        }
+
+        return $productType === 'NORMAL' || preg_match('/^STK-N(?!F(?:-|$))/', $itemCode) === 1;
+    }
+
+    if ($category === 'inner') {
+        return $productType === 'NORMAL';
+    }
+
+    return $productType === 'NORMAL';
+}
+
 function classifyNafesaProduct(
+    string $brand,
     string $itemCode,
     string $description
 ): ?string {
-    $code = canonicalizeItemCode($itemCode);
+    $brand = strtoupper(trim($brand));
+    $itemCode = strtoupper(trim($itemCode));
     $description = strtoupper(trim($description));
 
-    /*
-     * Hand Socks must be checked before the general scarf fallback.
-     */
-    if (
-        preg_match('/^NHS/', $code) ||
-        str_contains($description, 'HANDSOCK') ||
-        str_contains($description, 'HAND SOCK')
-    ) {
+    if (!in_array($brand, [REPORT_BRAND, 'STK'], true)) {
+        return null;
+    }
+
+    if (preg_match('/\bHANDSOCK\b/', $description)) {
         return 'hand_socks';
     }
 
-    /*
-     * Known Nafesa inner code families and descriptions.
-     *
-     * MERD-NCH codes are also captured through the description.
-     */
-    if (
-        preg_match('/^(?:NTU|NCH|NST|NIN)/', $code) ||
-        str_contains($code, '-NCH') ||
-        str_contains($description, 'INNER TUBE') ||
-        str_contains($description, 'INNER CHIN') ||
-        str_contains($description, 'INNER STRAP') ||
-        str_contains($description, 'INNER NINJA') ||
-        str_contains($description, 'FREE INNER')
-    ) {
+    if ($brand === 'STK') {
+        if (preg_match('/^STK-N(?:F(?:-|$)|MJ|RQ|RW|[A-Z0-9]+)/', $itemCode)) {
+            return 'scarf';
+        }
+
+        return null;
+    }
+
+    if (isNafesaInnerItem($itemCode, $description)) {
         return 'inner';
     }
 
-    /*
-     * Exclude packaging and non-wearable promotional materials.
-     */
-    $excludedTerms = [
-        'PAPERBAG',
-        'PAPER BAG',
-        'BUNTING',
-        'BROCHURE',
-        'VOUCHER',
-        'DISPLAY',
-        'PACKAGING',
-        'CHARM',
-        'KEYCHAIN',
-        'ENAMEL PIN',
-        
-    ];
-
-    foreach ($excludedTerms as $term) {
-        if (str_contains($description, $term)) {
+    foreach (SCARF_EXCLUDED_KEYWORDS as $keyword) {
+        if (str_contains($description, strtoupper($keyword))) {
             return null;
         }
     }
 
-    /*
-     * Remaining qualifying Nafesa designs are treated as scarves.
-     */
     return 'scarf';
 }
 
@@ -318,100 +354,69 @@ function getRankedProducts(
             ->modify('+1 day')
             ->format('Y-m-d 00:00:00'),
         'status'       => 'Confirmed', // Void orders are excluded
-        'brand'       => REPORT_BRAND,
     ];
 
-    /*
-    * Region rules:
-    *
-    * all = Semenanjung + Bintulu + Singapore
-    * SM  = Malaysia, excluding Bintulu
-    * BT  = Malaysia Bintulu warehouse
-    * SG  = Singapore
-    *
-    * When All Regions is selected, no additional region condition
-    * is added. This allows every MY and SG transaction to qualify.
-    */
     $regionCondition = '';
 
+    // Product-type filter mirrors the classification rule directly:
+    // INNER = word "inner", HAND SOCKS = word "handsock", otherwise
+    // fetch all NORMAL/COMPOSITE rows and let classifyNafesaProduct()
+    // apply the scarf exclusion list in PHP.
+    if ($selectedType === 'inner') {
+        $productTypeCondition = "
+            AND UPPER(TRIM(COALESCE(oi.product_type, ''))) IN ('NORMAL', 'COMPOSITE')
+        ";
+    } elseif ($selectedType === 'hand_socks') {
+        $productTypeCondition = "
+            AND UPPER(TRIM(COALESCE(oi.product_type, ''))) IN ('NORMAL', 'COMPOSITE')
+            AND UPPER(COALESCE(oi.item_description, '')) LIKE '%HANDSOCK%'
+        ";
+    } else {
+        $productTypeCondition = "
+            AND UPPER(TRIM(COALESCE(oi.product_type, ''))) IN ('NORMAL', 'COMPOSITE')
+        ";
+    }
+
+    // Region rules: all = SM+BT+SG, SM = MY excl. Bintulu,
+    // BT = MY Bintulu warehouse, SG = Singapore.
     if ($regionFilter === 'BT') {
-        /*
-        * Bintulu:
-        * - Tax Invoice location MYBTWH, or
-        * - Order invoice prefix MYBT
-        */
+        // Bintulu: location MYBTWH or invoice prefix MYBT
         $regionCondition = "
             AND c.company_code = 'MY'
 
             AND (
-                UPPER(TRIM(COALESCE(
-                    oi.order_processed_location,
-                    ''
-                ))) = 'MYBTWH'
-
-                OR UPPER(TRIM(COALESCE(
-                    o.invoice_prefix,
-                    ''
-                ))) = 'MYBT'
+                UPPER(TRIM(COALESCE(oi.order_processed_location, ''))) = 'MYBTWH'
+                OR UPPER(TRIM(COALESCE(o.invoice_prefix, ''))) = 'MYBT'
             )
         ";
     } elseif ($regionFilter === 'SG') {
-        /*
-        * Singapore:
-        * All Singapore company transactions.
-        */
+        // Singapore: all SG company transactions
         $regionCondition = "
             AND c.company_code = 'SG'
         ";
     } elseif ($regionFilter === 'SM') {
-        /*
-        * Semenanjung:
-        * Malaysia transactions that are not identified as Bintulu.
-        */
+        // Semenanjung: MY transactions not identified as Bintulu
         $regionCondition = "
             AND c.company_code = 'MY'
 
             AND NOT (
-                UPPER(TRIM(COALESCE(
-                    oi.order_processed_location,
-                    ''
-                ))) = 'MYBTWH'
-
-                OR UPPER(TRIM(COALESCE(
-                    o.invoice_prefix,
-                    ''
-                ))) = 'MYBT'
+                UPPER(TRIM(COALESCE(oi.order_processed_location, ''))) = 'MYBTWH'
+                OR UPPER(TRIM(COALESCE(o.invoice_prefix, ''))) = 'MYBT'
             )
         ";
     } else {
-        /*
-         * All Regions:
-         * Include the two supported invoice companies. Malaysia covers
-         * both Semenanjung and Bintulu, while SG covers Singapore.
-         */
+        // All Regions: both supported companies (MY covers SM+BT)
         $regionCondition = "
             AND c.company_code IN ('MY', 'SG')
         ";
     }
 
-    /*
-     * order_items is the Tax Invoice source.
-     *
-     * orders supplies:
-     * - order date
-     * - order status
-     * - company relationship
-     * 
-     * product type:
-     * - normal
-     *
-     * companies supplies:
-     * - MY/SG company code
-     */
+    // order_items = Tax Invoice source; orders = date/status/company;
+    // companies = MY/SG company code.
     $sql = "
     SELECT
         UPPER(TRIM(oi.brand)) AS brand,
-        UPPER(TRIM(COALESCE(oi.product_type, ''))) AS product_type, 
+        UPPER(TRIM(COALESCE(oi.product_type, ''))) AS product_type,
         oi.item_code,
         oi.item_description,
         c.company_code,
@@ -429,9 +434,9 @@ function getRankedProducts(
     WHERE o.order_datetime >= :from_date
         AND o.order_datetime < :to_exclusive
         AND o.order_status = :status
-        AND UPPER(TRIM(oi.brand)) = :brand
-        AND UPPER(TRIM(COALESCE(oi.product_type, ''))) = 'NORMAL'
-        
+        AND UPPER(TRIM(oi.brand)) IN ('NAFESA', 'STK')
+        {$productTypeCondition}
+
         {$regionCondition}
 
     GROUP BY
@@ -448,161 +453,122 @@ function getRankedProducts(
     $rows = $statement->fetchAll();
     $products = [];
 
+    // Process NORMAL rows first so COMPOSITE rows can only merge into
+    // an existing loose SKU and never appear standalone.
+    usort(
+        $rows,
+        static function (array $left, array $right): int {
+            $leftIsNormal = strtoupper(trim((string)($left['product_type'] ?? ''))) === 'NORMAL';
+            $rightIsNormal = strtoupper(trim((string)($right['product_type'] ?? ''))) === 'NORMAL';
+
+            return $rightIsNormal <=> $leftIsNormal;
+        }
+    );
+
     foreach ($rows as $row) {
-    $brand = strtoupper(trim((string)$row['brand']));
-    $rawCode = trim((string)$row['item_code']);
-    $description = trim(
-        (string)($row['item_description'] ?? '')
-    );
+        $brand = strtoupper(trim((string)$row['brand']));
+        $rawCode = trim((string)$row['item_code']);
+        $description = trim((string)($row['item_description'] ?? ''));
 
-    $productTypeFromDatabase = strtoupper(
-    trim((string)($row['product_type'] ?? ''))
-    );
+        $productType = classifyNafesaProduct($brand, $rawCode, $description);
 
-   $productType = classifyNafesaProduct(
-    $rawCode,
-    $description
-   );
+        if ($productType === null || $productType !== $selectedType) {
+            continue;
+        }
 
-   if (
-    $productType === null ||
-    $productType !== $selectedType
-   ) {
-    continue;
-   }
+        // Follow the overall-product approach:
+        // - sales from COMPOSITE rows can still create the product entry,
+        //   but quantity comes only from loose/normal scarf rows or starter-kit units.
+        $masterCode = canonicalizeItemCode($rawCode);
+        $key = $selectedType === 'inner' || $selectedType === 'hand_socks'
+            ? $brand . '|' . strtoupper($description)
+            : $brand . '|' . $masterCode;
+        $isNormalRow = strtoupper(trim((string)($row['product_type'] ?? ''))) === 'NORMAL';
 
-    $masterCode = canonicalizeItemCode($rawCode);
-    $key = $brand . '|' . $masterCode;
+        if (!isset($products[$key])) {
+            $products[$key] = [
+                'brand'          => REPORT_BRAND,
+                'product_type'   => $productType,
+                'item_code'      => $masterCode,
+                'product_name'   => cleanProductName($description),
+                'total_quantity' => 0,
+                'total_sales'    => 0.00,
+                'display_is_normal' => $isNormalRow,
+            ];
+        }
 
-    if (!isset($products[$key])) {
-        $products[$key] = [
-            'brand'          => REPORT_BRAND,
-            'product_type'   => $productType,
-            'item_code'      => $masterCode,
-            'product_name'   => cleanProductName($description),
-            'total_quantity' => 0,
-            'total_sales'    => 0.00,
-            'source_codes'   => [],
-        ];
+        $quantity = shouldUseNafesaQuantity(
+            $productType,
+            $row['product_type'] ?? '',
+            $rawCode,
+            $description
+        ) ? (int)$row['total_quantity'] : 0;
+
+        $sales = (float)$row['sales_amount'];
+
+        if ($row['company_code'] === 'SG') {
+            $sales *= SGD_TO_MYR_RATE;
+        }
+
+        // Composite qty and sales are folded directly into the loose
+        // item's combined totals — a single number, no breakdown shown.
+        $products[$key]['total_quantity'] += $quantity;
+        $products[$key]['total_sales'] += $sales;
+
+        // Prefer a cleaned NORMAL description over a blank/COMPOSITE one.
+        $cleanName = cleanProductName($description);
+
+        if (
+            $cleanName !== '' &&
+            (
+                $products[$key]['product_name'] === '' ||
+                ($isNormalRow && !$products[$key]['display_is_normal'])
+            )
+        ) {
+            $products[$key]['product_name'] = $cleanName;
+            $products[$key]['display_is_normal'] = $isNormalRow;
+        }
     }
-
-    $quantity = (int)$row['total_quantity'];
-    $sales = (float)$row['sales_amount'];
-
-    if ($row['company_code'] === 'SG') {
-        $sales *= SGD_TO_MYR_RATE;
-    }
-
-    $products[$key]['total_quantity'] += $quantity;
-    $products[$key]['total_sales'] += $sales;
-    $products[$key]['source_codes'][$rawCode] = true;
-
-    /*
-    * Prefer a useful cleaned description if the first description
-    * was blank.
-    */
-    $cleanName = cleanProductName($description);
-
-    if (
-        $products[$key]['product_name'] === '' &&
-        $cleanName !== ''
-    ) {
-        $products[$key]['product_name'] = $cleanName;
-    }
-}
 
     $result = [];
 
     foreach ($products as $product) {
+        // Bottom 10 excludes zero/negative sales and unsold products.
+        if ($product['total_quantity'] <= 0 || $product['total_sales'] <= 0) {
+            continue;
+        }
 
-    /*
-    * Bottom 10 excludes products with zero sales.
-    * A product must also have at least one sold unit.
-    */
+        $product['total_sales'] = round($product['total_sales'], 2);
 
-    if (
-        $product['total_quantity'] <= 0 ||
-        $product['total_sales'] <= 0
-    ) {
-        continue;
+        unset($product['display_is_normal']);
+
+        if ($product['product_name'] === '') {
+            $product['product_name'] = $product['item_code'];
+        }
+
+        $result[] = $product;
     }
-
-    $product['total_sales'] = round(
-        $product['total_sales'],
-        2
-    );
-
-    $product['source_codes'] = array_keys(
-        $product['source_codes']
-    );
-
-    sort($product['source_codes']);
-
-    if ($product['product_name'] === '') {
-        $product['product_name'] =
-            $product['item_code'];
-    }
-
-    $result[] = $product;
-}
 
     return $result;
-
 }
 
 /**
- * Assign overall sales ranks and return Top 10 and Bottom 10
- *
- * The complete list is first ranked from highest sales to lowest
- * sales. Bottom products retain their overall rank numbers.
+ * Assign overall sales ranks and return Top 10 and Bottom 10.
  */
-
 function splitRankings(array $products): array
 {
-    /*
-     * Sort every qualifying product by Total Sales from highest
-     * to lowest.
-     *
-     * The spaceship operator returns:
-     * - Negative number when $b should come before $a
-     * - Zero when both sales values are equal
-     * - Positive number when $a should come before $b
-     *
-     * $b is placed before $a here, creating descending order.
-     */
     usort(
         $products,
         static function (array $a, array $b): int {
-            $salesComparison =
-                $b['total_sales'] <=> $a['total_sales'];
+            $salesComparison = $b['total_sales'] <=> $a['total_sales'];
 
-            /*
-             * If the sales values are different, use the sales
-             * comparison as the sorting result.
-             */
             if ($salesComparison !== 0) {
                 return $salesComparison;
             }
 
-             /*
-             * If two products have exactly the same Total Sales,
-             * sort them alphabetically by product name.
-             *
-             * This gives the report a consistent order when sales
-             * values are tied.
-             */
-            return strcmp(
-                $a['product_name'],
-                $b['product_name']
-            );
+            return strcmp($a['product_name'], $b['product_name']);
         }
     );
-
-    /*
-     * Assign overall rank:
-     * highest sales = 1
-     * lowest sales  = total number of products
-     */
 
     foreach ($products as $index => &$product) {
         $product['overall_rank'] = $index + 1;
@@ -611,18 +577,7 @@ function splitRankings(array $products): array
     unset($product);
 
     $topProducts = array_slice($products, 0, 10);
-
-    /*
-     * Take the final 10 products from the descending list, then
-     * reverse them so the lowest-selling product appears first.
-     *
-     * Example with 23 products:
-     * 23, 22, 21, 20 ...
-     */
-
-    $bottomProducts = array_reverse(
-        array_slice($products, -10)
-    );
+    $bottomProducts = array_reverse(array_slice($products, -10));
 
     return [
         'top'    => $topProducts,
@@ -634,23 +589,11 @@ function splitRankings(array $products): array
 $defaultFrom = date('Y-m-d', strtotime('-1 day'));
 $defaultTo = $defaultFrom;
 
-$from = is_string($_GET['from'] ?? null)
-    ? $_GET['from']
-    : $defaultFrom;
+$from = is_string($_GET['from'] ?? null) ? $_GET['from'] : $defaultFrom;
+$to = is_string($_GET['to'] ?? null) ? $_GET['to'] : $defaultTo;
 
-$to = is_string($_GET['to'] ?? null)
-    ? $_GET['to']
-    : $defaultTo;
-
-$regionFilter = normalizeRegion(
-    $_GET['region'] ?? 'all'
-);
-
-$isSubmitted = isset($_GET['apply']);
-
-$selectedType = normalizeProductType(
-    $_GET['type'] ?? DEFAULT_PRODUCT_TYPE
-);
+$regionFilter = normalizeRegion($_GET['region'] ?? 'all');
+$selectedType = normalizeProductType($_GET['type'] ?? DEFAULT_PRODUCT_TYPE);
 
 $errors = [];
 
@@ -674,21 +617,10 @@ if (!$pdo) {
 
 if (empty($errors) && $pdo) {
     try {
-        $products = getRankedProducts(
-    $pdo,
-    $from,
-    $to,
-    $regionFilter,
-    $selectedType
-);
-
+        $products = getRankedProducts($pdo, $from, $to, $regionFilter, $selectedType);
         $rankings = splitRankings($products);
     } catch (Throwable $e) {
-        error_log(
-            'Top/Bottom report failed: ' .
-            $e->getMessage()
-        );
-
+        error_log('Top/Bottom report failed: ' . $e->getMessage());
         $errors[] = 'Unable to load the product ranking.';
     }
 }
@@ -728,9 +660,7 @@ function renderProductRows(array $products): void
 
             <td>
                 <span class="brand-badge">
-                    <?= htmlspecialchars(
-                        getProductTypeLabel($product['product_type'])
-                    ) ?>
+                    <?= htmlspecialchars(getProductTypeLabel($product['product_type'])) ?>
                 </span>
             </td>
 
@@ -913,14 +843,10 @@ include __DIR__ . '/../includes/sidebar.php';
                     <label for="region">Region</label>
 
                     <select id="region" name="region" required>
-                        <?php foreach (
-                            ALLOWED_REGIONS as $regionValue => $regionLabel
-                        ): ?>
+                        <?php foreach (ALLOWED_REGIONS as $regionValue => $regionLabel): ?>
                             <option
                                 value="<?= htmlspecialchars($regionValue) ?>"
-                                <?= $regionFilter === $regionValue
-                                    ? 'selected'
-                                    : '' ?>
+                                <?= $regionFilter === $regionValue ? 'selected' : '' ?>
                             >
                                 <?= htmlspecialchars($regionLabel) ?>
 
@@ -937,17 +863,13 @@ include __DIR__ . '/../includes/sidebar.php';
                 <div class="filter-label">Nafesa Product Type</div>
 
                 <div class="brand-options">
-                    <?php foreach (
-                        ALLOWED_PRODUCT_TYPES as $typeValue => $typeLabel
-                    ): ?>
+                    <?php foreach (ALLOWED_PRODUCT_TYPES as $typeValue => $typeLabel): ?>
                         <label class="brand-option">
                             <input
                                 type="radio"
                                 name="type"
                                 value="<?= htmlspecialchars($typeValue) ?>"
-                                <?= $selectedType === $typeValue
-                                    ? 'checked'
-                                    : '' ?>
+                                <?= $selectedType === $typeValue ? 'checked' : '' ?>
                                 required
                             >
 
@@ -991,18 +913,14 @@ include __DIR__ . '/../includes/sidebar.php';
                 <div class="summary-label">Region</div>
 
                 <div class="summary-value">
-                    <?= htmlspecialchars(
-                        ALLOWED_REGIONS[$regionFilter]
-                    ) ?>
+                    <?= htmlspecialchars(ALLOWED_REGIONS[$regionFilter]) ?>
                 </div>
             </div>
             <div class="summary-card">
                 <div class="summary-label">Product Type</div>
 
                 <div class="summary-value">
-                    <?= htmlspecialchars(
-                        getProductTypeLabel($selectedType)
-                    ) ?>
+                    <?= htmlspecialchars(getProductTypeLabel($selectedType)) ?>
                 </div>
             </div>
         </section>
@@ -1073,17 +991,13 @@ include __DIR__ . '/../includes/sidebar.php';
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const typeRadios = document.querySelectorAll(
-        'input[name="type"]'
-    );
+    const typeRadios = document.querySelectorAll('input[name="type"]');
 
     typeRadios.forEach(function (radio) {
         radio.addEventListener('change', function () {
-            document.querySelectorAll('.brand-option').forEach(
-                function (option) {
-                    option.classList.remove('selected');
-                }
-            );
+            document.querySelectorAll('.brand-option').forEach(function (option) {
+                option.classList.remove('selected');
+            });
 
             const selectedOption = radio.closest('.brand-option');
 
