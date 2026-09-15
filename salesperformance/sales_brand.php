@@ -3,7 +3,7 @@
  * Sales by Brand
  *
  * Single file that serves both:
- *  - The normal page (topnav, sidebar, filters, table shell)
+ *  - The normal page (topnav, sidebar, filters, charts, table shell)
  *  - The AJAX data endpoint (same URL, called via fetch() with the
  *    X-Requested-With: XMLHttpRequest header) which returns JSON only
  *
@@ -25,6 +25,17 @@ ini_set('display_errors', '0');
 require_once __DIR__ . '/../config/db.php';
 
 define('SGD_TO_MYR_RATE', 3.27);
+
+const REPURCHASE_ORDER_TYPES = [
+    'Repurchase Order',
+    'On Behalf Repurchase Order',
+];
+
+const REGISTRATION_ORDER_TYPES = [
+    'Registration Order',
+    'On Behalf Register Order',
+    'SPC Upgrade Order',
+];
 
 // false = hide event ticket when its sales are zero
 // true = always show event ticket, including RM0.00
@@ -124,7 +135,8 @@ function getSalesByBrand(
     PDO $pdo,
     string $from,
     string $to,
-    string $companyFilter
+    string $companyFilter,
+    array $orderTypes
 ): array {
     $params = [
         'from_date' => $from . ' 00:00:00',
@@ -137,6 +149,26 @@ function getSalesByBrand(
     ];
 
     $companyCondition = '';
+
+    $orderTypePlaceholders = [];
+    foreach ($orderTypes as $index => $orderType) {
+        $placeholder = 'order_type_' . $index;
+        $orderTypePlaceholders[] = ':' . $placeholder;
+        $params[$placeholder] = $orderType;
+    }
+    $orderTypeCondition = ' AND o.order_type IN (' .
+        implode(', ', $orderTypePlaceholders) .
+        ')';
+
+    $subOrderTypePlaceholders = [];
+    foreach ($orderTypes as $index => $orderType) {
+        $placeholder = 'sub_order_type_' . $index;
+        $subOrderTypePlaceholders[] = ':' . $placeholder;
+        $params[$placeholder] = $orderType;
+    }
+    $subOrderTypeCondition = ' AND o2.order_type IN (' .
+        implode(', ', $subOrderTypePlaceholders) .
+        ')';
 
     if ($companyFilter !== 'all') {
         $companyCondition = ' AND c.company_code = :company_code';
@@ -258,6 +290,7 @@ function getSalesByBrand(
                    AND o2.order_datetime >= :from_date_sub
                    AND o2.order_datetime < :to_exclusive_sub
                    AND o2.order_status = :confirmed_status_sub
+                   {$subOrderTypeCondition}
 
                 GROUP BY kit_items.order_id
             ) starter_order
@@ -267,6 +300,7 @@ function getSalesByBrand(
               AND o.order_datetime < :to_exclusive
               AND o.order_status = :confirmed_status
               AND c.company_code IN ('MY', 'SG')
+              {$orderTypeCondition}
 
               {$companyCondition}
         ) classified
@@ -396,7 +430,20 @@ if ($isAjax) {
     }
 
     try {
-        $report = getSalesByBrand($pdo, $from, $to, $companyFilter);
+        $repurchaseReport = getSalesByBrand(
+            $pdo,
+            $from,
+            $to,
+            $companyFilter,
+            REPURCHASE_ORDER_TYPES
+        );
+        $registrationReport = getSalesByBrand(
+            $pdo,
+            $from,
+            $to,
+            $companyFilter,
+            REGISTRATION_ORDER_TYPES
+        );
     } catch (Throwable $e) {
         error_log('Sales by Brand report failed: ' . $e->getMessage());
         http_response_code(500);
@@ -414,10 +461,18 @@ if ($isAjax) {
         'company'      => $companyFilter,
         'period_label' => $periodLabel,
         'sgd_rate'     => SGD_TO_MYR_RATE,
-        'rows'         => $report['rows'],
-        'dates'        => $report['dates'],
-        'daily_totals' => $report['daily_totals'],
-        'total_sales'  => $report['total_sales'],
+        'repurchase' => [
+            'rows'         => $repurchaseReport['rows'],
+            'dates'        => $repurchaseReport['dates'],
+            'daily_totals' => $repurchaseReport['daily_totals'],
+            'total_sales'  => $repurchaseReport['total_sales'],
+        ],
+        'registration' => [
+            'rows'         => $registrationReport['rows'],
+            'dates'        => $registrationReport['dates'],
+            'daily_totals' => $registrationReport['daily_totals'],
+            'total_sales'  => $registrationReport['total_sales'],
+        ],
     ]);
     exit;
 }
@@ -487,6 +542,19 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .summary-label {margin-bottom: 5px;color: var(--gray-500);font-size: 10px;font-weight: 800;text-transform: uppercase;}
 .summary-value {font-size: 21px;font-weight: 800;}
 
+/* ── CHART SECTION ── */
+.chart-grid {display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 16px;margin-bottom: 24px;}
+.chart-card {display: flex;flex-direction: column;padding: 18px 20px 16px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
+.chart-card .card-title {margin-bottom: 2px;font-size: 13.5px;}
+.chart-card .card-subtitle {margin-bottom: 0;font-size: 11px;line-height: 1.5;}
+.chart-box {width: 100%;flex: 1;margin-top: 14px;}
+.chart-box svg {display: block;width: 100%;height: auto;}
+.chart-box svg text {font-family: inherit;}
+.chart-legend {display: flex;flex-wrap: wrap;justify-content: center;gap: 18px;margin-top: 14px;padding-top: 12px;border-top: 1px solid var(--gray-100);color: var(--gray-500);font-size: 10.5px;font-weight: 700;}
+.chart-legend span {display: inline-flex;align-items: center;gap: 6px;}
+.chart-legend i {width: 8px;height: 8px;border-radius: 50%;}
+.chart-empty {padding: 40px 0;color: var(--gray-500);font-size: 11.5px;text-align: center;}
+
 /* ── TABLE SECTION ── */
 .table-wrap {overflow: hidden;border: 1px solid #E6E6EA;border-radius: 12px;background: var(--white);}
 .brand-table {width: 100%;border-collapse: separate;border-spacing: 0;}
@@ -510,7 +578,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .apply-button.is-loading .spinner {display: inline-block;}
 .report-loading td {padding: 40px 16px;text-align: center;color: var(--gray-500);font-size: 12px;}
 @keyframes spin {to {transform: rotate(360deg);}}
-@media (max-width: 950px) {.filter-grid {grid-template-columns: repeat(2, minmax(0, 1fr));}}
+@media (max-width: 950px) {.filter-grid {grid-template-columns: repeat(2, minmax(0, 1fr));}.chart-grid {grid-template-columns: 1fr;}}
 @media (max-width: 900px) {.main,body.sidebar-collapsed .main {margin-left: 0;padding: 20px;}}
 @media (max-width: 650px) {.filter-grid,.summary-grid {grid-template-columns: 1fr;}.apply-button {width: 100%;}.table-wrap {overflow-x: auto;}.brand-table {min-width: 650px;}}
 </style>
@@ -587,15 +655,45 @@ include __DIR__ . '/../includes/sidebar.php';
                 <div class="summary-value" id="periodLabel">—</div>
             </article>
             <article class="summary-card">
-                <div class="summary-label">Total Converted Sales</div>
+                <div class="summary-label">Total Sales</div>
                 <div class="summary-value" id="totalSalesLabel">—</div>
             </article>
         </section>
 
+        <section class="chart-grid">
+            <article class="chart-card">
+                <div class="card-title">Brand Sales by Type</div>
+                <div class="card-subtitle">
+                    Compare repurchase sales and registration sales (starter kit) by brand.
+                </div>
+                <div class="chart-box" id="brandBarChart">
+                    <div class="chart-empty">Loading chart…</div>
+                </div>
+                <div class="chart-legend">
+                    <span><i style="background:#E0202E"></i>Repurchase Sales</span>
+                    <span><i style="background:#F9C2C7"></i>Registration Sales (Starter Kit)</span>
+                </div>
+            </article>
+
+            <article class="chart-card">
+                <div class="card-title">Sales Composition by Brand</div>
+                <div class="card-subtitle">
+                    Percentage mix of repurchase and registration sales for each brand.
+                </div>
+                <div class="chart-box" id="brandCompositionChart">
+                    <div class="chart-empty">Loading chart…</div>
+                </div>
+                <div class="chart-legend">
+                    <span><i style="background:#E0202E"></i>Repurchase Sales</span>
+                    <span><i style="background:#F9C2C7"></i>Registration Sales (Starter Kit)</span>
+                </div>
+            </article>
+        </section>
+
         <section class="card">
-            <div class="card-title">Brand Sales Breakdown</div>
+            <div class="card-title">Repurchase Sales by Brand</div>
             <div class="card-subtitle">
-                Each selected date is shown separately; brands are ranked by total converted sales.
+                Repurchase Order and On Behalf Repurchase Order, separated by brand.
             </div>
             <div class="table-wrap">
                 <table class="brand-table" id="brandTable">
@@ -608,6 +706,21 @@ include __DIR__ . '/../includes/sidebar.php';
 
             <div class="note" id="rateNote"></div>
         </section>
+
+        <section class="card">
+            <div class="card-title">Register Sales by Brand</div>
+            <div class="card-subtitle">
+                Registration Order and On Behalf Register Order, separated by brand.
+            </div>
+            <div class="table-wrap">
+                <table class="brand-table" id="registrationBrandTable">
+                    <thead id="registrationBrandTableHead"></thead>
+                    <tbody id="registrationBrandTableBody">
+                        <tr class="report-loading"><td>Loading report…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
 
 </main>
@@ -617,6 +730,9 @@ include __DIR__ . '/../includes/sidebar.php';
 // Same URL as the current page — no separate API file needed.
 const API_URL = window.location.pathname;
 
+const COLOR_NORMAL = '#E0202E';
+const COLOR_REG = '#F9C2C7';
+
 const form = document.getElementById('filterForm');
 const applyButton = document.getElementById('applyButton');
 const errorContainer = document.getElementById('errorContainer');
@@ -624,7 +740,11 @@ const periodLabelEl = document.getElementById('periodLabel');
 const totalSalesLabelEl = document.getElementById('totalSalesLabel');
 const tableHead = document.getElementById('brandTableHead');
 const tableBody = document.getElementById('brandTableBody');
+const registrationTableHead = document.getElementById('registrationBrandTableHead');
+const registrationTableBody = document.getElementById('registrationBrandTableBody');
 const rateNote = document.getElementById('rateNote');
+const barChartEl = document.getElementById('brandBarChart');
+const compositionChartEl = document.getElementById('brandCompositionChart');
 
 let currentRequestId = 0;
 
@@ -661,16 +781,13 @@ function renderErrors(errors) {
     errorContainer.innerHTML = `<div class="error-box" role="alert"><ul>${items}</ul></div>`;
 }
 
-function renderReport(data) {
-    periodLabelEl.textContent = data.period_label;
-    totalSalesLabelEl.textContent = formatMoney(data.total_sales);
-
+function renderBrandTable(data, headElement, bodyElement) {
     let headHtml = '<tr><th>Brand</th>';
     data.dates.forEach(d => {
         headHtml += `<th>${escapeHtml(formatDateHeader(d))}</th>`;
     });
     headHtml += '<th>Total</th><th>(%)</th></tr>';
-    tableHead.innerHTML = headHtml;
+    headElement.innerHTML = headHtml;
 
     let bodyHtml = '';
     data.rows.forEach(row => {
@@ -695,7 +812,170 @@ function renderReport(data) {
     bodyHtml += `<td>${data.total_sales > 0 ? '100.00%' : '0.00%'}</td>`;
     bodyHtml += '</tr>';
 
-    tableBody.innerHTML = bodyHtml;
+    bodyElement.innerHTML = bodyHtml;
+}
+
+// ── CHART HELPERS ──
+
+// Merge the two reports into one row per brand:
+// normal = repurchase total, registration = starter kit total.
+function buildBrandSummary(data) {
+    const map = new Map();
+
+    const collect = (rows, key) => {
+        (rows || []).forEach(row => {
+            if (row.brand === 'Event Ticket') return;
+            if (!map.has(row.brand)) {
+                map.set(row.brand, { brand: row.brand, normal: 0, registration: 0 });
+            }
+            map.get(row.brand)[key] += Number(row.total) || 0;
+        });
+    };
+
+    collect(data.repurchase.rows, 'normal');
+    collect(data.registration.rows, 'registration');
+
+    return [...map.values()]
+        .map(r => ({ ...r, total: r.normal + r.registration }))
+        .filter(r => r.total > 0)
+        .sort((a, b) => b.total - a.total);
+}
+
+// Round an axis maximum up to a clean number
+function niceMax(value) {
+    if (value <= 0) return 100;
+    const pow = Math.pow(10, Math.floor(Math.log10(value)));
+    const n = value / pow;
+    const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+    return step * pow;
+}
+
+function shortMoney(amount) {
+    return 'RM' + Number(amount).toLocaleString('en-MY', { maximumFractionDigits: 0 });
+}
+
+function renderBrandBarChart(rows) {
+    if (!rows.length) {
+        barChartEl.innerHTML = '<div class="chart-empty">No sales for the selected period.</div>';
+        return;
+    }
+
+    const W = 720, H = 232;
+    const padL = 74, padR = 14, padT = 26, padB = 34;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    const peak = Math.max(...rows.map(r => Math.max(r.normal, r.registration)));
+    const max = niceMax(peak);
+    const y = v => padT + plotH - (v / max) * plotH;
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">`;
+
+    // Gridlines + y-axis labels
+    for (let i = 0; i <= 4; i++) {
+        const value = (max / 4) * i;
+        const yy = y(value);
+        svg += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="#F0F0F3" stroke-width="1"/>`;
+        svg += `<text x="${padL - 12}" y="${yy + 3.5}" text-anchor="end" font-size="10" fill="#A0A0A8">${escapeHtml(shortMoney(value))}</text>`;
+    }
+
+    const groupW = plotW / rows.length;
+    const barW = Math.max(12, Math.min(30, groupW / 2 - 16));
+    const barGap = 4;
+
+    rows.forEach((row, i) => {
+        const cx = padL + groupW * i + groupW / 2;
+        const pairs = [
+            { value: row.normal, color: COLOR_NORMAL, x: cx - barW - barGap / 2 },
+            { value: row.registration, color: COLOR_REG, x: cx + barGap / 2 }
+        ];
+
+        pairs.forEach(bar => {
+            const top = y(bar.value);
+            const h = Math.max(0, padT + plotH - top);
+            if (h > 0) {
+                svg += `<rect x="${bar.x}" y="${top}" width="${barW}" height="${h}" fill="${bar.color}" rx="3"/>`;
+            }
+            svg += `<text x="${bar.x + barW / 2}" y="${top - 7}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#4A4A52">${escapeHtml(shortMoney(bar.value))}</text>`;
+        });
+
+        svg += `<text x="${cx}" y="${padT + plotH + 20}" text-anchor="middle" font-size="11" font-weight="700" fill="#4A4A52">${escapeHtml(row.brand)}</text>`;
+    });
+
+    svg += `<line x1="${padL}" y1="${padT + plotH}" x2="${W - padR}" y2="${padT + plotH}" stroke="#E2E2E8" stroke-width="1"/>`;
+    svg += '</svg>';
+
+    barChartEl.innerHTML = svg;
+}
+
+function renderCompositionChart(rows) {
+    if (!rows.length) {
+        compositionChartEl.innerHTML = '<div class="chart-empty">No sales for the selected period.</div>';
+        return;
+    }
+
+    const W = 720;
+    const rowH = 28, gap = 18, padT = 10, labelW = 116;
+    const H = padT * 2 + rows.length * rowH + (rows.length - 1) * gap;
+    const trackX = labelW;
+    const trackW = W - labelW - 8;
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">`;
+
+    rows.forEach((row, i) => {
+        const yy = padT + i * (rowH + gap);
+        const mid = yy + rowH / 2 + 4;
+        const normalPct = row.total > 0 ? (row.normal / row.total) * 100 : 0;
+        const regPct = 100 - normalPct;
+        const normalW = (normalPct / 100) * trackW;
+
+        svg += `<text x="${labelW - 16}" y="${mid}" text-anchor="end" font-size="11.5" font-weight="700" fill="#1B1B1F">${escapeHtml(row.brand)}</text>`;
+        svg += `<rect x="${trackX}" y="${yy}" width="${trackW}" height="${rowH}" fill="${COLOR_REG}" rx="6"/>`;
+
+        if (normalW > 0) {
+            svg += `<rect x="${trackX}" y="${yy}" width="${normalW}" height="${rowH}" fill="${COLOR_NORMAL}" rx="6"/>`;
+        }
+        if (normalPct >= 9) {
+            svg += `<text x="${trackX + normalW / 2}" y="${mid}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#FFFFFF">${normalPct.toFixed(1)}%</text>`;
+        }
+        if (regPct >= 9) {
+            svg += `<text x="${trackX + normalW + (trackW - normalW) / 2}" y="${mid}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#8E1620">${regPct.toFixed(1)}%</text>`;
+        }
+    });
+
+    svg += '</svg>';
+    compositionChartEl.innerHTML = svg;
+}
+
+function renderCharts(data) {
+    const rows = buildBrandSummary(data);
+    renderBrandBarChart(rows);
+    renderCompositionChart(rows);
+}
+
+function clearCharts(message) {
+    barChartEl.innerHTML = `<div class="chart-empty">${escapeHtml(message)}</div>`;
+    compositionChartEl.innerHTML = `<div class="chart-empty">${escapeHtml(message)}</div>`;
+}
+
+function renderReport(data) {
+    periodLabelEl.textContent = data.period_label;
+    totalSalesLabelEl.textContent = formatMoney(
+        data.repurchase.total_sales + data.registration.total_sales
+    );
+
+    renderCharts(data);
+
+    renderBrandTable(
+        data.repurchase,
+        tableHead,
+        tableBody
+    );
+    renderBrandTable(
+        data.registration,
+        registrationTableHead,
+        registrationTableBody
+    );
 
     rateNote.textContent =
         `Singapore Invoice Amount is converted using SGD × ${Number(data.sgd_rate).toFixed(2)}. ` +
@@ -706,6 +986,8 @@ async function loadReport(params) {
     const requestId = ++currentRequestId;
     setLoading(true);
     tableBody.innerHTML = '<tr class="report-loading"><td>Loading report…</td></tr>';
+    registrationTableBody.innerHTML = '<tr class="report-loading"><td>Loading report…</td></tr>';
+    clearCharts('Loading chart…');
 
     const query = new URLSearchParams(params).toString();
 
@@ -729,9 +1011,12 @@ async function loadReport(params) {
             renderErrors(data.errors);
             tableBody.innerHTML = '';
             tableHead.innerHTML = '';
+            registrationTableBody.innerHTML = '';
+            registrationTableHead.innerHTML = '';
             totalSalesLabelEl.textContent = '—';
             periodLabelEl.textContent = '—';
             rateNote.textContent = '';
+            clearCharts('No data.');
             return;
         }
 
@@ -741,6 +1026,7 @@ async function loadReport(params) {
     } catch (err) {
         if (requestId !== currentRequestId) return;
         renderErrors(['Unable to load the report. Please check your connection and try again.']);
+        clearCharts('No data.');
     } finally {
         if (requestId === currentRequestId) {
             setLoading(false);

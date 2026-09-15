@@ -7,14 +7,11 @@
  *
  * Rules:
  * - Include Nafesa products only
- * - Divide products into Scarf, Inner and Hand Socks using plain
- *   keyword rules (see classifyNafesaProduct() below):
- *     INNER      = description contains the standalone word INNER
- *     HAND SOCKS = description contains the standalone word HANDSOCK
- *     SCARF      = everything else, minus SCARF_EXCLUDED_KEYWORDS
+ * - Divide products into Scarf, Inner and Hand Socks
  * - Include all regions
  * - Consolidate codes representing the same product/design
  * - Convert SG invoice amounts to MYR
+ * - Product type normal only
  * - Rank by total sales
  * - Exclude zero/negative sales from Bottom 10
  * - Composite quantity and sales are folded directly into the
@@ -32,14 +29,17 @@ define('SGD_TO_MYR_RATE', 3.27);
 // Fix the report to Nafesa and define the selectable product types.
 define('REPORT_BRAND', 'NAFESA');
 
+// List of allowed product type
 define('ALLOWED_PRODUCT_TYPES', [
     'scarf'      => 'Scarf',
     'inner'      => 'Inner',
     'hand_socks' => 'Hand Socks',
 ]);
 
+// Set scarf as default product type
 define('DEFAULT_PRODUCT_TYPE', 'scarf');
 
+// Allowed regions including all, Semenanjung, Bintulu, and Singapore
 define('ALLOWED_REGIONS', [
     'all' => 'All Regions',
     'SM'  => 'Semenanjung',
@@ -220,7 +220,7 @@ function canonicalizeItemCode(string $code): string
         return PRODUCT_CODE_MAP[$code];
     }
 
-    $code = preg_replace('/^(?:PRE|PREORDER)-/i', '', $code);
+    $code = preg_replace('/^(?:(?:PREORDER|PRE|Q)-)+/i', '', $code);
 
     return $code ?: 'UNKNOWN';
 }
@@ -286,9 +286,12 @@ function shouldUseNafesaQuantity(
             }
         }
 
-        if ($itemCode === 'STK-NF' || preg_match('/^STK-NF(?:-|$)/', $itemCode) === 1) {
-            return true;
-        }
+    if (
+        $itemCode === 'STK-NF' ||
+        preg_match('/^STK-NF(?:-|$)/', $itemCode) === 1
+    ) {
+        return false;
+    }
 
         return $productType === 'NORMAL' || preg_match('/^STK-N(?!F(?:-|$))/', $itemCode) === 1;
     }
@@ -318,11 +321,18 @@ function classifyNafesaProduct(
     }
 
     if ($brand === 'STK') {
-        if (preg_match('/^STK-N(?:F(?:-|$)|MJ|RQ|RW|[A-Z0-9]+)/', $itemCode)) {
-            return 'scarf';
-        }
-
+        if (
+        $itemCode === 'STK-NF' ||
+        preg_match('/^STK-NF(?:-|$)/', $itemCode)
+    ) {
         return null;
+    }
+
+    if (preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) {
+        return 'scarf';
+    }
+
+    return null;
     }
 
     if (isNafesaInnerItem($itemCode, $description)) {
@@ -585,7 +595,6 @@ function splitRankings(array $products): array
     ];
 }
 
-
 $defaultFrom = date('Y-m-d', strtotime('-1 day'));
 $defaultTo = $defaultFrom;
 
@@ -846,7 +855,9 @@ include __DIR__ . '/../includes/sidebar.php';
                         <?php foreach (ALLOWED_REGIONS as $regionValue => $regionLabel): ?>
                             <option
                                 value="<?= htmlspecialchars($regionValue) ?>"
-                                <?= $regionFilter === $regionValue ? 'selected' : '' ?>
+                                <?= $regionFilter === $regionValue
+                                    ? 'selected'
+                                    : '' ?>
                             >
                                 <?= htmlspecialchars($regionLabel) ?>
 
@@ -1010,6 +1021,10 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 <script>
+<<<<<<< HEAD
+// AJAX functionality
+=======
+>>>>>>> 300a6bb2759fbc8b97dbbbc4395af841c9c9fad7
 (function () {
     'use strict';
 

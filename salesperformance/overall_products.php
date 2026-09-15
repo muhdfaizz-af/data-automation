@@ -458,118 +458,167 @@ function getOverallProducts(
                 c.company_code
         ";
 
-        $statement = $pdo->prepare($sql);
-        $statement->execute($params);
+    $statement = $pdo->prepare($sql);
+    $statement->execute($params);
 
-        $categories = [];
-        $overallSales = 0.00;
+    $rows = $statement->fetchAll();
+    $categories = [];
+    $overallSales = 0.00;
+    $soldScarfCodes = [];
 
-        while ($row = $statement->fetch()) {
-            $brand = (string)$row['brand'];
-            $itemCode = (string)$row['item_code'];
-            $description = (string)($row['item_description'] ?? '');
-            $productType = (string)($row['product_type'] ?? '');
+    /*
+     * Record every Nafesa scarf master code with positive sales. 
+     * Sales may be held by a COMPOSITE Q-code while quantity is held by its
+     * corresponding NORMAL/loose code.
+     */
+    foreach ($rows as $row) {
+        $brand = strtoupper(trim((string)$row['brand']));
+        $itemCode = (string)$row['item_code'];
+        $description = (string)($row['item_description'] ?? '');
+        $productType = (string)($row['product_type'] ?? '');
 
-            $sales = (float)$row['invoice_sales'];
+        $category = identifyProductCategory(
+            $brand,
+            $itemCode,
+            $description,
+            $productType
+        );
 
-            if ($row['company_code'] === 'SG') {
-                $sales *= SGD_TO_MYR_RATE;
-            }
-            
-            // JOY-BUNDLE-1 is a composite invoice; only its three BCD units
-            // are reported here at RM37 per unit.
-            if ($itemCode === 'JOY-BUNDLE-1') {
-                $sales = 3 * BCD_UNIT_PRICE_MYR;
-            }
+        if ($brand !== 'NAFESA' || $category !== 'SCARF') {
+            continue;
+        }
 
-            $upperDescription = strtoupper($description);
+        $rowSales = (float)$row['invoice_sales'];
 
-            // Mixed cartons are divided equally between their two products.
-            if (str_contains($upperDescription, '30 MCC & 30 BALL')) {
-                $allocations = [
-                    'CUTIE MINI CHOCO CRUNCH TUB' => 0.5,
-                    'CUTIE CHOCO BALL TUB' => 0.5,
+        if ($row['company_code'] === 'SG') {
+            $rowSales *= SGD_TO_MYR_RATE;
+        }
+
+        if ($rowSales > 0) {
+            $soldScarfCodes[
+                canonicalizeReportingCode($itemCode)
+            ] = true;
+        }
+    }
+
+    foreach ($rows as $row) {
+        $brand = strtoupper(trim((string)$row['brand']));
+        $itemCode = (string)$row['item_code'];
+        $description = (string)($row['item_description'] ?? '');
+        $productType = (string)($row['product_type'] ?? '');
+        $sales = (float)$row['invoice_sales'];
+
+        if ($row['company_code'] === 'SG') {
+            $sales *= SGD_TO_MYR_RATE;
+        }
+
+        $overallSales += $sales;
+        $upperDescription = strtoupper($description);
+
+        // Divide mixed-carton sales equally between both products.
+        if (str_contains($upperDescription, '30 MCC & 30 BALL')) {
+            $allocations = [
+                'CUTIE MINI CHOCO CRUNCH TUB' => 0.5,
+                'CUTIE CHOCO BALL TUB' => 0.5,
+            ];
+        } elseif (str_contains($upperDescription, '30 RICE & 30 DORAYAKI')) {
+            $allocations = [
+                'CUTIE CHOCO RICE TUB' => 0.5,
+                'CUTIE MINI CHOCO DORAYAKI TUB' => 0.5,
+            ];
+        } else {
+            $category = identifyProductCategory(
+                $brand,
+                $itemCode,
+                $description,
+                $productType
+            );
+
+            $allocations = $category === null
+                ? []
+                : [$category => 1.0];
+        }
+
+        foreach ($allocations as $category => $salesShare) {
+            if (!isset($categories[$category])) {
+                $categories[$category] = [
+                    'category' => $category,
+                    'total_quantity' => 0,
+                    'total_sales' => 0.00,
+                    'source_codes' => [],
                 ];
-            } elseif (str_contains($upperDescription, '30 RICE & 30 DORAYAKI')) {
-                $allocations = [
-                    'CUTIE CHOCO RICE TUB' => 0.5,
-                    'CUTIE MINI CHOCO DORAYAKI TUB' => 0.5,
-                ];
-            } else {
-                $category = identifyProductCategory(
-                    $brand,
-                    $itemCode,
-                    $description,
-                    $productType
+            }
+
+            $categories[$category]['total_sales'] +=
+                $sales * $salesShare;
+
+            $isPositiveSaleScarf = true;
+
+            if ($category === 'SCARF' && $brand === 'NAFESA') {
+                $isPositiveSaleScarf = isset(
+                    $soldScarfCodes[
+                        canonicalizeReportingCode($itemCode)
+                    ]
                 );
-
-                $allocations = $category === null
-                    ? []
-                    : [$category => 1.0];
             }
 
-            foreach ($allocations as $category => $salesShare) {
-                // Overall sales includes invoice amounts linked to qualifying SKU categories.
-                $overallSales += $sales * $salesShare;
+            if (
+                $salesShare === 1.0 &&
+                $isPositiveSaleScarf &&
+                isCategoryQuantityRow(
+                    $category,
+                    $itemCode,
+                    $productType,
+                    $description
+                )
+            ) {
+                $categories[$category]['total_quantity'] +=
+                    (int)$row['row_quantity'];
+            }
 
-                if (!isset($categories[$category])) {
-                    $categories[$category] = [
-                        'category'       => $category,
-                        'total_quantity' => 0,
-                        'total_sales'    => 0.00,
-                        'source_codes'   => [],
-                    ];
-                }
+            $normalizedSourceCode = strtoupper(trim($itemCode));
 
-                $categories[$category]['total_sales'] +=
-                    $sales * $salesShare;
-
-                if (
-                    $salesShare === 1.0 &&
-                    isCategoryQuantityRow(
-                        $category,
-                        $itemCode,
-                        $productType,
-                        $description
-                    )
-                ) {
-                    $categories[$category]['total_quantity'] +=
-                        (int)$row['row_quantity'] * (
-                            $itemCode === 'JOY-BUNDLE-1' ? 3 : 1
-                        );                
-                }
-
+            if ($normalizedSourceCode !== '') {
                 $categories[$category]['source_codes'][
-                    strtoupper(trim($itemCode))
+                    $normalizedSourceCode
                 ] = true;
             }
         }
+    }
 
-        $result = [];
+    $result = [];
 
-        foreach ($categories as $category) {
-            if ($category['total_sales'] <= 0) {
-                continue;
-            }
-
-            $category['total_sales'] = round(
-                $category['total_sales'],
-                2
-            );
-
-            $category['source_codes'] = array_keys(
-                $category['source_codes']
-            );
-
-            sort($category['source_codes']);
-
-            $result[] = $category;
+    foreach ($categories as $category) {
+        if ($category['total_sales'] <= 0) {
+            continue;
         }
 
-        return [
-            'products' => $result,
-            'overall_sales' => round($overallSales, 2),
-        ];
+        $category['total_sales'] = round($category['total_sales'], 2);
+        $category['source_codes'] = array_keys($category['source_codes']);
+        sort($category['source_codes']);
+        $result[] = $category;
+    }
+
+    return [
+        'products' => $result,
+        'overall_sales' => round($overallSales, 2),
+    ];
+}
+
+/**
+ * Convert composite and preorder codes to their loose master code.
+ */
+function canonicalizeReportingCode(string $itemCode): string
+{
+    $itemCode = strtoupper(trim($itemCode));
+
+    $itemCode = preg_replace(
+        '/^(?:(?:PREORDER|PRE|Q)-)+/i',
+        '',
+        $itemCode
+    );
+
+    return trim((string)$itemCode);
 }
 
 /**
