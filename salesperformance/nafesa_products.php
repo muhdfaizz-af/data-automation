@@ -634,7 +634,6 @@ function splitRankings(array $products): array
     ];
 }
 
-
 $defaultFrom = date('Y-m-d', strtotime('-1 day'));
 $defaultTo = $defaultFrom;
 
