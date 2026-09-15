@@ -567,6 +567,9 @@ svg{display:block;}
 .main{margin-left:var(--sidebar-w);flex:1;padding:28px 32px 48px;min-width:0;transition:margin-left .25s ease;}
 @media(max-width:900px){.main{margin-left:0;padding:20px;} body.sidebar-collapsed .main{margin-left:0;}}
 
+/* ── LAYOUT ── */
+body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
+
 /* ── PAGE HEADER ── */
 .page-header{margin-bottom:24px;}
 .page-header h1{font-size:24px;font-weight:800;margin-bottom:3px;}
