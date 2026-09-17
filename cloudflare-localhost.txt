@@ -1,0 +1,4 @@
+Open Windows Powershell
+
+Run :
+cloudflared tunnel --url http://localhost:80

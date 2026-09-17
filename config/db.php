@@ -1,4 +1,6 @@
 <?php
+date_default_timezone_set('Asia/Kuala_Lumpur');
+
 /**
  * Database connection constants.
  * Isi value sebenar ikut server kau (jangan commit file ni ke git dengan

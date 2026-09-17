@@ -8,6 +8,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 0);
 
 require_once __DIR__ . '/../config/db.php';
+$pdo = null;
 
 $isLoggedIn = isset($_SESSION['admin_id']);
 $adminUsername = $_SESSION['admin_username'] ?? '';
@@ -29,6 +30,68 @@ $activeNav = 'manual_sales';
 $navBasePath = '../';
 $message = '';
 $messageType = '';
+
+function normalizeExcelHeader($value): string
+{
+  return strtolower(preg_replace('/[^a-z0-9]/', '', trim((string)$value)));
+}
+
+function parseExcelDate($value): ?string
+{
+  if ($value instanceof DateTimeInterface) {
+    return $value->format('Y-m-d');
+  }
+
+  $value = trim((string)$value);
+  if ($value === '') {
+    return null;
+  }
+
+  if (is_numeric($value) && (float)$value > 1) {
+    $date = DateTime::createFromFormat('!Y-m-d', '1899-12-30');
+    if ($date !== false) {
+      $date->modify('+' . (int)$value . ' days');
+      return $date->format('Y-m-d');
+    }
+  }
+
+  foreach (['Y-m-d', 'd/m/Y', 'd-m-Y'] as $format) {
+    $date = DateTime::createFromFormat('!' . $format, $value);
+    if ($date !== false && $date->format($format) === $value) {
+      return $date->format('Y-m-d');
+    }
+  }
+
+  return null;
+}
+
+function downloadManualSalesTemplate(): void
+{
+  require_once __DIR__ . '/../vendor/autoload.php';
+
+  $spreadsheet = new PhpOffice\PhpSpreadsheet\Spreadsheet();
+  $sheet = $spreadsheet->getActiveSheet();
+  $sheet->setTitle('Manual Sales');
+  $sheet->fromArray([
+    ['company_code', 'sales_channel_code', 'sales_date', 'amount', 'brand', 'remarks'],
+    ['MY', 'TIKTOK', date('Y-m-d'), 0.00, 'CHOCO ALBAB', ''],
+  ]);
+  $sheet->getStyle('A1:F1')->getFont()->setBold(true);
+  $sheet->freezePane('A2');
+  foreach (range('A', 'F') as $column) {
+    $sheet->getColumnDimension($column)->setAutoSize(true);
+  }
+
+  header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  header('Content-Disposition: attachment; filename="manual_sales_template.xlsx"');
+  header('Cache-Control: max-age=0');
+  (new PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');
+  exit;
+}
+
+if (isset($_GET['download_template'])) {
+  downloadManualSalesTemplate();
+}
 
 // ============================================================
 // HANDLE FORM SUBMISSION
@@ -52,6 +115,118 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $brand = $_POST['brand'] ?? 'CHOCO ALBAB';
     $remarks = trim($_POST['remarks'] ?? '');
     $userId = (int)$_SESSION['admin_id'];
+
+    if ($_POST['action'] === 'import_excel') {
+      try {
+        if (!$pdo) {
+          throw new Exception('Database connection failed.');
+        }
+        if (!isset($_FILES['manual_sales_file']) || $_FILES['manual_sales_file']['error'] !== UPLOAD_ERR_OK) {
+          throw new Exception('Please select a valid Excel file.');
+        }
+
+        $file = $_FILES['manual_sales_file'];
+        $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($extension !== 'xlsx' || $file['size'] > 10 * 1024 * 1024) {
+          throw new Exception('Only .xlsx files up to 10 MB are supported.');
+        }
+
+        require_once __DIR__ . '/../vendor/autoload.php';
+        $spreadsheet = PhpOffice\PhpSpreadsheet\IOFactory::load($file['tmp_name']);
+        $rows = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+        if (count($rows) < 2) {
+          throw new Exception('The Excel file has no data rows.');
+        }
+
+        $headerMap = [];
+        foreach ($rows[0] as $index => $header) {
+          $headerMap[normalizeExcelHeader($header)] = $index;
+        }
+        $requiredHeaders = ['companycode', 'saleschannelcode', 'salesdate', 'amount', 'brand'];
+        foreach ($requiredHeaders as $header) {
+          if (!array_key_exists($header, $headerMap)) {
+            throw new Exception('Missing required column: ' . $header . '. Download the template and use its headers.');
+          }
+        }
+
+        $companiesByCode = [];
+        foreach ($pdo->query('SELECT id, company_code FROM companies WHERE is_active = 1') as $company) {
+          $companiesByCode[strtoupper(trim($company['company_code']))] = (int)$company['id'];
+        }
+        $channelsByCode = [];
+        foreach ($pdo->query('SELECT id, channel_code FROM sales_channels WHERE is_active = 1') as $channel) {
+          $channelsByCode[strtoupper(trim($channel['channel_code']))] = (int)$channel['id'];
+        }
+
+        $insert = $pdo->prepare('INSERT INTO manual_sales (company_id, sales_channel_id, sales_date, amount, brand, remarks, entered_by) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $check = $pdo->prepare('SELECT id FROM manual_sales WHERE company_id = ? AND sales_channel_id = ? AND sales_date = ? AND brand = ? LIMIT 1');
+        $checkNullBrand = $pdo->prepare('SELECT id FROM manual_sales WHERE company_id = ? AND sales_channel_id = ? AND sales_date = ? AND brand IS NULL LIMIT 1');
+        $inserted = 0;
+        $skipped = 0;
+        $errors = [];
+
+        $pdo->beginTransaction();
+        foreach (array_slice($rows, 1) as $rowIndex => $row) {
+          $excelRow = $rowIndex + 2;
+          $values = [];
+          foreach ($requiredHeaders as $header) {
+            $values[$header] = trim((string)($row[$headerMap[$header]] ?? ''));
+          }
+          if (implode('', $values) === '') {
+            continue;
+          }
+
+          $companyCode = strtoupper($values['companycode']);
+          $channelCode = strtoupper($values['saleschannelcode']);
+          $brand = strtoupper($values['brand']);
+          $brand = $brand === '' ? null : $brand;
+          $salesDate = parseExcelDate($values['salesdate']);
+          $amountValue = str_replace([',', 'RM', ' '], '', $values['amount']);
+          $amount = is_numeric($amountValue) ? (float)$amountValue : 0;
+
+          if (!isset($companiesByCode[$companyCode]) || !isset($channelsByCode[$channelCode])) {
+            $errors[] = 'Row ' . $excelRow . ': company_code or sales_channel_code is invalid.';
+            continue;
+          }
+          if (!$salesDate || ($brand !== null && !in_array($brand, ['CHOCO ALBAB', 'NAFESA', 'ZEKY'], true)) || $amount <= 0) {
+            $errors[] = 'Row ' . $excelRow . ': date, amount, or brand is invalid.';
+            continue;
+          }
+
+          $companyId = $companiesByCode[$companyCode];
+          $channelId = $channelsByCode[$channelCode];
+          if ($brand === null) {
+            $checkNullBrand->execute([$companyId, $channelId, $salesDate]);
+            $duplicate = $checkNullBrand->fetch();
+          } else {
+            $check->execute([$companyId, $channelId, $salesDate, $brand]);
+            $duplicate = $check->fetch();
+          }
+          if ($duplicate) {
+            $skipped++;
+            continue;
+          }
+
+          $remarksIndex = $headerMap['remarks'] ?? null;
+          $remarks = $remarksIndex === null ? '' : trim((string)($row[$remarksIndex] ?? ''));
+          $insert->execute([$companyId, $channelId, $salesDate, $amount, $brand, $remarks, $userId]);
+          $inserted++;
+        }
+        $pdo->commit();
+
+        $message = 'Import complete: ' . $inserted . ' new row(s) inserted, ' . $skipped . ' duplicate(s) skipped.';
+        if ($errors) {
+          $message .= ' ' . count($errors) . ' row(s) rejected. ' . implode(' ', array_slice($errors, 0, 3));
+        }
+        $messageType = $inserted || $skipped ? 'success' : 'error';
+      } catch (Throwable $e) {
+        if ($pdo && $pdo->inTransaction()) {
+          $pdo->rollBack();
+        }
+        $message = $e->getMessage();
+        $messageType = 'error';
+      }
+    }
     
     if ($_POST['action'] === 'save') {
         try {
@@ -59,14 +234,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 throw new Exception('Please fill in all required fields.');
             }
             
-            $stmt = $pdo->prepare('SELECT id FROM manual_sales WHERE company_id = ? AND sales_channel_id = ? AND sales_date = ?');
-            $stmt->execute([$companyId, $channelId, $salesDate]);
+            $stmt = $pdo->prepare('SELECT id FROM manual_sales WHERE company_id = ? AND sales_channel_id = ? AND sales_date = ? AND brand = ?');
+            $stmt->execute([$companyId, $channelId, $salesDate, $brand]);
             if ($stmt->fetch()) {
-                throw new Exception('Entry already exists for this company, channel and date.');
+              throw new Exception('Entry already exists for this company, channel, date and brand.');
             }
             
             $stmt = $pdo->prepare('INSERT INTO manual_sales (company_id, sales_channel_id, sales_date, amount, brand, remarks, entered_by) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$companyId, $channelId, $salesDate, $amount, $brand, $remarks, $userId]);
+            try {
+                $stmt->execute([$companyId, $channelId, $salesDate, $amount, $brand, $remarks, $userId]);
+            } catch (PDOException $e) {
+                if ((int)$e->errorInfo[1] === 1062) {
+                  throw new Exception('Entry already exists for this company, channel, date and brand.');
+                }
+                throw $e;
+            }
             
             $message = 'Manual sales saved successfully!';
             $messageType = 'success';
@@ -198,6 +380,20 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
 .alert-error{background:#fee2e2;border:1px solid #fecaca;color:#991b1b;}
 .alert-info{background:#dbeafe;border:1px solid #93c5fd;color:#1e40af;}
 .alert-warning{background:#fef3c7;border:1px solid #fcd34d;color:#92400e;}
+.modal-backdrop{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(27,27,31,.46);backdrop-filter:blur(4px);animation:modal-fade-in .2s ease-out;}
+.modal-card{position:relative;width:min(100%,420px);padding:32px 28px 26px;background:var(--white);border-radius:var(--radius-lg);box-shadow:0 24px 70px rgba(20,20,30,.22);text-align:center;animation:modal-pop-in .25s ease-out;}
+.modal-icon{width:58px;height:58px;margin:0 auto 16px;border-radius:50%;display:grid;place-items:center;}
+.modal-icon svg{width:28px;height:28px;}
+.modal-success .modal-icon{background:#d1fae5;color:#047857;}
+.modal-error .modal-icon{background:#fee2e2;color:#dc2626;}
+.modal-title{font-size:19px;font-weight:800;margin-bottom:8px;color:var(--ink);}
+.modal-message{font-size:13px;line-height:1.6;color:var(--gray-700);overflow-wrap:anywhere;}
+.modal-close{width:100%;margin-top:24px;padding:11px 18px;border-radius:var(--radius-md);background:var(--ink);color:var(--white);font-size:13px;font-weight:700;transition:background .15s;}
+.modal-close:hover{background:var(--gray-700);}
+.modal-dismiss{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;color:var(--gray-500);font-size:22px;line-height:1;}
+.modal-dismiss:hover{background:var(--gray-100);color:var(--ink);}
+@keyframes modal-fade-in{from{opacity:0;}to{opacity:1;}}
+@keyframes modal-pop-in{from{opacity:0;transform:translateY(8px) scale(.97);}to{opacity:1;transform:translateY(0) scale(1);}}
 
 /* ── TABLE ── */
 .table-wrap{overflow-x:auto;margin-top:16px;}
@@ -241,9 +437,23 @@ table tr:hover{background:var(--gray-50);}
     <p>Enter sales that are not available in Solucis system</p>
   </div>
 
-  <!-- STATUS MESSAGES -->
+  <!-- STATUS MESSAGE MODAL -->
   <?php if ($message): ?>
-    <div class="alert alert-<?= $messageType ?>"><?= htmlspecialchars($message) ?></div>
+    <div class="modal-backdrop" id="statusModal" role="dialog" aria-modal="true" aria-labelledby="statusModalTitle">
+      <div class="modal-card modal-<?= htmlspecialchars($messageType) ?>">
+        <button type="button" class="modal-dismiss" aria-label="Close message" onclick="closeStatusModal()">&times;</button>
+        <div class="modal-icon" aria-hidden="true">
+          <?php if ($messageType === 'success'): ?>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 4 4L19 6"/></svg>
+          <?php else: ?>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 8v4M12 16h.01"/><circle cx="12" cy="12" r="9"/></svg>
+          <?php endif; ?>
+        </div>
+        <h2 class="modal-title" id="statusModalTitle"><?= $messageType === 'success' ? 'Success' : 'Unable to save' ?></h2>
+        <p class="modal-message"><?= htmlspecialchars($message) ?></p>
+        <button type="button" class="modal-close" onclick="closeStatusModal()">Okay</button>
+      </div>
+    </div>
   <?php endif; ?>
 
   <!-- FORM -->
@@ -319,6 +529,29 @@ table tr:hover{background:var(--gray-50);}
     </form>
   </div>
 
+  <div class="card">
+    <div class="card-title">Upload Manual Sales Excel</div>
+    <p class="form-hint">Upload new manual sales records. Duplicate records for the same company, channel, date and brand will be skipped.</p>
+    <form method="POST" action="" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="import_excel">
+      <div class="form-group">
+        <label class="form-label" for="manual_sales_file">Excel file <span class="required">*</span></label>
+        <input class="form-control" type="file" id="manual_sales_file" name="manual_sales_file" accept=".xlsx" required>
+        <span class="form-hint">Use .xlsx format, maximum 10 MB.</span>
+      </div>
+      <div class="button-group">
+        <button type="submit" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 21h14a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2"/></svg>
+          Import Excel
+        </button>
+        <a class="btn btn-secondary" href="?download_template=1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></svg>
+          Download Template
+        </a>
+      </div>
+    </form>
+  </div>
+
   <!-- RECENT ENTRIES -->
   <div class="card">
     <div class="card-title">📋 Recent Manual Sales</div>
@@ -373,40 +606,23 @@ table tr:hover{background:var(--gray-50);}
 </div>
 
 <script>
-// ============================================================
-// Sidebar Functions
-// ============================================================
-function toggleSidebarOnDesktop() {
-  if (window.innerWidth >= 900) {
-    const collapsed = document.body.classList.toggle('sidebar-collapsed');
-    try {
-      if (collapsed) localStorage.setItem('adminSidebarCollapsed', '1');
-      else localStorage.removeItem('adminSidebarCollapsed');
-    } catch (e) {}
-  } else {
-    openDrawer();
+function closeStatusModal() {
+  const modal = document.getElementById('statusModal');
+  if (modal) modal.remove();
+}
+
+const statusModal = document.getElementById('statusModal');
+if (statusModal) {
+  statusModal.addEventListener('click', function(event) {
+    if (event.target === statusModal) closeStatusModal();
+  });
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') closeStatusModal();
+  });
+  if (statusModal.querySelector('.modal-success')) {
+    setTimeout(closeStatusModal, 4000);
   }
 }
-
-function openDrawer() {
-  document.getElementById('sidebarDrawer').classList.add('open');
-  document.getElementById('drawerOverlay').classList.add('open');
-}
-
-function closeDrawer() {
-  document.getElementById('sidebarDrawer').classList.remove('open');
-  document.getElementById('drawerOverlay').classList.remove('open');
-}
-
-// Auto clear success message after 5 seconds
-setTimeout(function() {
-  const alerts = document.querySelectorAll('.alert-success');
-  alerts.forEach(function(el) {
-    el.style.transition = 'opacity 0.5s';
-    el.style.opacity = '0';
-    setTimeout(function() { el.remove(); }, 500);
-  });
-}, 5000);
 </script>
 
 </body>

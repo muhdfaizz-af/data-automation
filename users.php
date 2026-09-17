@@ -12,7 +12,7 @@
 
 require_once __DIR__ . '/config/db.php';
 
-$username      = 'Denish';           // <-- tukar
+$username      = 'Amir';           // <-- tukar
 $plainPassword = '123456';    // <-- tukar, guna password kuat
 
 try {
