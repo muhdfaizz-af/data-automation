@@ -12,6 +12,9 @@
  * - A distinct, non-empty orders.member_code
  * - Must have at least one confirmed qualifying order
  *
+ * Member Type:
+ * - Distributor
+ * 
  * Sales:
  * - Uses orders.sub_total
  * - Singapore sales are converted to MYR
@@ -237,7 +240,7 @@ function getAsdMetrics(
 
           AND UPPER(TRIM(COALESCE(o.member_type, ''))) = 
           UPPER(:member_type)
-          
+
           {$companyCondition}
     ";
 
