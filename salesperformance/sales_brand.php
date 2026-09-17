@@ -513,53 +513,53 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 
 /* ── PAGE HEADER ── */
 .page-header {margin-bottom: 24px;}
-.page-header h1 {margin-bottom: 5px;font-size: 25px;font-weight: 800;}
-.page-header p {color: var(--gray-500);font-size: 13px;}
+.page-header h1 {margin-bottom: 5px;font-size: 1.5625rem;font-weight: 800;}
+.page-header p {color: var(--gray-500);font-size: 0.8125rem;}
 
 /* ── CARD SECTION ── */
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
-.card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
-.card-subtitle {color: var(--gray-500);font-size: 12px; margin-bottom: 10px;}
+.card-title {margin-bottom: 4px;font-size: 1rem;font-weight: 800;}
+.card-subtitle {color: var(--gray-500);font-size: 0.75rem; margin-bottom: 10px;}
 
 /* ── FILTER SECTION ── */
 .filter-grid {display: grid;grid-template-columns:repeat(2, minmax(180px, 1fr))minmax(180px, 240px)auto;gap: 16px;align-items: end;margin-top: 20px;}
 .field {display: flex;min-width: 0;flex-direction: column;gap: 7px;}
-.field label {color: var(--gray-700);font-size: 10.5px;font-weight: 800;text-transform: uppercase;}
-.field input,.field select {width: 100%;min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;background: var(--white);color: var(--ink);font: inherit;font-size: 13px;}
+.field label {color: var(--gray-700);font-size: 0.6875rem;font-weight: 800;text-transform: uppercase;}
+.field input,.field select {width: 100%;min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;background: var(--white);color: var(--ink);font: inherit;font-size: 0.8125rem;}
 
 /* ── APPLY BUTTON ── */
-.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 0.8125rem;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
 .apply-button:disabled {opacity: .7;cursor: default;}
 
 /* ── ERROR BOX ── */
-.error-box {margin-bottom: 20px;padding: 14px 17px;border: 1px solid #FECACA;border-radius: 10px;background: #FEF2F2;color: #991B1B;font-size: 12px;}
+.error-box {margin-bottom: 20px;padding: 14px 17px;border: 1px solid #FECACA;border-radius: 10px;background: #FEF2F2;color: #991B1B;font-size: 0.75rem;}
 .error-box ul {padding-left: 18px;}
 
 /* ── SUMMARY SECTION ── */
 .summary-grid {display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 16px;margin-bottom: 24px;}
 .summary-card {padding: 19px;border: 1px solid var(--gray-100);border-radius: var(--radius-md);background: var(--white);box-shadow: var(--shadow-card);}
-.summary-label {margin-bottom: 5px;color: var(--gray-500);font-size: 10px;font-weight: 800;text-transform: uppercase;}
-.summary-value {font-size: 21px;font-weight: 800;}
+.summary-label {margin-bottom: 5px;color: var(--gray-500);font-size: 0.6875rem;font-weight: 800;text-transform: uppercase;}
+.summary-value {font-size: 1.3125rem;font-weight: 800;}
 
 /* ── CHART SECTION ── */
 .chart-grid {display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 16px;margin-bottom: 24px;}
 .chart-card {display: flex;flex-direction: column;padding: 18px 20px 16px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
-.chart-card .card-title {margin-bottom: 2px;font-size: 13.5px;}
-.chart-card .card-subtitle {margin-bottom: 0;font-size: 11px;line-height: 1.5;}
+.chart-card .card-title {margin-bottom: 2px;font-size: 0.875rem;}
+.chart-card .card-subtitle {margin-bottom: 0;font-size: 0.6875rem;line-height: 1.5;}
 .chart-box {width: 100%;flex: 1;margin-top: 14px;}
 .chart-box svg {display: block;width: 100%;height: auto;}
 .chart-box svg text {font-family: inherit;}
-.chart-legend {display: flex;flex-wrap: wrap;justify-content: center;gap: 18px;margin-top: 14px;padding-top: 12px;border-top: 1px solid var(--gray-100);color: var(--gray-500);font-size: 10.5px;font-weight: 700;}
+.chart-legend {display: flex;flex-wrap: wrap;justify-content: center;gap: 18px;margin-top: 14px;padding-top: 12px;border-top: 1px solid var(--gray-100);color: var(--gray-500);font-size: 0.6875rem;font-weight: 700;}
 .chart-legend span {display: inline-flex;align-items: center;gap: 6px;}
 .chart-legend i {width: 8px;height: 8px;border-radius: 50%;}
-.chart-empty {padding: 40px 0;color: var(--gray-500);font-size: 11.5px;text-align: center;}
+.chart-empty {padding: 40px 0;color: var(--gray-500);font-size: 0.75rem;text-align: center;}
 
 /* ── TABLE SECTION ── */
 .table-wrap {overflow: hidden;border: 1px solid #E6E6EA;border-radius: 12px;background: var(--white);}
 .brand-table {width: 100%;border-collapse: separate;border-spacing: 0;}
-.brand-table th,.brand-table td {padding: 14px 16px;border-bottom: 1px solid #ECECF0;text-align: left;font-size: 12px;vertical-align: middle;}
-.brand-table th {background: #F7F7F9;color: var(--gray-700);font-size: 10.5px;font-weight: 800;letter-spacing: .3px;text-transform: uppercase;}
+.brand-table th,.brand-table td {padding: 14px 16px;border-bottom: 1px solid #ECECF0;text-align: left;font-size: 0.75rem;vertical-align: middle;}
+.brand-table th {background: #F7F7F9;color: var(--gray-700);font-size: 0.6875rem;font-weight: 800;letter-spacing: .3px;text-transform: uppercase;}
 .brand-table tbody tr {transition: background-color .15s ease;}
 .brand-table tbody tr:hover td {background: #FAFAFB;}
 .brand-table tbody tr:last-child td {border-bottom: 0;}
@@ -572,11 +572,11 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .percentage-track {width: 90px;height: 7px;overflow: hidden;border-radius: 20px;background: var(--gray-100);}
 .percentage-fill {height: 100%;border-radius: 20px;background: var(--red);}
 .total-row td {background: #F7F7F9 !important;font-weight: 800;}
-.note {margin-top: 15px;color: var(--gray-500);font-size: 11px;line-height: 1.6;}
+.note {margin-top: 15px;color: var(--gray-500);font-size: 0.6875rem;line-height: 1.6;}
 
 .spinner {width: 15px;height: 15px;border: 2px solid rgba(255,255,255,.4);border-top-color: #fff;border-radius: 50%;animation: spin .7s linear infinite;display: none;}
 .apply-button.is-loading .spinner {display: inline-block;}
-.report-loading td {padding: 40px 16px;text-align: center;color: var(--gray-500);font-size: 12px;}
+.report-loading td {padding: 40px 16px;text-align: center;color: var(--gray-500);font-size: 0.75rem;}
 @keyframes spin {to {transform: rotate(360deg);}}
 @media (max-width: 950px) {.filter-grid {grid-template-columns: repeat(2, minmax(0, 1fr));}.chart-grid {grid-template-columns: 1fr;}}
 @media (max-width: 900px) {.main,body.sidebar-collapsed .main {margin-left: 0;padding: 20px;}}
@@ -841,13 +841,10 @@ function buildBrandSummary(data) {
         .sort((a, b) => b.total - a.total);
 }
 
-// Round an axis maximum up to a clean number
+// Keep a small headroom above the highest bar without adding a full empty interval.
 function niceMax(value) {
     if (value <= 0) return 100;
-    const pow = Math.pow(10, Math.floor(Math.log10(value)));
-    const n = value / pow;
-    const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
-    return step * pow;
+    return value * 1.08;
 }
 
 function shortMoney(amount) {
@@ -860,7 +857,7 @@ function renderBrandBarChart(rows) {
         return;
     }
 
-    const W = 720, H = 232;
+    const W = 720, H = 320;
     const padL = 74, padR = 14, padT = 26, padB = 34;
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
@@ -880,8 +877,8 @@ function renderBrandBarChart(rows) {
     }
 
     const groupW = plotW / rows.length;
-    const barW = Math.max(12, Math.min(30, groupW / 2 - 16));
-    const barGap = 4;
+    const barW = Math.max(14, Math.min(36, groupW / 2 - 12));
+    const barGap = 28;
 
     rows.forEach((row, i) => {
         const cx = padL + groupW * i + groupW / 2;
@@ -896,7 +893,7 @@ function renderBrandBarChart(rows) {
             if (h > 0) {
                 svg += `<rect x="${bar.x}" y="${top}" width="${barW}" height="${h}" fill="${bar.color}" rx="3"/>`;
             }
-            svg += `<text x="${bar.x + barW / 2}" y="${top - 7}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#4A4A52">${escapeHtml(shortMoney(bar.value))}</text>`;
+            svg += `<text x="${bar.x + barW / 2}" y="${top - 8}" text-anchor="middle" font-size="11" font-weight="700" fill="#4A4A52">${escapeHtml(shortMoney(bar.value))}</text>`;
         });
 
         svg += `<text x="${cx}" y="${padT + plotH + 20}" text-anchor="middle" font-size="11" font-weight="700" fill="#4A4A52">${escapeHtml(row.brand)}</text>`;

@@ -585,7 +585,7 @@ $monthNames = [1=>'Jan',2=>'Feb',3=>'Mar',4=>'Apr',5=>'May',6=>'Jun',7=>'Jul',8=
   --bg:#F5F5F7;--white:#FFFFFF;
   --gold:#F5A623;--green:#10B981;
   --radius-lg:18px;--radius-md:12px;--radius-sm:8px;
-  --sidebar-w:256px;--sidebar-w-collapsed:76px;--topbar-h:64px;
+  --sidebar-w: 260px;--sidebar-w-collapsed: 82px;--topbar-h: 64px;
   --shadow:0 1px 2px rgba(20,20,30,.04),0 8px 24px -12px rgba(20,20,30,.10);
   --shadow-card:0 2px 8px rgba(20,20,30,.06);
 }
@@ -603,8 +603,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 
 /* ── PAGE HEADER ── */
 .page-header{margin-bottom:24px;}
-.page-header h1{font-size:24px;font-weight:800;margin-bottom:3px;}
-.page-header p{font-size:13.5px;color:var(--gray-500);}
+.page-header h1{font-size:1.5rem;font-weight:800;margin-bottom:3px;}
+.page-header p{font-size:0.875rem;color:var(--gray-500);}
 
 /* ── REPORT CARDS ── */
 .report-card{background:var(--white);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow-card);border:1px solid var(--gray-100);margin-bottom:24px;}
@@ -615,21 +615,21 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .ri-teal{background:linear-gradient(135deg,var(--teal),var(--teal-dark));}
 .ri-gold{background:linear-gradient(135deg,var(--gold),#c97e0e);}
 .ri-dark{background:linear-gradient(135deg,var(--gray-700),var(--ink));}
-.report-card-title{font-size:16px;font-weight:800;}
-.report-card-sub{font-size:12px;color:var(--gray-500);font-weight:500;margin-top:1px;}
+.report-card-title{font-size:1rem;font-weight:800;}
+.report-card-sub{font-size:0.75rem;color:var(--gray-500);font-weight:500;margin-top:1px;}
 
 /* ── GLOBAL FILTER BAR (Status + Company + Data Source, applies to all charts) ── */
 .global-filter-card{border:1.5px solid var(--ink);}
 .global-filter-row{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;}
 .global-filter-group{display:flex;flex-direction:column;gap:6px;min-width:170px;}
-.global-filter-group label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
-.global-filter-group select{padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:13.5px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
+.global-filter-group label{font-size:0.6875rem;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
+.global-filter-group select{padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.875rem;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
 .global-filter-group select:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(27,27,31,.1);}
-.btn-apply-global{padding:11px 22px;background:var(--ink);color:#fff;border-radius:9px;font-size:13px;font-weight:800;display:inline-flex;align-items:center;gap:8px;transition:background .15s,opacity .15s;}
+.btn-apply-global{padding:11px 22px;background:var(--ink);color:#fff;border-radius:9px;font-size:0.8125rem;font-weight:800;display:inline-flex;align-items:center;gap:8px;transition:background .15s,opacity .15s;}
 .btn-apply-global:hover{background:#000;}
 .btn-apply-global:disabled{opacity:.6;cursor:not-allowed;}
 .btn-apply-global svg{width:14px;height:14px;stroke:#fff;fill:none;}
-.global-filter-hint{font-size:11.5px;color:var(--gray-500);margin-left:auto;align-self:center;max-width:260px;}
+.global-filter-hint{font-size:0.75rem;color:var(--gray-500);margin-left:auto;align-self:center;max-width:260px;}
 
 /* ── two-column body: filter panel (left) + stats & chart (right) ── */
 .report-card-body{display:grid;grid-template-columns:300px minmax(0,1fr);gap:28px;align-items:start;}
@@ -637,21 +637,21 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .report-card-main{min-width:0;}
 
 .filter-panel{display:flex;flex-direction:column;gap:12px;background:var(--gray-100);border-radius:var(--radius-md);padding:16px;}
-.filter-panel-label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
+.filter-panel-label{font-size:0.6875rem;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
 .filter-panel-label.spaced{margin-top:4px;}
 
 .filter-inputs-row{display:flex;align-items:center;gap:8px;}
-.filter-inputs-row select{flex:1;min-width:0;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
+.filter-inputs-row select{flex:1;min-width:0;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.8125rem;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
 .filter-inputs-row select:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(224,32,46,.1);}
-.filter-arrow{font-size:12.5px;color:var(--gray-500);font-weight:700;flex-shrink:0;}
+.filter-arrow{font-size:0.75rem;color:var(--gray-500);font-weight:700;flex-shrink:0;}
 
 /* ── date range: stacked vertically + full width so the picked dates are clearly visible ── */
 .date-range-stack{display:flex;flex-direction:column;gap:6px;}
-.date-range-stack input{width:100%;padding:11px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
+.date-range-stack input{width:100%;padding:11px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.875rem;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
 .date-range-stack input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(224,32,46,.1);}
-.date-range-arrow{font-size:12px;color:var(--gray-500);font-weight:700;text-align:center;}
+.date-range-arrow{font-size:0.75rem;color:var(--gray-500);font-weight:700;text-align:center;}
 
-.btn-apply{padding:10px 16px;background:var(--red);color:#fff;border-radius:9px;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 4px 14px rgba(224,32,46,.25);transition:background .15s,opacity .15s;width:100%;}
+.btn-apply{padding:10px 16px;background:var(--red);color:#fff;border-radius:9px;font-size:0.8125rem;font-weight:800;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 4px 14px rgba(224,32,46,.25);transition:background .15s,opacity .15s;width:100%;}
 .btn-apply:hover{background:var(--red-dark);}
 .btn-apply:disabled{opacity:.6;cursor:not-allowed;}
 .btn-apply svg{width:14px;height:14px;stroke:#fff;fill:none;}
@@ -659,42 +659,154 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .card-teal .btn-apply:hover{background:var(--teal-dark);}
 .card-gold .btn-apply{background:var(--gold);box-shadow:0 4px 14px rgba(245,166,35,.25);}
 .card-gold .btn-apply:hover{background:#c97e0e;}
-.filter-msg{font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:14px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+.filter-msg{font-size:0.75rem;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:14px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
 
 /* ── stats row + chart type selector ── */
 .stats-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px;}
 .stats-group{display:flex;gap:28px;flex-wrap:wrap;}
-.stat-block .stat-label{font-size:10.5px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
-.stat-block .stat-value{font-size:19px;font-weight:800;}
+.stat-block .stat-label{font-size:0.6875rem;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
+.stat-block .stat-value{font-size:1.1875rem;font-weight:800;}
 .stat-total .stat-value{color:var(--red);}
 .card-teal .stat-total .stat-value{color:var(--teal-dark);}
 .card-gold .stat-total .stat-value{color:#c97e0e;}
 .stat-average .stat-value{color:var(--ink);}
 
-.chart-type-select{padding:8px 30px 8px 14px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:12.5px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="%238A8A93" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>') no-repeat right 12px center;appearance:none;-webkit-appearance:none;cursor:pointer;outline:none;flex-shrink:0;}
+.chart-type-select{padding:8px 30px 8px 14px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.75rem;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="%238A8A93" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>') no-repeat right 12px center;appearance:none;-webkit-appearance:none;cursor:pointer;outline:none;flex-shrink:0;}
 .chart-type-select:focus{border-color:var(--red);}
 
 /* ── CHART AREA ── */
-.chart-wrap{position:relative;height:280px;transition:opacity .15s;}
+.chart-wrap{position:relative;height:320px;padding:18px 8px 0;transition:opacity .15s;}
 .chart-wrap.is-loading{opacity:.35;pointer-events:none;}
-.chart-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--gray-500);font-size:13px;font-weight:600;text-align:center;}
+.chart-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--gray-500);font-size:0.8125rem;font-weight:600;text-align:center;}
 .chart-empty.show{display:flex;}
 
-/* ── BREAKDOWN TABLE (per section, full card width, mirrors the chart's current filtered range) ── */
-.comparison-table-wrap{margin-top:20px;width:100%;}
+/* ════════════════════════════════════════════════════
+   BREAKDOWN TABLE — polished, section-aware design
+   ════════════════════════════════════════════════════ */
+.comparison-table-wrap{margin-top:24px;width:100%;}
 .comparison-table-wrap.is-loading{opacity:.35;pointer-events:none;}
-.comparison-table-title{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px;}
-.comparison-table-scroll{overflow-x:auto;border:1px solid var(--gray-100);border-radius:var(--radius-md);width:100%;}
-.comparison-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:auto;}
-.comparison-table thead th{background:var(--green);color:#fff;text-align:left;padding:12px 16px;font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.3px;white-space:nowrap;}
-.comparison-table tbody td{padding:11px 16px;border-top:1px solid var(--gray-100);white-space:nowrap;}
-.comparison-table tbody tr:hover{background:var(--gray-100);}
-.comparison-table td.col-total{font-weight:700;}
-.change-positive{color:var(--green);font-weight:700;}
-.change-negative{color:var(--red);font-weight:700;}
-.change-neutral{color:var(--gray-500);font-weight:600;}
+.comparison-table-title{
+  font-size:0.6875rem;font-weight:800;color:var(--gray-700);
+  text-transform:uppercase;letter-spacing:.5px;
+  margin-bottom:10px;display:flex;align-items:center;gap:8px;
+}
+.comparison-table-title::before{
+  content:"";width:3px;height:14px;border-radius:2px;background:var(--gray-300);
+}
+#dailyCard .comparison-table-title::before{background:var(--red);}
+.card-teal .comparison-table-title::before{background:var(--teal);}
+.card-gold .comparison-table-title::before{background:var(--gold);}
 
-@media(max-width:600px){.main{padding:16px 14px 40px;} .stats-row{flex-direction:column;align-items:flex-start;} .global-filter-hint{margin-left:0;max-width:none;}}
+.comparison-table-scroll{
+  overflow-x:auto;border:1px solid var(--gray-100);
+  border-radius:var(--radius-md);background:#fff;
+  box-shadow:0 1px 2px rgba(20,20,30,.03);
+}
+.comparison-table{
+  width:100%;border-collapse:separate;border-spacing:0;
+  font-size:0.75rem;
+}
+.comparison-table thead th{
+  padding:12px 16px;
+  background:#F9F9FB;
+  color:var(--gray-700);
+  font-size:0.6875rem;font-weight:800;text-align:left;
+  text-transform:uppercase;letter-spacing:.5px;
+  white-space:nowrap;
+  border-bottom:1.5px solid var(--gray-300);
+  position:sticky;top:0;z-index:1;
+}
+.comparison-table thead th:not(:first-child){text-align:right;}
+
+/* header colour per section */
+#dailyCard .comparison-table thead th{
+  background:linear-gradient(180deg,#FFF5F6,#FDEDEE);
+  color:var(--red-dark);
+  border-bottom-color:#F5C2C7;
+}
+.card-teal .comparison-table thead th{
+  background:linear-gradient(180deg,#F0FDFD,#E0F7F7);
+  color:var(--teal-dark);
+  border-bottom-color:#A8E6E6;
+}
+.card-gold .comparison-table thead th{
+  background:linear-gradient(180deg,#FFF9EE,#FEF3DC);
+  color:#8A5A0E;
+  border-bottom-color:#F3D9A3;
+}
+
+.comparison-table tbody td{
+  padding:11px 16px;
+  border-top:1px solid var(--gray-100);
+  white-space:nowrap;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+.comparison-table tbody td:not(:first-child){text-align:right;}
+
+/* zebra striping */
+.comparison-table tbody tr:nth-child(even){background:#FAFAFC;}
+
+/* hover */
+.comparison-table tbody tr{transition:background .15s ease;}
+.comparison-table tbody tr:hover{background:#FFF0F1;}
+.card-teal .comparison-table tbody tr:hover{background:#EAFBFA;}
+.card-gold .comparison-table tbody tr:hover{background:#FFF8E9;}
+
+/* first column — period label */
+.comparison-table tbody td:first-child{
+  font-weight:700;color:var(--ink);
+  border-right:1px solid var(--gray-100);
+}
+/* Total sales column — section colour */
+.comparison-table tbody td.col-total{
+  font-weight:800;
+  color:var(--red-dark);
+}
+.card-teal .comparison-table tbody td.col-total{color:var(--teal-dark);}
+.card-gold .comparison-table tbody td.col-total{color:#8A5A0E;}
+
+/* Difference badges (pill style) */
+.change-positive,
+.change-negative,
+.change-neutral{
+  display:inline-flex;align-items:center;justify-content:flex-end;gap:3px;
+  min-width:72px;
+  padding:3px 9px;border-radius:999px;
+  font-size:inherit;font-weight:800;
+  line-height:1.2;
+}
+.change-positive{color:#065F46;background:#D1FAE5;}
+.change-negative{color:#991B1B;background:#FEE2E2;}
+.change-neutral {color:#6B7280;background:#F3F4F6;font-weight:700;}
+.comparison-table tbody td.empty-value,
+.comparison-table tfoot td.empty-value{text-align:center;}
+.empty-value .change-neutral{justify-content:center;}
+
+/* footer total */
+.comparison-table tfoot td{
+  padding:13px 16px;
+  font-weight:800;
+  border-top:2px solid var(--ink);
+  background:#F9F9FB;
+  color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+.comparison-table tfoot td:not(:first-child){text-align:right;}
+.comparison-table tfoot td.col-total{
+  color:var(--red-dark);font-size:0.75rem;
+}
+.card-teal .comparison-table tfoot td.col-total{color:var(--teal-dark);}
+.card-gold .comparison-table tfoot td.col-total{color:#8A5A0E;}
+
+@media(max-width:600px){
+  .main{padding:16px 14px 40px;}
+  .stats-row{flex-direction:column;align-items:flex-start;}
+  .global-filter-hint{margin-left:0;max-width:none;}
+  .comparison-table tbody td,
+  .comparison-table thead th,
+  .comparison-table tfoot td{padding:9px 10px;font-size:0.75rem;}
+  .change-positive,.change-negative,.change-neutral{padding:2px 7px;font-size:inherit;min-width:60px;}
+}
 </style>
 <link rel="stylesheet" href="../includes/report_tables.css">
 </head>
@@ -759,7 +871,6 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Apply to All Charts
       </button>
-      <span class="global-filter-hint">Each chart's own date / month / year range filter below still applies. Status only affects System sales — Manual sales has no status.</span>
     </div>
   </div>
 
@@ -815,13 +926,26 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 
     <!-- Breakdown table: full card width, mirrors dailyForm's current filtered range -->
     <div class="comparison-table-wrap" id="dailyTableWrap">
-      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-title">Daily Sales Breakdown</div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
-            <tr><th>Date</th><th>Total Sales</th><th>Changes (%)</th></tr>
+            <tr>
+              <th>Date</th>
+              <th>Total Sales</th>
+              <th>Difference (RM)</th>
+              <th>Difference (%)</th>
+            </tr>
           </thead>
           <tbody id="dailyTableBody"></tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="col-total" id="dailyTableTotal">—</td>
+              <td class="empty-value">—</td>
+              <td class="empty-value">—</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -882,8 +1006,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
             </div>
           </div>
           <select class="chart-type-select" data-chart="monthly">
-            <option value="line" selected>Line Chart</option>
-            <option value="bar" >Bar Chart</option>
+            <option value="line" >Line Chart</option>
+            <option value="bar" selected>Bar Chart</option>
           </select>
         </div>
         <div class="chart-wrap" id="monthlyChartWrap">
@@ -895,13 +1019,26 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 
     <!-- Breakdown table: full card width, mirrors monthlyForm's current filtered range -->
     <div class="comparison-table-wrap" id="monthlyTableWrap">
-      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-title">Monthly Sales Breakdown</div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
-            <tr><th>Month</th><th>Total Sales</th><th>Changes (%)</th></tr>
+            <tr>
+              <th>Month</th>
+              <th>Total Sales</th>
+              <th>Difference (RM)</th>
+              <th>Difference (%)</th>
+            </tr>
           </thead>
           <tbody id="monthlyTableBody"></tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="col-total" id="monthlyTableTotal">—</td>
+              <td class="empty-value">—</td>
+              <td class="empty-value">—</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -996,15 +1133,28 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
       </div>
     </div>
 
-    <!-- Breakdown table: full card width, mirrors yearlyForm's current filtered range, with actual date detail -->
+    <!-- Breakdown table: full card width, mirrors yearlyForm's current filtered range -->
     <div class="comparison-table-wrap" id="yearlyTableWrap">
-      <div class="comparison-table-title">Sales Breakdown</div>
+      <div class="comparison-table-title">Yearly Sales Breakdown</div>
       <div class="comparison-table-scroll">
         <table class="comparison-table">
           <thead>
-            <tr><th>Year</th><th>Total Sales</th><th>Changes (%)</th></tr>
+            <tr>
+              <th>Year</th>
+              <th>Total Sales</th>
+              <th>Difference (RM)</th>
+              <th>Difference (%)</th>
+            </tr>
           </thead>
           <tbody id="yearlyTableBody"></tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="col-total" id="yearlyTableTotal">—</td>
+              <td class="empty-value">—</td>
+              <td class="empty-value">—</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -1021,6 +1171,7 @@ function formatRM(n){
 function chartBaseOptions(){
     return {
         responsive:true, maintainAspectRatio:false,
+    layout:{padding:{top:24,right:10,left:4,bottom:4}},
         plugins:{
             legend:{display:false},
             tooltip:{
@@ -1032,10 +1183,47 @@ function chartBaseOptions(){
         },
         scales:{
             x:{ grid:{display:false}, ticks:{font:{family:"'Plus Jakarta Sans'", weight:'600', size:11}} },
-            y:{ beginAtZero:true, grid:{color:'#F2F2F4'}, ticks:{font:{family:"'Plus Jakarta Sans'"}, callback:(v)=> 'RM ' + v.toLocaleString('en-MY')} }
+            y:{ beginAtZero:true, grace:'12%', grid:{color:'#F2F2F4'}, ticks:{font:{family:"'Plus Jakarta Sans'"}, callback:(v)=> 'RM ' + v.toLocaleString('en-MY')} }
         }
     };
 }
+
+  const barValueLabels = {
+    id: 'barValueLabels',
+    afterDatasetsDraw(chart) {
+      if (chart.config.type !== 'bar') return;
+
+      const context = chart.ctx;
+      context.save();
+      context.font = "700 12px 'Plus Jakarta Sans', sans-serif";
+      context.fillStyle = '#4A4A52';
+      context.textAlign = 'center';
+      context.textBaseline = 'bottom';
+
+      const occupiedLabels = [];
+      chart.data.datasets.forEach((dataset, datasetIndex) => {
+        const meta = chart.getDatasetMeta(datasetIndex);
+        meta.data.forEach((bar, index) => {
+          const value = Number(dataset.data[index] || 0);
+          if (value <= 0) return;
+
+          const text = formatRM(value);
+          const textWidth = context.measureText(text).width;
+          const left = bar.x - textWidth / 2;
+          const right = bar.x + textWidth / 2;
+          const hasCollision = occupiedLabels.some(label => left < label.right + 6 && right > label.left - 6);
+
+          // Skip tightly packed labels rather than letting values overlap.
+          if (hasCollision && bar.width < textWidth) return;
+
+          context.fillText(text, bar.x, bar.y - 8);
+          occupiedLabels.push({ left, right });
+        });
+      });
+
+      context.restore();
+    }
+  };
 
 function makeDataset(type, label, data, color, hoverColor, ctx){
     if (type === 'line') {
@@ -1093,7 +1281,8 @@ function renderChart(key, type){
     chartInstances[key] = new Chart(ctx, {
         type: type === 'line' ? 'line' : 'bar',
         data:{ labels, datasets:[ makeDataset(type, label, values, color, hover, ctx) ] },
-        options: chartBaseOptions()
+      options: chartBaseOptions(),
+      plugins: type === 'bar' ? [barValueLabels] : []
     });
 }
 
@@ -1128,7 +1317,7 @@ function buildPeriodLabel(key, label, rowKey){
 
 // ════════════════════════════════════════════════════
 // BREAKDOWN TABLE — mirrors chartData[key], one row per label,
-// "Changes (%)" compares each row to the row before it in the SAME range.
+// "Difference (RM)" compares each row to the row before it in the SAME range.
 // ════════════════════════════════════════════════════
 function renderTable(key){
     const tbody = document.getElementById(key + 'TableBody');
@@ -1137,42 +1326,56 @@ function renderTable(key){
     const { labels, values, keys } = chartData[key];
 
     if (!labels.length) {
-        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--gray-500);padding:16px;">No data in this range.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--gray-500);padding:16px;">No data in this range.</td></tr>';
+        const totalCellEmpty = document.getElementById(key + 'TableTotal');
+        if (totalCellEmpty) totalCellEmpty.textContent = formatRM(0);
         return;
     }
 
     let rowsHtml = '';
     let prevValue = null;
+    let grandTotal = 0;
 
     labels.forEach(function(label, i){
         const value = Number(values[i]) || 0;
+        grandTotal += value;
         const rowKey = keys && keys[i] !== undefined ? keys[i] : null;
         const periodLabel = buildPeriodLabel(key, label, rowKey);
-        let changeCell = '<span class="change-neutral">–</span>';
+        let differenceRmCell = '<span class="change-neutral">–</span>';
+        let differencePctCell = '<span class="change-neutral">–</span>';
 
         if (prevValue !== null) {
-            if (prevValue === 0) {
-                changeCell = value > 0
-                    ? '<span class="change-positive">New</span>'
-                    : '<span class="change-neutral">0.00%</span>';
-            } else {
-                const pct = ((value - prevValue) / prevValue) * 100;
-                const cls = pct > 0 ? 'change-positive' : (pct < 0 ? 'change-negative' : 'change-neutral');
-                const sign = pct > 0 ? '+' : '';
-                changeCell = '<span class="' + cls + '">' + sign + pct.toFixed(2) + '%</span>';
-            }
+          const difference = value - prevValue;
+          const cls = difference > 0 ? 'change-positive' : (difference < 0 ? 'change-negative' : 'change-neutral');
+          const sign = difference > 0 ? '+' : (difference < 0 ? '-' : '');
+          differenceRmCell = '<span class="' + cls + '">' + sign + formatRM(Math.abs(difference)) + '</span>';
+
+          if (prevValue === 0) {
+            differencePctCell = value > 0
+              ? '<span class="change-positive">New</span>'
+              : '<span class="change-neutral">0.00%</span>';
+          } else {
+            const percentage = (difference / Math.abs(prevValue)) * 100;
+            const percentageSign = percentage > 0 ? '+' : '';
+            differencePctCell = '<span class="' + cls + '">' + percentageSign + percentage.toFixed(2) + '%</span>';
+          }
         }
 
         rowsHtml += '<tr>'
             + '<td>' + periodLabel + '</td>'
             + '<td class="col-total">' + formatRM(value) + '</td>'
-            + '<td>' + changeCell + '</td>'
+            + '<td' + (prevValue === null ? ' class="empty-value"' : '') + '>' + differenceRmCell + '</td>'
+            + '<td' + (prevValue === null ? ' class="empty-value"' : '') + '>' + differencePctCell + '</td>'
             + '</tr>';
 
         prevValue = value;
     });
 
     tbody.innerHTML = rowsHtml;
+
+    // Update footer total
+    const totalCell = document.getElementById(key + 'TableTotal');
+    if (totalCell) totalCell.textContent = formatRM(grandTotal);
 }
 
 // ════════════════════════════════════════════════════

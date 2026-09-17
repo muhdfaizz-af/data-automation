@@ -635,49 +635,49 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 
 /* ── PAGE HEADER ── */
 .page-header {margin-bottom: 24px;}
-.page-header h1 {margin-bottom: 5px;font-size: 25px;font-weight: 800;}
-.page-header p {color: var(--gray-500);font-size: 13px;}
+.page-header h1 {margin-bottom: 5px;font-size: 1.5625rem;font-weight: 800;}
+.page-header p {color: var(--gray-500);font-size: 0.8125rem;}
 
 /* ── CARD SECTION ── */
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid var(--gray-100);border-radius: var(--radius-lg);background: var(--white);box-shadow: var(--shadow-card);}
-.card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
-.card-subtitle {color: var(--gray-500);font-size: 12px;}
+.card-title {margin-bottom: 4px;font-size: 1rem;font-weight: 800;}
+.card-subtitle {color: var(--gray-500);font-size: 0.75rem;}
 
 /* ── FILTER FORM ── */
 .filter-form {display: flex;gap: 16px;align-items: flex-end;margin-top: 20px;}
 .field {display: flex;width: min(100%, 340px);flex-direction: column;gap: 7px;}
-.field label {color: var(--gray-700);font-size: 11px;font-weight: 800;text-transform: uppercase;}
-.field input {min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;background: var(--white);color: var(--ink);font: inherit;font-size: 13px;}
+.field label {color: var(--gray-700);font-size: 0.6875rem;font-weight: 800;text-transform: uppercase;}
+.field input {min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;background: var(--white);color: var(--ink);font: inherit;font-size: 0.8125rem;}
 
 /* ── APPLY BUTTON ── */
-.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 0.8125rem;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
 
 /* ── DEFINITION SECTION ── */
 .definition,
-.error-box {margin-bottom: 20px;padding: 14px 17px;border-radius: 10px;font-size: 12px;line-height: 1.7;}
+.error-box {margin-bottom: 20px;padding: 14px 17px;border-radius: 10px;font-size: 0.75rem;line-height: 1.7;}
 .definition {border-left: 4px solid var(--red);background: var(--white);box-shadow: var(--shadow-card);}
 .error-box {border: 1px solid #FECACA;background: #FEF2F2;color: #991B1B;}
 .error-box ul {padding-left: 18px;}
 
 /* ── REPORT CARD ── */
 .report-card {min-width:0;padding:26px;overflow:hidden;}
-.report-title {margin-bottom: 6px;text-align: center;font-size: 26px;font-weight: 800;letter-spacing: .5px;text-transform: uppercase;}
-.report-subtitle {margin-bottom: 26px;color: var(--gray-500);text-align: center;font-size: 12px;}
+.report-title {margin-bottom: 6px;text-align: center;font-size: 1.625rem;font-weight: 800;letter-spacing: .5px;text-transform: uppercase;}
+.report-subtitle {margin-bottom: 26px;color: var(--gray-500);text-align: center;font-size: 0.75rem;}
 .report-block + .report-block {margin-top: 38px;}
-.report-block h2 {margin-bottom: 17px;text-align: center;font-size: 21px;font-weight: 800;text-transform: uppercase;}
+.report-block h2 {margin-bottom: 17px;text-align: center;font-size: 1.3125rem;font-weight: 800;text-transform: uppercase;}
 
 /* ── TABLE SECTION ── */
 .table-wrap {width:100%;min-width:0;overflow-x:auto;border:1px solid #E6E6EA;border-radius:12px;background:var(--white);}
 .recruitment-table {width:100%;min-width:850px;border-collapse:separate;border-spacing:0;}
-.recruitment-table th,.recruitment-table td {padding:13px 14px;border:0;border-bottom:1px solid #ECECF0;text-align:center;vertical-align:middle;font-size:12px;}
-.recruitment-table th {background:#F7F7F9;color:var(--gray-700);font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;}
+.recruitment-table th,.recruitment-table td {padding:13px 14px;border:0;border-bottom:1px solid #ECECF0;text-align:center;vertical-align:middle;font-size:0.75rem;}
+.recruitment-table th {background:#F7F7F9;color:var(--gray-700);font-size:0.6875rem;font-weight:800;letter-spacing:.3px;text-transform:uppercase;}
 .recruitment-table thead tr:first-child th {border-bottom:1px solid #DEDEE4;}
 .recruitment-table tbody tr {transition:background-color .15s ease;}
 .recruitment-table tbody tr:not(.total-row):hover td {background:#FAFAFB;}
 .recruitment-table tbody tr:last-child td {border-bottom:0;}
 .recruitment-table td:first-child {text-align: left;}
-.recruitment-table td:first-child small {display: block;margin-top: 3px;color: var(--gray-500);font-size: 9.5px;}
+.recruitment-table td:first-child small {display: block;margin-top: 3px;color: var(--gray-500);font-size: 0.6875rem;}
 .total-row td {background:#F7F7F9 !important;font-weight:800;}
 @media (max-width: 1150px) {.ranking-grid {grid-template-columns: 1fr;}}
 @media (max-width: 900px) {.main, body.sidebar-collapsed .main {margin-left: 0; padding: 20px;}}

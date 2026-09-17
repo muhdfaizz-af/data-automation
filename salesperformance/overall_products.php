@@ -30,6 +30,35 @@ require_once __DIR__ . '/../config/db.php';
 define('SGD_TO_MYR_RATE', 3.27);
 define('RANKING_LIMIT', 10);
 define('BCD_UNIT_PRICE_MYR', 37.00);
+define('ALLOWED_REGIONS', [
+    'all' => 'All Regions',
+    'SM' => 'Semenanjung',
+    'BT' => 'Bintulu',
+    'SG' => 'Singapore',
+]);
+
+function normalizeRegion($region): string
+{
+    return is_string($region) && array_key_exists($region, ALLOWED_REGIONS)
+        ? $region
+        : 'all';
+}
+
+function overallRegionCondition(string $region): string
+{
+    // Match the item-level region rules used by Nafesa Products.
+    $isBintulu = "(
+        UPPER(TRIM(COALESCE(oi.order_processed_location, ''))) = 'MYBTWH'
+        OR UPPER(TRIM(COALESCE(o.invoice_prefix, ''))) = 'MYBT'
+    )";
+
+    return match ($region) {
+        'BT' => "AND c.company_code = 'MY' AND {$isBintulu}",
+        'SM' => "AND c.company_code = 'MY' AND NOT {$isBintulu}",
+        'SG' => "AND c.company_code = 'SG'",
+        default => "AND c.company_code IN ('MY', 'SG')",
+    };
+}
 
 
 /**
@@ -173,6 +202,11 @@ function identifyProductCategory(
         ' BOARD ',
     ];
 
+    // Exclude JOY CUP sets.
+    if (str_starts_with($itemCode, 'BPCC-') || str_contains($description, 'JOY CUP')) {
+        return null;
+    }
+
     foreach ($excludedTerms as $term) {
         if (str_contains($description, $term)) {
             return null;
@@ -281,8 +315,8 @@ function identifyProductCategory(
     }
 
     // Other Choco Albab products are consolidate by cleaned name
-    if ($brand === 'CHOCO ALBAB') {
-        return in_array($productType, ['NORMAL', 'COMPOSITE'], true)
+   if ($brand === 'CHOCO ALBAB') {
+        return $productType === 'NORMAL'
             ? cleanProductName($description)
             : null;
     }
@@ -328,12 +362,8 @@ function isCategoryQuantityRow(
     }
 
     return match ($category) {
-        // Reference quantity for BCDB comes from BCD-002
-        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' => in_array(
-            $itemCode,
-            ['BCD-002', 'JOY-BUNDLE-1'],
-            true
-        ),
+        // Joy bundles already have their loose BCD quantity recorded separately.
+        '(BCDB) BOX BELGIAN CHOCOLATE DRINK' => $itemCode === 'BCD-002',
         
         // CA-6 is the loose component generated from Unicorn cartons and packs. Not count CA-006/CAC-011
         'UNICORN STRAWBERRY CHOCOLATE TUB' => $itemCode === 'CA-6',
@@ -403,7 +433,8 @@ function getDailySalesTotal(
 function getOverallProducts(
     PDO $pdo,
     string $from,
-    string $to
+    string $to,
+    string $regionFilter = 'all'
 ): array {
     $params = [
         'from_date' => $from . ' 00:00:00',
@@ -416,8 +447,11 @@ function getOverallProducts(
         'confirmed_status' => 'confirmed',
     ];
 
+    $regionCondition = overallRegionCondition($regionFilter);
+
     $sql = "
     SELECT
+        oi.order_id,
         UPPER(TRIM(COALESCE(oi.brand, ''))) AS brand,
         oi.product_type,
         oi.item_code,
@@ -441,7 +475,7 @@ function getOverallProducts(
             WHERE o.order_datetime >= :from_date
             AND o.order_datetime < :to_exclusive
             AND o.order_status = :confirmed_status
-            AND c.company_code IN ('MY', 'SG')
+            {$regionCondition}
 
             AND UPPER(TRIM(COALESCE(oi.brand, ''))) IN (
                 'CHOCO ALBAB',
@@ -451,6 +485,7 @@ function getOverallProducts(
             )
 
             GROUP BY
+                oi.order_id,
                 UPPER(TRIM(COALESCE(oi.brand, ''))),
                 oi.product_type,
                 oi.item_code,
@@ -465,6 +500,23 @@ function getOverallProducts(
     $categories = [];
     $overallSales = 0.00;
     $soldScarfCodes = [];
+    $joyBundleOrderIds = [];
+    $joyCupLooseQuantities = [];
+
+    foreach ($rows as $row) {
+        $itemCode = strtoupper(trim((string)$row['item_code']));
+        $orderId = (int)$row['order_id'];
+
+        if ($itemCode === 'JOY-BUNDLE-1') {
+            $joyBundleOrderIds[$orderId] = true;
+        }
+
+        if (in_array($itemCode, ['BPC-001', 'BPC-002'], true)) {
+            $joyCupLooseQuantities[$orderId][$itemCode] =
+                ($joyCupLooseQuantities[$orderId][$itemCode] ?? 0) +
+                (int)$row['row_quantity'];
+        }
+    }
 
     /*
      * Record every Nafesa scarf master code with positive sales. 
@@ -507,8 +559,32 @@ function getOverallProducts(
         $description = (string)($row['item_description'] ?? '');
         $productType = (string)($row['product_type'] ?? '');
         $sales = (float)$row['invoice_sales'];
+        $normalizedItemCode = strtoupper(trim($itemCode));
+        $isJoyBundle = $normalizedItemCode === 'JOY-BUNDLE-1';
+        $isJoyBundleLoose =
+            $normalizedItemCode === 'BCD-002' &&
+            isset($joyBundleOrderIds[(int)$row['order_id']]);
+        $joyCupQuantitySource = match ($normalizedItemCode) {
+            'BPCC-001', 'BPCC-002' => 'BPC-001',
+            'BPCC-003' => 'BPC-002',
+            default => null,
+        };
 
-        if ($row['company_code'] === 'SG') {
+        $category = identifyProductCategory(
+            $brand,
+            $itemCode,
+            $description,
+            $productType
+        );
+
+        // Only JOY-BUNDLE-1 uses its loose BCD quantity for sales.
+        if ($isJoyBundle) {
+            continue;
+        }
+
+        if ($isJoyBundleLoose) {
+            $sales = (float)$row['row_quantity'] * BCD_UNIT_PRICE_MYR;
+        } elseif ($row['company_code'] === 'SG') {
             $sales *= SGD_TO_MYR_RATE;
         }
 
@@ -527,13 +603,6 @@ function getOverallProducts(
                 'CUTIE MINI CHOCO DORAYAKI TUB' => 0.5,
             ];
         } else {
-            $category = identifyProductCategory(
-                $brand,
-                $itemCode,
-                $description,
-                $productType
-            );
-
             $allocations = $category === null
                 ? []
                 : [$category => 1.0];
@@ -574,6 +643,15 @@ function getOverallProducts(
             ) {
                 $categories[$category]['total_quantity'] +=
                     (int)$row['row_quantity'];
+            }
+
+            if (
+                $salesShare === 1.0 &&
+                $joyCupQuantitySource !== null &&
+                isset($joyCupLooseQuantities[(int)$row['order_id']][$joyCupQuantitySource])
+            ) {
+                $categories[$category]['total_quantity'] +=
+                    $joyCupLooseQuantities[(int)$row['order_id']][$joyCupQuantitySource];
             }
 
             $normalizedSourceCode = strtoupper(trim($itemCode));
@@ -727,6 +805,8 @@ $to = is_string($_GET['to'] ?? null)
     ? $_GET['to']
     : $defaultTo;
 
+$regionFilter = normalizeRegion($_GET['region'] ?? 'all');
+
 $errors = [];
 
 $periodError = validatePeriod($from, $to);
@@ -758,11 +838,14 @@ if(empty($errors) && $pdo) {
         $productReport = getOverallProducts(
             $pdo,
             $from,
-            $to
+            $to,
+            $regionFilter
         );
 
         $products = $productReport['products'];
-        $overallSales = getDailySalesTotal($pdo, $from, $to);
+        // Keep the displayed total aligned with item-level adjustments,
+        // including loose BCDB pricing and excluded composite bundles.
+        $overallSales = $productReport['overall_sales'];
 
         foreach ($products as &$product) {
             $product['percentage'] = $overallSales > 0
@@ -847,22 +930,23 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 
 /* ── PAGE HEADER ── */
 .page-header {margin-bottom: 24px;}
-.page-header h1 {margin-bottom: 5px;font-size: 25px;font-weight: 800;}
-.page-header p {color: var(--gray-500);font-size: 13px;}
+.page-header h1 {margin-bottom: 5px;font-size: 1.5625rem;font-weight: 800;}
+.page-header p {color: var(--gray-500);font-size: 0.8125rem;}
 
 /* ── CARD SECTION ── */
 .card {margin-bottom: 24px;padding: 24px;border: 1px solid #ececf0;border-radius: 18px;background: var(--white);box-shadow: 0 5px 18px rgba(30, 30, 40, .06);}
-.card-title {margin-bottom: 4px;font-size: 16px;font-weight: 800;}
-.card-subtitle {color: var(--gray-500);font-size: 12px;margin-bottom: 10px;}
+.card-title {margin-bottom: 4px;font-size: 1rem;font-weight: 800;}
+.card-subtitle {color: var(--gray-500);font-size: 0.75rem;margin-bottom: 10px;}
 
 /* ── FILTER SECTION ── */
-.filter-grid {display: grid;grid-template-columns:repeat(2, minmax(180px, 1fr)) auto;gap: 16px;align-items: end;margin-top: 20px;}
+.filter-grid {display: grid;grid-template-columns:repeat(3, minmax(0, 1fr)) auto;gap: 16px;align-items: end;margin-top: 20px;}
+.field select{width:100%;min-width:0;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;background:var(--white);color:var(--ink);font:inherit;font-size:0.8125rem;}
 .field {display: flex;flex-direction: column;gap: 7px;}
-.field label {color: var(--gray-700);font-size: 11px;font-weight: 800;text-transform: uppercase;}
+.field label {color: var(--gray-700);font-size: 0.6875rem;font-weight: 800;text-transform: uppercase;}
 .field input {width: 100%;min-height: 44px;padding: 10px 12px;border: 1.5px solid var(--gray-300);border-radius: 9px;font: inherit;}
 
 /* ── BUTTON ── */
-.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 0.8125rem;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
 
 /* ── ERROR SECTION ── */
@@ -872,27 +956,28 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 /* ── SUMMARY SECTION ── */
 .summary-grid {display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 16px;margin-bottom: 24px;}
 .summary-card {padding: 18px;border: 1px solid #ececf0;border-radius: 12px;background: var(--white);}
-.summary-label {margin-bottom: 5px;color: var(--gray-500);font-size: 10px;font-weight: 800;text-transform: uppercase;}
-.summary-value {font-size: 17px;font-weight: 800;}
+.summary-label {margin-bottom: 5px;color: var(--gray-500);font-size: 0.6875rem;font-weight: 800;text-transform: uppercase;}
+.summary-value {font-size: 1.0625rem;font-weight: 800;}
 
 /* ── RANKING SECTION ── */
 .ranking-grid {display: grid;grid-template-columns: 1fr;gap: 20px;}
 .ranking-card {min-width: 0;}
 .table-wrap {width: 100%;overflow-x: auto;border: 1px solid #e6e6ea;border-radius: 12px;background: #fff;}
 .ranking-table {width: 100%;min-width: 650px;border-collapse: separate;border-spacing: 0;}
-.ranking-table th,.ranking-table td {padding: 13px 12px;border-bottom: 1px solid #ececf0;font-size: 11px;vertical-align: middle;}
-.ranking-table th {background: #f7f7f9;color: var(--gray-700);font-size: 9.5px;font-weight: 800;letter-spacing: .3px;text-transform: uppercase;white-space: nowrap;}
+.ranking-table th,.ranking-table td {padding: 13px 12px;border-bottom: 1px solid #ececf0;font-size: 0.6875rem;vertical-align: middle;}
+.ranking-table th {background: #f7f7f9;color: var(--gray-700);font-size: 0.6875rem;font-weight: 800;letter-spacing: .3px;text-transform: uppercase;white-space: nowrap;}
 .ranking-table tbody tr:last-child td {border-bottom: 0;}
 .ranking-table tbody tr:hover td {background: #fafafb;}
 .ranking-table th:nth-child(1),.ranking-table td:nth-child(1) {width: 10%;text-align: center;}
 .ranking-table th:nth-child(2),.ranking-table td:nth-child(2) {width: 42%;text-align: left;}
 .ranking-table th:nth-child(n+3),.ranking-table td:nth-child(n+3) {text-align: right;white-space: nowrap;}
 .rank-number {display: inline-flex;width: 27px;height: 27px;align-items: center;justify-content: center;border-radius: 50%;background: var(--gray-100);font-weight: 800;}
-.product-code {margin-top: 4px;color: var(--gray-500);font-size: 10px;}
+.product-code {margin-top: 4px;color: var(--gray-500);font-size: 0.6875rem;}
 .sales-value {font-weight: 800;}
 .empty-row {padding: 30px !important;color: var(--gray-500);text-align: center !important;}
-.note {margin-top: 14px;color: var(--gray-500);font-size: 11px;line-height: 1.6;}
+.note {margin-top: 14px;color: var(--gray-500);font-size: 0.6875rem;line-height: 1.6;}
 @media (max-width: 900px) {.main, body.sidebar-collapsed .main {margin-left: 0; padding: 20px;}}
+@media (max-width: 1100px) {.filter-grid {grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media (max-width: 650px) {.filter-grid,.summary-grid {grid-template-columns: 1fr;}}
 </style>
 <link rel="stylesheet" href="../includes/report_tables.css">
@@ -943,7 +1028,7 @@ include __DIR__ . '/../includes/sidebar.php';
         <div class="card-title">Report Filter</div>
 
         <div class="card-subtitle">
-            Select the Tax Invoice reporting period.
+            Select the Tax Invoice reporting period and region.
         </div>
 
         <form method="get" action="" class="filter-grid">
@@ -955,6 +1040,17 @@ include __DIR__ . '/../includes/sidebar.php';
             <div class="field">
                 <label for="to">To</label>
                 <input type="date" id="to" name="to" value="<?= htmlspecialchars($to) ?>" required>
+            </div>
+
+            <div class="field">
+                <label for="region">Region</label>
+                <select id="region" name="region">
+                    <?php foreach (ALLOWED_REGIONS as $value => $label): ?>
+                        <option value="<?= htmlspecialchars($value) ?>" <?= $regionFilter === $value ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($label) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
 
             <button type="submit" name="apply" value="1" class="apply-button">

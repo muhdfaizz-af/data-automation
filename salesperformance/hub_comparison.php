@@ -563,7 +563,7 @@ $yearOptionsEnd   = $currentYear;
   --bg:#F5F5F7;--white:#FFFFFF;
   --gold:#F5A623;--green:#10B981;
   --radius-lg:18px;--radius-md:12px;--radius-sm:8px;
-  --sidebar-w:256px;--sidebar-w-collapsed:76px;--topbar-h:64px;
+  --sidebar-w: 260px;--sidebar-w-collapsed: 82px;--topbar-h: 64px;
   --shadow:0 1px 2px rgba(20,20,30,.04),0 8px 24px -12px rgba(20,20,30,.10);
   --shadow-card:0 2px 8px rgba(20,20,30,.06);
 }
@@ -583,8 +583,8 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 
 /* ── PAGE HEADER ── */
 .page-header{margin-bottom:24px;}
-.page-header h1{font-size:24px;font-weight:800;margin-bottom:3px;}
-.page-header p{font-size:13.5px;color:var(--gray-500);}
+.page-header h1{font-size:1.5rem;font-weight:800;margin-bottom:3px;}
+.page-header p{font-size:0.875rem;color:var(--gray-500);}
 
 /* ── REPORT CARDS ── */
 .report-card{background:var(--white);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow-card);border:1px solid var(--gray-100);margin-bottom:24px;}
@@ -595,34 +595,34 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .ri-teal{background:linear-gradient(135deg,var(--teal),var(--teal-dark));}
 .ri-gold{background:linear-gradient(135deg,var(--gold),#c97e0e);}
 .ri-dark{background:linear-gradient(135deg,var(--gray-700),var(--ink));}
-.report-card-title{font-size:16px;font-weight:800;}
-.report-card-sub{font-size:12px;color:var(--gray-500);font-weight:500;margin-top:1px;}
+.report-card-title{font-size:1rem;font-weight:800;}
+.report-card-sub{font-size:0.75rem;color:var(--gray-500);font-weight:500;margin-top:1px;}
 
 /* ── GLOBAL FILTER BAR ── */
 .global-filter-card{border:1.5px solid var(--ink);}
 .global-filter-row{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;}
 .global-filter-group{display:flex;flex-direction:column;gap:6px;min-width:170px;}
-.global-filter-group label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
-.global-filter-group select,.global-filter-group input{padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:13.5px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
+.global-filter-group label{font-size:0.6875rem;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
+.global-filter-group select,.global-filter-group input{padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.875rem;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
 .global-filter-group select:focus,.global-filter-group input:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(27,27,31,.1);}
-.btn-apply-global{padding:11px 22px;background:var(--ink);color:#fff;border-radius:9px;font-size:13px;font-weight:800;display:inline-flex;align-items:center;gap:8px;transition:background .15s,opacity .15s;}
+.btn-apply-global{padding:11px 22px;background:var(--ink);color:#fff;border-radius:9px;font-size:0.8125rem;font-weight:800;display:inline-flex;align-items:center;gap:8px;transition:background .15s,opacity .15s;}
 .btn-apply-global:hover{background:#000;}
 .btn-apply-global:disabled{opacity:.6;cursor:not-allowed;}
 .btn-apply-global svg{width:14px;height:14px;stroke:#fff;fill:none;}
-.global-filter-hint{font-size:11.5px;color:var(--gray-500);margin-left:auto;align-self:center;max-width:280px;}
-.filter-msg{font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:14px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+.global-filter-hint{font-size:0.75rem;color:var(--gray-500);margin-left:auto;align-self:center;max-width:280px;}
+.filter-msg{font-size:0.75rem;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:14px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
 .filter-msg.hint-box{background:#eef2ff;color:#3730a3;border-color:#c7d2fe;}
 
 /* ── 3.4 HUB PIE GRID ── */
-.hub-pie-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+.hub-pie-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));gap:20px;}
 @media(max-width:1100px){.hub-pie-grid{grid-template-columns:1fr;}}
-.hub-pie-panel{background:var(--gray-100);border-radius:var(--radius-md);padding:16px;}
-.hub-pie-panel-title{font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-700);margin-bottom:2px;}
-.hub-pie-panel-sub{font-size:11px;color:var(--gray-500);margin-bottom:12px;}
-.hub-pie-wrap{position:relative;height:190px;margin-bottom:14px;}
-.hub-pie-grand{text-align:center;font-size:13px;font-weight:800;margin-bottom:12px;}
-.hub-table{width:100%;border-collapse:collapse;font-size:12.5px;}
-.hub-table th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);padding:6px 6px;border-bottom:1.5px solid var(--gray-300);}
+.hub-pie-panel{min-width:0;background:var(--gray-100);border-radius:var(--radius-md);padding:16px;}
+.hub-pie-panel-title{font-size:0.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-700);margin-bottom:2px;}
+.hub-pie-panel-sub{font-size:0.6875rem;color:var(--gray-500);margin-bottom:12px;}
+.hub-pie-wrap{width:100%;min-width:0;position:relative;height:190px;margin-bottom:14px;}
+.hub-pie-grand{text-align:center;font-size:0.8125rem;font-weight:800;margin-bottom:12px;}
+.hub-table{width:100%;border-collapse:collapse;font-size:0.75rem;}
+.hub-table th{text-align:left;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);padding:6px 6px;border-bottom:1.5px solid var(--gray-300);}
 .hub-table td{padding:8px 6px;border-bottom:1px solid var(--gray-300);font-weight:600;}
 .hub-table tr:last-child td{border-bottom:none;}
 .hub-table td.num{text-align:right;font-variant-numeric:tabular-nums;}
@@ -631,32 +631,32 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .hub-table tfoot td{font-weight:800;border-top:1.5px solid var(--ink);border-bottom:none;padding-top:10px;}
 
 /* ── 3.5 TARGET GRID ── */
-.target-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;}
+.target-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr));gap:20px;}
 @media(max-width:1000px){.target-grid{grid-template-columns:1fr;}}
-.target-panel{background:var(--gray-100);border-radius:var(--radius-md);padding:16px;}
-.target-panel-title{font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-700);margin-bottom:12px;}
-.target-total-source{font-size:12px;font-weight:700;color:var(--gray-700);margin:-2px 0 14px;}
+.target-panel{min-width:0;background:var(--gray-100);border-radius:var(--radius-md);padding:16px;}
+.target-panel-title{font-size:0.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-700);margin-bottom:12px;}
+.target-total-source{font-size:0.75rem;font-weight:700;color:var(--gray-700);margin:-2px 0 14px;}
 .target-chart-wrap{position:relative;height:210px;margin-bottom:14px;}
-.target-table input.target-input{width:100%;padding:6px 8px;border:1.5px solid var(--gray-300);border-radius:7px;font-size:12.5px;font-family:'Plus Jakarta Sans',sans-serif;text-align:right;font-variant-numeric:tabular-nums;outline:none;}
+.target-table input.target-input{width:100%;padding:6px 8px;border:1.5px solid var(--gray-300);border-radius:7px;font-size:0.75rem;font-family:'Plus Jakarta Sans',sans-serif;text-align:right;font-variant-numeric:tabular-nums;outline:none;}
 .target-table input.target-input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(245,166,35,.15);}
 .diff-pos{color:var(--green);}
 .diff-neg{color:var(--red);}
-.target-note{font-size:11px;color:var(--gray-500);margin-top:10px;display:flex;align-items:center;gap:6px;}
+.target-note{font-size:0.6875rem;color:var(--gray-500);margin-top:10px;display:flex;align-items:center;gap:6px;}
 .target-note svg{width:13px;height:13px;stroke:var(--gray-500);flex-shrink:0;}
 
 /* ── 3.6 INCREMENT TABLE ── */
 .increment-filter-row{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:18px;}
 .increment-filter-group{display:flex;flex-direction:column;gap:6px;}
-.increment-filter-group label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
-.increment-filter-group select{padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;}
-.btn-apply-inc{padding:10px 18px;background:var(--gold);color:#fff;border-radius:9px;font-size:13px;font-weight:800;display:inline-flex;align-items:center;gap:7px;box-shadow:0 4px 14px rgba(245,166,35,.25);}
+.increment-filter-group label{font-size:0.6875rem;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
+.increment-filter-group select{padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.8125rem;font-family:'Plus Jakarta Sans',sans-serif;outline:none;}
+.btn-apply-inc{padding:10px 18px;background:var(--gold);color:#fff;border-radius:9px;font-size:0.8125rem;font-weight:800;display:inline-flex;align-items:center;gap:7px;box-shadow:0 4px 14px rgba(245,166,35,.25);}
 .btn-apply-inc:hover{background:#c97e0e;}
 .btn-apply-inc:disabled{opacity:.6;cursor:not-allowed;}
 .btn-apply-inc svg{width:14px;height:14px;stroke:#fff;fill:none;}
 .increment-table-scroll{overflow-x:auto;}
-.increment-table{width:100%;border-collapse:collapse;font-size:12px;min-width:920px;}
-.increment-table th{text-align:right;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);padding:8px 8px;border-bottom:1.5px solid var(--gray-300);white-space:nowrap;}
-.increment-table th.hub-group{text-align:center;border-bottom:1px solid var(--gray-300);color:#fff;padding:6px 4px;font-size:10.5px;letter-spacing:.4px;}
+.increment-table{width:100%;border-collapse:collapse;font-size:0.75rem;min-width:920px;}
+.increment-table th{text-align:right;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);padding:8px 8px;border-bottom:1.5px solid var(--gray-300);white-space:nowrap;}
+.increment-table th.hub-group{text-align:center;border-bottom:1px solid var(--gray-300);color:#fff;padding:6px 4px;font-size:0.6875rem;letter-spacing:.4px;}
 .increment-table th:first-child,.increment-table td:first-child{text-align:left;}
 .increment-table td{padding:8px 8px;border-bottom:1px solid var(--gray-300);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .increment-table td:first-child{font-weight:800;}
@@ -664,6 +664,19 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .chart-wrap.is-loading, .hub-pie-grid.is-loading, .target-grid.is-loading, .increment-table-scroll.is-loading{opacity:.35;pointer-events:none;transition:opacity .15s;}
 
 @media(max-width:600px){.main{padding:16px 14px 40px;} .global-filter-hint{margin-left:0;max-width:none;}}
+.panel-table-scroll{width:100%;min-width:0;overflow-x:auto;}
+.hub-pie-wrap canvas,.target-chart-wrap canvas{max-width:100%;}
+/* Keep the report width tied to the space beside the animated sidebar. */
+.layout{width:100%;min-width:0;}
+.layout > .main{flex:0 1 auto;width:calc(100% - var(--sidebar-w));max-width:100%;transition:margin-left .25s ease,width .25s ease;}
+body.sidebar-collapsed .layout > .main{width:calc(100% - var(--sidebar-w-collapsed));}
+.report-card{min-width:0;max-width:100%;}
+.hub-pie-panel,.target-panel{contain:inline-size;}
+.hub-pie-wrap,.target-chart-wrap{width:100%;min-width:0;overflow:hidden;}
+.hub-pie-wrap canvas,.target-chart-wrap canvas{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;}
+@media(max-width:900px){
+  .layout > .main,body.sidebar-collapsed .layout > .main{width:100%;margin-left:0;}
+}
 </style>
 <link rel="stylesheet" href="../includes/report_tables.css">
 </head>
@@ -736,33 +749,33 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
         <div class="hub-pie-panel-sub" id="dailyPanelSub"></div>
         <div class="hub-pie-wrap"><canvas id="dailyPie"></canvas></div>
         <div class="hub-pie-grand" id="dailyGrand">RM 0.00</div>
-                <table class="hub-table" id="dailyHubTable">
+                <div class="panel-table-scroll"><table class="hub-table" id="dailyHubTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th></tr></thead>
           <tbody></tbody>
                     <tfoot><tr><td>Total Sales</td><td class="num"></td><td class="num"></td></tr></tfoot>
-        </table>
+        </table></div>
       </div>
       <div class="hub-pie-panel">
         <div class="hub-pie-panel-title">Monthly Sales (MTD)</div>
         <div class="hub-pie-panel-sub" id="monthlyPanelSub"></div>
         <div class="hub-pie-wrap"><canvas id="monthlyPie"></canvas></div>
         <div class="hub-pie-grand" id="monthlyGrand">RM 0.00</div>
-                <table class="hub-table" id="monthlyHubTable">
+                <div class="panel-table-scroll"><table class="hub-table" id="monthlyHubTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th></tr></thead>
           <tbody></tbody>
                     <tfoot><tr><td>Total Sales</td><td class="num"></td><td class="num"></td></tr></tfoot>
-        </table>
+        </table></div>
       </div>
       <div class="hub-pie-panel">
         <div class="hub-pie-panel-title">Yearly Sales (YTD)</div>
         <div class="hub-pie-panel-sub" id="yearlyPanelSub"></div>
         <div class="hub-pie-wrap"><canvas id="yearlyPie"></canvas></div>
         <div class="hub-pie-grand" id="yearlyGrand">RM 0.00</div>
-                <table class="hub-table" id="yearlyHubTable">
+                <div class="panel-table-scroll"><table class="hub-table" id="yearlyHubTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th></tr></thead>
           <tbody></tbody>
                     <tfoot><tr><td>Total Sales</td><td class="num"></td><td class="num"></td></tr></tfoot>
-        </table>
+        </table></div>
       </div>
     </div>
   </div>
@@ -821,21 +834,21 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
         <div class="target-panel-title" id="targetDailyTitle">Daily Target</div>
                 <div class="target-total-source" id="dailyTargetSource">New Target from Sales Target: RM 0.00</div>
         <div class="target-chart-wrap"><canvas id="dailyTargetChart"></canvas></div>
-        <table class="hub-table target-table" id="dailyTargetTable">
+        <div class="panel-table-scroll"><table class="hub-table target-table" id="dailyTargetTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th><th style="text-align:right">Target</th><th style="text-align:right">Different</th></tr></thead>
           <tbody></tbody>
                     <tfoot><tr><td>Total</td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr></tfoot>
-        </table>
+        </table></div>
       </div>
       <div class="target-panel">
         <div class="target-panel-title" id="targetMonthlyTitle">Monthly Target</div>
         <div class="target-total-source" id="monthlyTargetSource">MTD Target from Sales Target: RM 0.00</div>
         <div class="target-chart-wrap"><canvas id="monthlyTargetChart"></canvas></div>
-        <table class="hub-table target-table" id="monthlyTargetTable">
+        <div class="panel-table-scroll"><table class="hub-table target-table" id="monthlyTargetTable">
           <thead><tr><th>Region</th><th style="text-align:right">Total Sales</th><th style="text-align:right">%</th><th style="text-align:right">Target</th><th style="text-align:right">Different</th></tr></thead>
           <tbody></tbody>
                     <tfoot><tr><td>Total</td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr></tfoot>
-        </table>
+        </table></div>
       </div>
     </div>
     <div class="target-note">
@@ -1206,6 +1219,17 @@ document.addEventListener('DOMContentLoaded', function(){
     document.getElementById('btnApplyGlobal').addEventListener('click', fetchAll);
 
     document.getElementById('btnApplyIncrement').addEventListener('click', fetchIncrement);
+});
+</script>
+<script>
+// Refresh the chart's drawing size once the sidebar finishes changing the report width.
+document.addEventListener('transitionend', function (event) {
+    if (!event.target.matches('.main') || event.propertyName !== 'width') return;
+    if (typeof Chart === 'undefined') return;
+    event.target.querySelectorAll('canvas').forEach(function (canvas) {
+        const chart = Chart.getChart(canvas);
+        if (chart) chart.resize();
+    });
 });
 </script>
 </body>
