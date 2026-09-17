@@ -314,14 +314,14 @@ function getDashboardData($pdo, $requestedDate = null) {
     $hubExpr = "CASE WHEN c.company_code = 'SG' THEN 'Singapore'
         WHEN o.order_id LIKE 'MYH%' THEN 'West Malaysia'
         WHEN o.order_id LIKE 'MYB%' AND (o.member_code IS NULL OR o.member_code NOT LIKE 'BN%') THEN 'East Malaysia'
-        WHEN o.order_id LIKE 'MYB%' AND o.member_code LIKE 'BN%' THEN 'Brunei' ELSE 'Other' END";
+        WHEN o.order_id LIKE 'MYB%' AND o.member_code LIKE 'BN%' THEN 'Brunei' ELSE NULL END";
     $getHubs = function ($from, $to) use ($pdo, $rate, $dateToExclusive, $hubExpr) {
         $stmt = $pdo->prepare("SELECT {$hubExpr} AS hub, SUM(CASE WHEN c.company_code = 'SG' THEN o.sub_total * :rate ELSE o.sub_total END) AS total
             FROM orders o JOIN companies c ON c.id = o.company_id
             WHERE o.order_datetime >= :from AND o.order_datetime < :to AND o.order_status = 'Confirmed'
             GROUP BY hub ORDER BY total DESC");
         $stmt->execute(['rate' => $rate, 'from' => $from . ' 00:00:00', 'to' => $dateToExclusive($to)]);
-        return $stmt->fetchAll();
+        return array_values(array_filter($stmt->fetchAll(), static fn($hub) => $hub['hub'] !== null));
     };
     $getBrands = function ($from, $to) use ($pdo, $rate, $dateToExclusive) {
         $stmt = $pdo->prepare("SELECT UPPER(TRIM(COALESCE(oi.brand, 'Other'))) AS brand,
@@ -335,7 +335,8 @@ function getDashboardData($pdo, $requestedDate = null) {
 
     try {
         // Keep the headline total aligned with Overall Products (Tax Invoice formula).
-        $data['total'] = getOverallProductSales($pdo, $reportDate, $reportDate, $rate);
+        // Match Sales Comparison: confirmed system orders plus manual sales.
+        $data['total'] = $sumOrders($reportDate, $reportDate);
         $data['mtd'] = $sumOrders($monthStart, $reportDate);
         $data['ytd'] = $sumOrders($yearStart, $reportDate);
         $data['previous_total'] = $sumOrders(date('Y-m-d', strtotime($reportDate . ' -1 day')), date('Y-m-d', strtotime($reportDate . ' -1 day')));
@@ -459,7 +460,7 @@ function renderHubDonut($hubs, $total, $hubColors, $centerLabel) {
     $legend .= '</div>';
 
     return '<div class="donut-wrap"><div class="donut-chart">' . $svg
-        . '<div class="donut-center"><strong>' . dashboardMoneyShort($total) . '</strong><span>Total Sales</span></div></div>'
+        . '<div class="donut-center"><strong>' . dashboardMoney($total) . '</strong><span>Total Sales</span></div></div>'
         . $legend . '</div>';
 }
 
@@ -614,7 +615,8 @@ svg{display:block;}
 
 /* Donut (hub) */
 .donut-wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
-.donut-chart{position:relative;width:140px;height:140px;flex:none;margin:0 auto;}
+.donut-chart{position:relative;width:200px;height:200px;flex:none;margin:0 auto;}
+.donut-svg{width:100%;height:100%;}
 .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
 .donut-center strong{font-size:15px;font-weight:800;color:var(--ink);line-height:1.2;}
 .donut-center span{font-size:9.5px;color:var(--gray-500);font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
@@ -760,6 +762,7 @@ $daysInMonth = (int)date('t', strtotime($d['report_date']));
 $proratedTarget = $d['monthly_target'] > 0 ? $d['monthly_target'] * ($dayOfMonth / $daysInMonth) : 0;
 $monthlyProgress = $d['monthly_target'] > 0 ? min(100, ($d['mtd'] / $d['monthly_target']) * 100) : 0;
 $monthlyDifference = $d['mtd'] - $proratedTarget;
+$monthlyDifferencePercent = $proratedTarget > 0 ? ($monthlyDifference / $proratedTarget) * 100 : 0;
 $daysRemaining = max(0, $daysInMonth - $dayOfMonth);
 $onTrack = $d['monthly_target'] > 0 ? ($monthlyDifference >= 0) : true;
 
@@ -852,10 +855,10 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
                 </div>
             </div>
             <div class="toggle-view" data-group="hub" data-view="yesterday">
-                <?= renderHubDonut($d['hubs'], $d['total'], $hubColors, dashboardMoneyShort($d['total'])) ?>
+                <?= renderHubDonut($d['hubs'], array_sum(array_column($d['hubs'], 'total')), $hubColors, dashboardMoneyShort(array_sum(array_column($d['hubs'], 'total')))) ?>
             </div>
             <div class="toggle-view" data-group="hub" data-view="mtd" style="display:none;">
-                <?= renderHubDonut($d['hubs_mtd'], $d['mtd'], $hubColors, dashboardMoneyShort($d['mtd'])) ?>
+                <?= renderHubDonut($d['hubs_mtd'], array_sum(array_column($d['hubs_mtd'], 'total')), $hubColors, dashboardMoneyShort(array_sum(array_column($d['hubs_mtd'], 'total')))) ?>
             </div>
         </article>
 
@@ -921,7 +924,7 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
             <div class="monthly-progress"><span style="width:<?= $monthlyProgress ?>%"></span></div>
             <div class="monthly-stats">
                 <div class="monthly-stat">Supposedly Current Target<strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>
-                <div class="monthly-stat <?= $monthlyDifference < 0 ? 'neg' : '' ?>">Difference<strong><?= $d['monthly_target'] > 0 ? ($monthlyDifference >= 0 ? '+' : '-') . dashboardMoney(abs($monthlyDifference)) : '—' ?></strong></div>
+                <div class="monthly-stat <?= $monthlyDifference < 0 ? 'neg' : '' ?>">Difference<strong><?= $d['monthly_target'] > 0 ? ($monthlyDifference >= 0 ? '+' : '-') . dashboardMoney(abs($monthlyDifference)) . ' (' . ($monthlyDifferencePercent >= 0 ? '+' : '') . number_format($monthlyDifferencePercent, 1) . '%)' : '—' ?></strong></div>
                 <div class="monthly-stat">Days Remaining<strong><?= $daysRemaining ?> days</strong></div>
             </div>
         </article>
