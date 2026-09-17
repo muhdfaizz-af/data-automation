@@ -233,7 +233,6 @@ function getDashboardData($pdo, $requestedDate = null) {
         ? $requestedDate : $defaultDate;
     if ($reportDate > date('Y-m-d')) $reportDate = $defaultDate;
     $monthStart = date('Y-m-01', strtotime($reportDate));
-    $monthEnd = date('Y-m-t', strtotime($reportDate));
     $yearStart = date('Y-01-01', strtotime($reportDate));
     $trendStart = date('Y-m-d', strtotime($reportDate . ' -6 days'));
     $data = [
@@ -383,7 +382,7 @@ function getDashboardData($pdo, $requestedDate = null) {
             $data['target'] = (float)$stmt->fetchColumn();
 
             $stmt = $pdo->prepare('SELECT COALESCE(SUM(target_amount), 0) FROM sales_target WHERE target_date BETWEEN :from AND :to');
-            $stmt->execute(['from' => $monthStart, 'to' => $monthEnd]);
+            $stmt->execute(['from' => $monthStart, 'to' => $reportDate]);
             $data['monthly_target'] = (float)$stmt->fetchColumn();
         } catch (Exception $e) {}
     } catch (Exception $e) {}
@@ -759,7 +758,7 @@ $trendChange = dashboardChange(array_sum($d['trend']), $d['trend_prev_total']);
 
 $dayOfMonth = (int)date('j', strtotime($d['report_date']));
 $daysInMonth = (int)date('t', strtotime($d['report_date']));
-$proratedTarget = $d['monthly_target'] > 0 ? $d['monthly_target'] * ($dayOfMonth / $daysInMonth) : 0;
+$proratedTarget = (float)$d['monthly_target'];
 $monthlyProgress = $d['monthly_target'] > 0 ? min(100, ($d['mtd'] / $d['monthly_target']) * 100) : 0;
 $monthlyDifference = $d['mtd'] - $proratedTarget;
 $monthlyDifferencePercent = $proratedTarget > 0 ? ($monthlyDifference / $proratedTarget) * 100 : 0;
