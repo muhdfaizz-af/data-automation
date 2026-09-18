@@ -585,7 +585,7 @@ $monthNames = [1=>'Jan',2=>'Feb',3=>'Mar',4=>'Apr',5=>'May',6=>'Jun',7=>'Jul',8=
   --bg:#F5F5F7;--white:#FFFFFF;
   --gold:#F5A623;--green:#10B981;
   --radius-lg:18px;--radius-md:12px;--radius-sm:8px;
-  --sidebar-w:256px;--sidebar-w-collapsed:76px;--topbar-h:64px;
+  --sidebar-w: 260px;--sidebar-w-collapsed: 82px;--topbar-h: 64px;
   --shadow:0 1px 2px rgba(20,20,30,.04),0 8px 24px -12px rgba(20,20,30,.10);
   --shadow-card:0 2px 8px rgba(20,20,30,.06);
 }
@@ -603,8 +603,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 
 /* ── PAGE HEADER ── */
 .page-header{margin-bottom:24px;}
-.page-header h1{font-size:24px;font-weight:800;margin-bottom:3px;}
-.page-header p{font-size:13.5px;color:var(--gray-500);}
+.page-header h1{font-size:1.5rem;font-weight:800;margin-bottom:3px;}
+.page-header p{font-size:0.875rem;color:var(--gray-500);}
 
 /* ── REPORT CARDS ── */
 .report-card{background:var(--white);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow-card);border:1px solid var(--gray-100);margin-bottom:24px;}
@@ -615,21 +615,21 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .ri-teal{background:linear-gradient(135deg,var(--teal),var(--teal-dark));}
 .ri-gold{background:linear-gradient(135deg,var(--gold),#c97e0e);}
 .ri-dark{background:linear-gradient(135deg,var(--gray-700),var(--ink));}
-.report-card-title{font-size:16px;font-weight:800;}
-.report-card-sub{font-size:12px;color:var(--gray-500);font-weight:500;margin-top:1px;}
+.report-card-title{font-size:1rem;font-weight:800;}
+.report-card-sub{font-size:0.75rem;color:var(--gray-500);font-weight:500;margin-top:1px;}
 
 /* ── GLOBAL FILTER BAR (Status + Company + Data Source, applies to all charts) ── */
 .global-filter-card{border:1.5px solid var(--ink);}
 .global-filter-row{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;}
 .global-filter-group{display:flex;flex-direction:column;gap:6px;min-width:170px;}
-.global-filter-group label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
-.global-filter-group select{padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:13.5px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
+.global-filter-group label{font-size:0.6875rem;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
+.global-filter-group select{padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.875rem;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
 .global-filter-group select:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(27,27,31,.1);}
-.btn-apply-global{padding:11px 22px;background:var(--ink);color:#fff;border-radius:9px;font-size:13px;font-weight:800;display:inline-flex;align-items:center;gap:8px;transition:background .15s,opacity .15s;}
+.btn-apply-global{padding:11px 22px;background:var(--ink);color:#fff;border-radius:9px;font-size:0.8125rem;font-weight:800;display:inline-flex;align-items:center;gap:8px;transition:background .15s,opacity .15s;}
 .btn-apply-global:hover{background:#000;}
 .btn-apply-global:disabled{opacity:.6;cursor:not-allowed;}
 .btn-apply-global svg{width:14px;height:14px;stroke:#fff;fill:none;}
-.global-filter-hint{font-size:11.5px;color:var(--gray-500);margin-left:auto;align-self:center;max-width:260px;}
+.global-filter-hint{font-size:0.75rem;color:var(--gray-500);margin-left:auto;align-self:center;max-width:260px;}
 
 /* ── two-column body: filter panel (left) + stats & chart (right) ── */
 .report-card-body{display:grid;grid-template-columns:300px minmax(0,1fr);gap:28px;align-items:start;}
@@ -637,21 +637,21 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .report-card-main{min-width:0;}
 
 .filter-panel{display:flex;flex-direction:column;gap:12px;background:var(--gray-100);border-radius:var(--radius-md);padding:16px;}
-.filter-panel-label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
+.filter-panel-label{font-size:0.6875rem;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
 .filter-panel-label.spaced{margin-top:4px;}
 
 .filter-inputs-row{display:flex;align-items:center;gap:8px;}
-.filter-inputs-row select{flex:1;min-width:0;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
+.filter-inputs-row select{flex:1;min-width:0;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.8125rem;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
 .filter-inputs-row select:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(224,32,46,.1);}
-.filter-arrow{font-size:12.5px;color:var(--gray-500);font-weight:700;flex-shrink:0;}
+.filter-arrow{font-size:0.75rem;color:var(--gray-500);font-weight:700;flex-shrink:0;}
 
 /* ── date range: stacked vertically + full width so the picked dates are clearly visible ── */
 .date-range-stack{display:flex;flex-direction:column;gap:6px;}
-.date-range-stack input{width:100%;padding:11px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
+.date-range-stack input{width:100%;padding:11px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.875rem;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;}
 .date-range-stack input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(224,32,46,.1);}
-.date-range-arrow{font-size:12px;color:var(--gray-500);font-weight:700;text-align:center;}
+.date-range-arrow{font-size:0.75rem;color:var(--gray-500);font-weight:700;text-align:center;}
 
-.btn-apply{padding:10px 16px;background:var(--red);color:#fff;border-radius:9px;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 4px 14px rgba(224,32,46,.25);transition:background .15s,opacity .15s;width:100%;}
+.btn-apply{padding:10px 16px;background:var(--red);color:#fff;border-radius:9px;font-size:0.8125rem;font-weight:800;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 4px 14px rgba(224,32,46,.25);transition:background .15s,opacity .15s;width:100%;}
 .btn-apply:hover{background:var(--red-dark);}
 .btn-apply:disabled{opacity:.6;cursor:not-allowed;}
 .btn-apply svg{width:14px;height:14px;stroke:#fff;fill:none;}
@@ -659,25 +659,25 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .card-teal .btn-apply:hover{background:var(--teal-dark);}
 .card-gold .btn-apply{background:var(--gold);box-shadow:0 4px 14px rgba(245,166,35,.25);}
 .card-gold .btn-apply:hover{background:#c97e0e;}
-.filter-msg{font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:14px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+.filter-msg{font-size:0.75rem;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:14px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
 
 /* ── stats row + chart type selector ── */
 .stats-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px;}
 .stats-group{display:flex;gap:28px;flex-wrap:wrap;}
-.stat-block .stat-label{font-size:10.5px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
-.stat-block .stat-value{font-size:19px;font-weight:800;}
+.stat-block .stat-label{font-size:0.6875rem;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
+.stat-block .stat-value{font-size:1.1875rem;font-weight:800;}
 .stat-total .stat-value{color:var(--red);}
 .card-teal .stat-total .stat-value{color:var(--teal-dark);}
 .card-gold .stat-total .stat-value{color:#c97e0e;}
 .stat-average .stat-value{color:var(--ink);}
 
-.chart-type-select{padding:8px 30px 8px 14px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:12.5px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="%238A8A93" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>') no-repeat right 12px center;appearance:none;-webkit-appearance:none;cursor:pointer;outline:none;flex-shrink:0;}
+.chart-type-select{padding:8px 30px 8px 14px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.75rem;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="%238A8A93" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>') no-repeat right 12px center;appearance:none;-webkit-appearance:none;cursor:pointer;outline:none;flex-shrink:0;}
 .chart-type-select:focus{border-color:var(--red);}
 
 /* ── CHART AREA ── */
 .chart-wrap{position:relative;height:320px;padding:18px 8px 0;transition:opacity .15s;}
 .chart-wrap.is-loading{opacity:.35;pointer-events:none;}
-.chart-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--gray-500);font-size:13px;font-weight:600;text-align:center;}
+.chart-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--gray-500);font-size:0.8125rem;font-weight:600;text-align:center;}
 .chart-empty.show{display:flex;}
 
 /* ════════════════════════════════════════════════════
@@ -686,7 +686,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .comparison-table-wrap{margin-top:24px;width:100%;}
 .comparison-table-wrap.is-loading{opacity:.35;pointer-events:none;}
 .comparison-table-title{
-  font-size:11px;font-weight:800;color:var(--gray-700);
+  font-size:0.6875rem;font-weight:800;color:var(--gray-700);
   text-transform:uppercase;letter-spacing:.5px;
   margin-bottom:10px;display:flex;align-items:center;gap:8px;
 }
@@ -704,13 +704,13 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 }
 .comparison-table{
   width:100%;border-collapse:separate;border-spacing:0;
-  font-size:12.5px;
+  font-size:0.75rem;
 }
 .comparison-table thead th{
   padding:12px 16px;
   background:#F9F9FB;
   color:var(--gray-700);
-  font-size:10px;font-weight:800;text-align:left;
+  font-size:0.6875rem;font-weight:800;text-align:left;
   text-transform:uppercase;letter-spacing:.5px;
   white-space:nowrap;
   border-bottom:1.5px solid var(--gray-300);
@@ -772,12 +772,15 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
   display:inline-flex;align-items:center;justify-content:flex-end;gap:3px;
   min-width:72px;
   padding:3px 9px;border-radius:999px;
-  font-size:11.5px;font-weight:800;
+  font-size:inherit;font-weight:800;
   line-height:1.2;
 }
 .change-positive{color:#065F46;background:#D1FAE5;}
 .change-negative{color:#991B1B;background:#FEE2E2;}
 .change-neutral {color:#6B7280;background:#F3F4F6;font-weight:700;}
+.comparison-table tbody td.empty-value,
+.comparison-table tfoot td.empty-value{text-align:center;}
+.empty-value .change-neutral{justify-content:center;}
 
 /* footer total */
 .comparison-table tfoot td{
@@ -790,7 +793,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 }
 .comparison-table tfoot td:not(:first-child){text-align:right;}
 .comparison-table tfoot td.col-total{
-  color:var(--red-dark);font-size:13px;
+  color:var(--red-dark);font-size:0.75rem;
 }
 .card-teal .comparison-table tfoot td.col-total{color:var(--teal-dark);}
 .card-gold .comparison-table tfoot td.col-total{color:#8A5A0E;}
@@ -801,10 +804,11 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
   .global-filter-hint{margin-left:0;max-width:none;}
   .comparison-table tbody td,
   .comparison-table thead th,
-  .comparison-table tfoot td{padding:9px 10px;font-size:11.5px;}
-  .change-positive,.change-negative,.change-neutral{padding:2px 7px;font-size:11px;min-width:60px;}
+  .comparison-table tfoot td{padding:9px 10px;font-size:0.75rem;}
+  .change-positive,.change-negative,.change-neutral{padding:2px 7px;font-size:inherit;min-width:60px;}
 }
 </style>
+<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 <body>
 <script>
@@ -867,7 +871,6 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Apply to All Charts
       </button>
-      <span class="global-filter-hint">Each chart's own date / month / year range filter below still applies. Status only affects System sales — Manual sales has no status.</span>
     </div>
   </div>
 
@@ -939,8 +942,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
             <tr>
               <td>Total</td>
               <td class="col-total" id="dailyTableTotal">—</td>
-              <td>—</td>
-              <td>—</td>
+              <td class="empty-value">—</td>
+              <td class="empty-value">—</td>
             </tr>
           </tfoot>
         </table>
@@ -1032,8 +1035,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
             <tr>
               <td>Total</td>
               <td class="col-total" id="monthlyTableTotal">—</td>
-              <td>—</td>
-              <td>—</td>
+              <td class="empty-value">—</td>
+              <td class="empty-value">—</td>
             </tr>
           </tfoot>
         </table>
@@ -1148,8 +1151,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
             <tr>
               <td>Total</td>
               <td class="col-total" id="yearlyTableTotal">—</td>
-              <td>—</td>
-              <td>—</td>
+              <td class="empty-value">—</td>
+              <td class="empty-value">—</td>
             </tr>
           </tfoot>
         </table>
@@ -1361,8 +1364,8 @@ function renderTable(key){
         rowsHtml += '<tr>'
             + '<td>' + periodLabel + '</td>'
             + '<td class="col-total">' + formatRM(value) + '</td>'
-            + '<td>' + differenceRmCell + '</td>'
-            + '<td>' + differencePctCell + '</td>'
+            + '<td' + (prevValue === null ? ' class="empty-value"' : '') + '>' + differenceRmCell + '</td>'
+            + '<td' + (prevValue === null ? ' class="empty-value"' : '') + '>' + differencePctCell + '</td>'
             + '</tr>';
 
         prevValue = value;

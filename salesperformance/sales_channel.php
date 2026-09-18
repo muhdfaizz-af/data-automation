@@ -32,6 +32,7 @@ if (
 }
 $_SESSION['last_activity'] = time();
 
+$adminUsername = $_SESSION['admin_username'] ?? '';
 $activeNav = 'sales_channel';
 $navBasePath = '../';
 
@@ -503,15 +504,20 @@ $prevYearRangeLabel = $prevYearFromLabel . ' – ' . $prevYearToLabel;
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased}
 button,input,select{font:inherit}
+/* Match the shared navbar without changing the shared component. */
+.topbar a{text-decoration:none;}
+.topbar button{font-family:inherit;}
+.topbar .hamburger-btn{padding:0;border:0;background:transparent;}
+@media(min-width:901px){.topbar .hamburger-btn{display:none;}}
 svg{display:block}
 .layout{display:flex;margin-top:var(--topbar-h)}
 .main{min-width:0;flex:1;margin-left:var(--sidebar-w);padding:28px 32px 48px;transition:margin-left .25s ease}
 body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
 
 .page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:24px;flex-wrap:wrap}
-.page-header h1{margin-bottom:4px;font-size:26px;font-weight:800;letter-spacing:-.3px}
-.page-header p{color:var(--gray-500);font-size:13px}
-.page-header-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--gray-100);border-radius:999px;background:#fff;box-shadow:var(--shadow-card);color:var(--gray-700);font-size:12px;font-weight:700;white-space:nowrap}
+.page-header h1{margin-bottom:4px;font-size:1.625rem;font-weight:800;letter-spacing:-.3px}
+.page-header p{color:var(--gray-500);font-size:0.8125rem}
+.page-header-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--gray-100);border-radius:999px;background:#fff;box-shadow:var(--shadow-card);color:var(--gray-700);font-size:0.75rem;font-weight:700;white-space:nowrap}
 .page-header-badge::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green)}
 
 .report-card{margin-bottom:24px;padding:24px;border:1px solid var(--gray-100);border-radius:var(--radius-lg);background:var(--white);box-shadow:var(--shadow-card);transition:box-shadow .2s ease}
@@ -521,38 +527,38 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
 .report-icon svg{width:20px;height:20px;stroke:#fff}
 .ri-red{background:linear-gradient(135deg,var(--red),var(--red-dark))}
 .ri-dark{background:linear-gradient(135deg,var(--gray-700),var(--ink))}
-.report-card-title{font-size:16px;font-weight:800}
-.report-card-sub{font-size:12px;color:var(--gray-500);font-weight:500;margin-top:1px}
+.report-card-title{font-size:1rem;font-weight:800}
+.report-card-sub{font-size:0.75rem;color:var(--gray-500);font-weight:500;margin-top:1px}
 
 /* Filters */
 .global-filter-card{border:1.5px solid var(--ink)}
 .global-filter-row{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .global-filter-group{display:flex;flex-direction:column;gap:6px;min-width:170px}
-.global-filter-group label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px}
-.global-filter-group select,.global-filter-group input{width:100%;min-height:44px;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;background:#fff;color:var(--ink);font-size:13.5px;font-weight:600;transition:border-color .15s ease, box-shadow .15s ease}
+.global-filter-group label{font-size:0.6875rem;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px}
+.global-filter-group select,.global-filter-group input{width:100%;min-height:44px;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;background:#fff;color:var(--ink);font-size:0.875rem;font-weight:600;transition:border-color .15s ease, box-shadow .15s ease}
 .global-filter-group select:hover,.global-filter-group input:hover{border-color:#c3c3cb}
 .global-filter-group select:focus,.global-filter-group input:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(27,27,31,.1)}
-.apply-button{min-height:44px;padding:11px 22px;border:0;border-radius:9px;background:var(--ink);box-shadow:0 4px 14px rgba(27,27,31,.2);color:#fff;cursor:pointer;font-size:13px;font-weight:800;letter-spacing:.2px;display:inline-flex;align-items:center;gap:8px;transition:background .15s ease, transform .15s ease}
+.apply-button{min-height:44px;padding:11px 22px;border:0;border-radius:9px;background:var(--ink);box-shadow:0 4px 14px rgba(27,27,31,.2);color:#fff;cursor:pointer;font-size:0.8125rem;font-weight:800;letter-spacing:.2px;display:inline-flex;align-items:center;gap:8px;transition:background .15s ease, transform .15s ease}
 .apply-button:hover{background:#000;transform:translateY(-1px)}
 .apply-button:active{transform:translateY(0)}
 .apply-button svg{width:14px;height:14px;stroke:#fff;fill:none}
-.global-filter-hint{font-size:11.5px;color:var(--gray-500);margin-left:auto;align-self:center;max-width:280px}
-.error-box{margin-bottom:20px;padding:13px 15px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#991b1b;font-size:13px;font-weight:600}
+.global-filter-hint{font-size:0.75rem;color:var(--gray-500);margin-left:auto;align-self:center;max-width:280px}
+.error-box{margin-bottom:20px;padding:13px 15px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#991b1b;font-size:0.8125rem;font-weight:600}
 
 /* Ring/donut chart grid — Daily / Monthly / Yearly, mirrors Sales by Hub 3.4 */
-.hub-pie-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.hub-pie-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));gap:20px}
 @media(max-width:1100px){.hub-pie-grid{grid-template-columns:1fr}}
-.hub-pie-panel{background:var(--gray-100);border-radius:var(--radius-md);padding:16px;transition:box-shadow .2s ease}
+.hub-pie-panel{min-width:0;background:var(--gray-100);border-radius:var(--radius-md);padding:16px;transition:box-shadow .2s ease}
 .hub-pie-panel:hover{box-shadow:0 4px 16px rgba(20,20,30,.06)}
-.hub-pie-panel-title{font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-700);margin-bottom:2px}
-.hub-pie-panel-sub{font-size:11px;color:var(--gray-500);margin-bottom:12px}
-.hub-pie-wrap{position:relative;height:190px;margin-bottom:14px}
+.hub-pie-panel-title{font-size:0.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-700);margin-bottom:2px}
+.hub-pie-panel-sub{font-size:0.6875rem;color:var(--gray-500);margin-bottom:12px}
+.hub-pie-wrap{width:100%;min-width:0;position:relative;height:190px;margin-bottom:14px}
 .hub-pie-wrap canvas{width:100%!important;height:100%!important}
-.hub-pie-grand{text-align:center;font-size:13px;font-weight:800;margin-bottom:12px}
+.hub-pie-grand{text-align:center;font-size:0.8125rem;font-weight:800;margin-bottom:12px}
 
 /* Table */
-.hub-table{width:100%;border-collapse:collapse;font-size:12.5px}
-.hub-table th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);padding:6px 6px;border-bottom:1.5px solid var(--gray-300)}
+.hub-table{width:100%;border-collapse:collapse;font-size:0.75rem}
+.hub-table th{text-align:left;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);padding:6px 6px;border-bottom:1.5px solid var(--gray-300)}
 .hub-table td{padding:8px 6px;border-bottom:1px solid var(--gray-300);font-weight:600}
 .hub-table th:not(:first-child),.hub-table td:not(:first-child){text-align:right}
 .hub-table tbody tr{transition:background .15s ease}
@@ -565,11 +571,11 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
 .empty-row{text-align:center!important;color:var(--gray-500);padding:24px!important}
 
 .comparison-table-wrap{margin-top:20px;width:100%}
-.comparison-table-title{margin-bottom:8px;color:var(--gray-700);font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+.comparison-table-title{margin-bottom:8px;color:var(--gray-700);font-size:0.6875rem;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
 .comparison-table-title span{color:var(--gray-500);font-weight:600;text-transform:none;letter-spacing:0}
 .comparison-table-scroll{overflow-x:auto;border:1px solid var(--gray-100);border-radius:var(--radius-md)}
-.comparison-table{width:100%;border-collapse:collapse;font-size:12px}
-.comparison-table th{padding:10px 14px;background:var(--green);color:#fff;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+.comparison-table{width:100%;border-collapse:collapse;font-size:0.75rem}
+.comparison-table th{padding:10px 14px;background:var(--green);color:#fff;font-size:0.6875rem;text-align:left;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
 .comparison-table td{padding:10px 14px;border-top:1px solid var(--gray-100);white-space:nowrap;font-weight:600}
 .comparison-table td.num,.comparison-table th:not(:first-child){text-align:right}
 .comparison-table tfoot td{font-weight:800;border-top:1.5px solid var(--ink);background:var(--gray-100)}
@@ -579,7 +585,23 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
 .diff-positive{color:var(--green);font-weight:700}
 .diff-negative{color:var(--red);font-weight:700}
 .diff-neutral{color:var(--gray-500);font-weight:600}
+.topbar a {text-decoration: none;}
+.topbar button {font-family: inherit;}
+.topbar .hamburger-btn {padding: 0;border: 0;background: transparent;}
+@media (min-width: 901px) {.topbar .hamburger-btn {display: none;}}
 @media(max-width:650px){.main{padding:18px 14px 40px}.page-header{flex-direction:column;align-items:flex-start}.global-filter-hint{margin-left:0;max-width:none}}
+.panel-table-scroll{width:100%;min-width:0;overflow-x:auto;}
+.hub-pie-wrap canvas,.target-chart-wrap canvas{max-width:100%;}
+.layout{width:100%;min-width:0;}
+.layout > .main{flex:0 1 auto;width:calc(100% - var(--sidebar-w));max-width:100%;transition:margin-left .25s ease,width .25s ease;}
+body.sidebar-collapsed .layout > .main{width:calc(100% - var(--sidebar-w-collapsed));}
+.report-card{min-width:0;max-width:100%;}
+.hub-pie-panel,.target-panel{contain:inline-size;}
+.hub-pie-wrap,.target-chart-wrap{width:100%;min-width:0;overflow:hidden;}
+.hub-pie-wrap canvas,.target-chart-wrap canvas{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;}
+@media(max-width:900px){
+  .layout > .main,body.sidebar-collapsed .layout > .main{width:100%;margin-left:0;}
+}
 </style>
 </head>
 <body>
@@ -629,7 +651,6 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 Apply Filter
             </button>
-            <span class="global-filter-hint">Amounts converted to MYR. Singapore entries use SGD × <?= number_format(SGD_TO_MYR_RATE, 2) ?>.</span>
         </form>
     </section>
 
@@ -656,7 +677,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
                 <div class="hub-pie-panel-sub"><?= htmlspecialchars($period['sub']) ?></div>
                 <div class="hub-pie-wrap"><canvas id="<?= $period['canvas'] ?>"></canvas></div>
                 <div class="hub-pie-grand">RM<?= number_format($period['grand'], 2) ?></div>
-                <table class="hub-table">
+                <div class="panel-table-scroll"><table class="hub-table">
                     <thead><tr><th>Channel</th><th>Sales</th><th>%</th></tr></thead>
                     <tbody>
                     <?php if (!$period['channels']): ?>
@@ -683,7 +704,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
                             <td class="num"><?= $period['grand'] > 0 ? '100.00' : '0.00' ?>%</td>
                         </tr>
                     </tfoot>
-                </table>
+                </table></div>
             </div>
             <?php endforeach; ?>
         </div>
@@ -744,15 +765,20 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed)}
             </div>
         </div>
     </section>
+<script type="application/json" id="channelChartData"><?= json_encode([
+    'daily' => $dailyChannels,
+    'monthly' => $monthlyChannels,
+    'yearly' => $yearlyChannels,
+], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?></script>
 </main>
 </div>
 <script>
 document.addEventListener('submit', async function (event) {
     const form = event.target.closest('form[method="get"]');
-    if (!form) return;
+    if (!form || !form.closest('main.main')) return;
 
     event.preventDefault();
-    event.stopImmediatePropagation();
+
 
     const button = form.querySelector('button[type="submit"]');
     if (button) button.disabled = true;
@@ -763,6 +789,7 @@ document.addEventListener('submit', async function (event) {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin'
         });
+        if (response.redirected) { window.location.assign(response.url); return; }
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
         const html = await response.text();
@@ -771,14 +798,17 @@ document.addEventListener('submit', async function (event) {
         const currentMain = document.querySelector('main.main');
         if (!nextMain || !currentMain) throw new Error('Invalid report response.');
 
+        const chartData = readChannelChartData(nextMain);
+        if (typeof Chart !== 'undefined') {
+            currentMain.querySelectorAll('canvas').forEach(function (canvas) {
+                const chart = Chart.getChart(canvas);
+                if (chart) chart.destroy();
+            });
+        }
         currentMain.replaceWith(nextMain);
+        renderChannelCharts(chartData);
         document.title = nextDocument.title || document.title;
 
-        const scripts = nextDocument.body.querySelectorAll('script');
-        const reportScript = scripts[scripts.length - 1];
-        if (reportScript && reportScript.textContent) {
-            new Function(reportScript.textContent)();
-        }
     } catch (error) {
         if (button) button.disabled = false;
         window.alert('Unable to update the report. Please try again.');
@@ -801,7 +831,7 @@ function renderChannelRing(canvasId, labels, values, colors) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || typeof Chart === 'undefined') return;
     if (!values.length || values.every(v => Number(v) === 0)) {
-        canvas.closest('.hub-pie-wrap').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#8A8A93;font-size:13px;font-weight:600;">No data available</div>';
+        canvas.closest('.hub-pie-wrap').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#8A8A93;font-size:0.8125rem;font-weight:600;">No data available</div>';
         return;
     }
     new Chart(canvas.getContext('2d'), {
@@ -831,9 +861,6 @@ function renderChannelRing(canvasId, labels, values, colors) {
     });
 }
 
-const dailyChannels = <?= json_encode($dailyChannels, JSON_UNESCAPED_SLASHES) ?>;
-const monthlyChannels = <?= json_encode($monthlyChannels, JSON_UNESCAPED_SLASHES) ?>;
-const yearlyChannels = <?= json_encode($yearlyChannels, JSON_UNESCAPED_SLASHES) ?>;
 
 function ring(data, canvasId) {
     renderChannelRing(
@@ -844,53 +871,34 @@ function ring(data, canvasId) {
     );
 }
 
-ring(dailyChannels, 'dailyPie');
-ring(monthlyChannels, 'monthlyPie');
-ring(yearlyChannels, 'yearlyPie');
-
-function bindAjaxReportForm(scope) {
-    scope.querySelectorAll('form[method="get"]').forEach(function (form) {
-        if (form.dataset.ajaxBound === '1') return;
-        form.dataset.ajaxBound = '1';
-        form.addEventListener('submit', async function (event) {
-            event.preventDefault();
-            event.stopPropagation();
-
-            const button = form.querySelector('button[type="submit"]');
-            if (button) button.disabled = true;
-
-            try {
-                const params = new URLSearchParams(new FormData(form));
-                const response = await fetch(window.location.pathname + '?' + params.toString(), {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin'
-                });
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-
-                const html = await response.text();
-                const nextDocument = new DOMParser().parseFromString(html, 'text/html');
-                const nextMain = nextDocument.querySelector('main.main');
-                const currentMain = document.querySelector('main.main');
-                if (!nextMain || !currentMain) throw new Error('Invalid report response.');
-
-                currentMain.replaceWith(nextMain);
-                document.title = nextDocument.title || document.title;
-                bindAjaxReportForm(nextMain);
-
-                const scripts = nextDocument.body.querySelectorAll('script');
-                const reportScript = scripts[scripts.length - 1];
-                if (reportScript && reportScript.textContent) {
-                    new Function(reportScript.textContent)();
-                }
-            } catch (error) {
-                if (button) button.disabled = false;
-                window.alert('Unable to update the report. Please try again.');
-            }
-        });
-    });
+function readChannelChartData(scope) {
+    const dataElement = scope.querySelector('#channelChartData');
+    if (!dataElement) throw new Error('Missing chart data.');
+    const data = JSON.parse(dataElement.textContent);
+    if (!['daily', 'monthly', 'yearly'].every(period => Array.isArray(data[period]))) {
+        throw new Error('Invalid chart data.');
+    }
+    return data;
 }
 
-bindAjaxReportForm(document);
+function renderChannelCharts(data) {
+    ring(data.daily, 'dailyPie');
+    ring(data.monthly, 'monthlyPie');
+    ring(data.yearly, 'yearlyPie');
+}
+
+renderChannelCharts(readChannelChartData(document));
+</script>
+<script>
+// Refresh the chart's drawing size once the sidebar finishes changing the report width.
+document.addEventListener('transitionend', function (event) {
+    if (!event.target.matches('.main') || event.propertyName !== 'width') return;
+    if (typeof Chart === 'undefined') return;
+    event.target.querySelectorAll('canvas').forEach(function (canvas) {
+        const chart = Chart.getChart(canvas);
+        if (chart) chart.resize();
+    });
+});
 </script>
 </body>
 </html>

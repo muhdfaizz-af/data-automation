@@ -720,65 +720,65 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 
 /* ── HEADER ── */
 .page-header {margin-bottom:24px;}
-.page-header h1 {margin-bottom:4px;font-size:24px;font-weight:800;}
-.page-header p {color:var(--gray-500);font-size:13px;}
+.page-header h1 {margin-bottom:4px;font-size:1.5rem;font-weight:800;}
+.page-header p {color:var(--gray-500);font-size:0.8125rem;}
 
 /* ── CARD  ── */
 .card {margin-bottom:24px;padding:24px;border:1px solid var(--gray-100);border-radius:var(--radius-lg);background:var(--white);box-shadow:var(--shadow-card);}
-.card-title {margin-bottom:4px;font-size:16px;font-weight:800;}
-.card-subtitle {color:var(--gray-500);font-size:12px;margin-bottom:10px}
+.card-title {margin-bottom:4px;font-size:1rem;font-weight:800;}
+.card-subtitle {color:var(--gray-500);font-size:0.75rem;margin-bottom:10px}
 
 /* ── FILTER SECTION ── */
 .filter-grid {display:grid;grid-template-columns:repeat(2,minmax(180px,1fr)) 200px;gap:16px;align-items:end;margin-top:20px;}
 .field {display:flex;flex-direction:column;gap:6px;}
-.field label, .filter-label {color:var(--gray-700);font-size:10px;font-weight:800;letter-spacing:.35px;text-transform:uppercase;}
+.field label, .filter-label {color:var(--gray-700);font-size:0.6875rem;font-weight:800;letter-spacing:.35px;text-transform:uppercase;}
 .field input,
-.field select {width:100%;min-height:43px;padding:10px 12px;font-size:16px;border:1.5px solid var(--gray-300);border-radius:9px;background:var(--white);outline:none;}
+.field select {width:100%;min-height:43px;padding:10px 12px;font-size:1rem;border:1.5px solid var(--gray-300);border-radius:9px;background:var(--white);outline:none;}
 .field input:focus, .field select:focus {border-color:var(--red);box-shadow:0 0 0 3px rgba(224,32,46,.10);}
 
 /* ── PRODUCT TYPE SECTION ── */
-.type-help {margin-top:9px;color:var(--gray-500);font-size:11px;line-height:1.5;}
+.type-help {margin-top:9px;color:var(--gray-500);font-size:0.6875rem;line-height:1.5;}
 
 /* ── BRAND SECTION ── */
 .brand-section {margin-top:18px;}
 .brand-options {display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;}
-.brand-option {display:flex;align-items:center;gap:8px;padding:10px 13px;border:1.5px solid var(--gray-300);border-radius:9px;background:var(--white);cursor:pointer;font-size:12px;font-weight:700;}
+.brand-option {display:flex;align-items:center;gap:8px;padding:10px 13px;border:1.5px solid var(--gray-300);border-radius:9px;background:var(--white);cursor:pointer;font-size:0.75rem;font-weight:700;}
 .brand-option:has(input:checked) {border-color:var(--red);background:#FFF5F5;}
 .brand-option input[type="radio"] {width:17px;height:17px;flex-shrink:0;accent-color:var(--red);cursor:pointer;}
 .brand-option:has(input[type="radio"]:checked) {border-color:var(--red);background:#FFF5F5;box-shadow:0 0 0 2px rgba(224,32,46,.06);}
 .filter-footer {display:flex;justify-content:flex-end;margin-top:18px;}
 
 /* ── APPLY BUTTON ── */
-.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 13px;font-weight: 800;}
+.apply-button {min-height: 42px;padding: 10px 20px;border: 0;border-radius: 9px;background: var(--red);box-shadow: 0 4px 14px rgba(224, 32, 46, .22);color: var(--white);cursor: pointer;font-size: 0.8125rem;font-weight: 800;}
 .apply-button:hover {background: var(--red-dark);}
 .error-box,
-.info-box {margin-bottom:20px;padding:13px 15px;border-radius:10px;font-size:12px;line-height:1.6;}
+.info-box {margin-bottom:20px;padding:13px 15px;border-radius:10px;font-size:0.75rem;line-height:1.6;}
 .error-box {border:1px solid #FECACA;background:#FEF2F2;color:#991B1B;}
 .info-box {border:1px solid #BFDBFE;background:#EFF6FF;color:#1E3A8A;}
 
 /* ── SUMMARY SECTION ── */
 .summary-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px;}
 .summary-card {padding:18px;border:1px solid var(--gray-100);border-radius:var(--radius-md);background:var(--white);box-shadow:var(--shadow-card);}
-.summary-label {margin-bottom:5px;color:var(--gray-500);font-size:10px;font-weight:800;text-transform:uppercase;}
-.summary-value {font-size:16px;font-weight:800;}
+.summary-label {margin-bottom:5px;color:var(--gray-500);font-size:0.6875rem;font-weight:800;text-transform:uppercase;}
+.summary-value {font-size:1rem;font-weight:800;}
 
 /* ── RANKING SECTION ── */
 .ranking-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
 .ranking-card {min-width:0;}
 .table-wrap {width:100%;min-width:0;overflow-x:auto;}
 .ranking-table {width:100%;min-width:650px;table-layout:fixed;border-collapse:collapse;}
-.ranking-table th, .ranking-table td {padding:12px 8px;border-bottom:1px solid var(--black-100);text-align:left;vertical-align:top;font-size:11px;overflow-wrap:anywhere;}
-.ranking-table th {color:var(--black-500);font-size:10px;letter-spacing:.3px;text-transform:uppercase;}
+.ranking-table th, .ranking-table td {padding:12px 8px;border-bottom:1px solid var(--black-100);text-align:left;vertical-align:top;font-size:0.6865rem;overflow-wrap:anywhere;}
+.ranking-table th {color:var(--black-500);font-size:0.6875rem;letter-spacing:.3px;text-transform:uppercase;}
 .ranking-table th:nth-child(1),.ranking-table td:nth-child(1) {width:10%;}
 .ranking-table th:nth-child(2),.ranking-table td:nth-child(2) {width:39%;}
-.ranking-table th:nth-child(3),.ranking-table td:nth-child(3) {width:16%;}
+.ranking-table th:nth-child(3),.ranking-table td:nth-child(3) {width:17%;}
 .ranking-table th:nth-child(4),.ranking-table td:nth-child(4) {width:14%;}
 .ranking-table th:nth-child(5),.ranking-table td:nth-child(5) {width:21%;}
 .ranking-table th:nth-child(4),.ranking-table td:nth-child(4),
 .ranking-table th:nth-child(5),.ranking-table td:nth-child(5) {text-align:right;}
 .rank-number {display:inline-flex;width:25px;height:25px;align-items:center;justify-content:center;border-radius:50%;background:var(--gray-100);font-weight:800;}
-.product-code,.source-codes {margin-top:4px;color:var(--black-500);font-size:10px;line-height:1.4;}
-.brand-badge {display:inline-flex;min-width:76px;min-height:32px;padding:5px 10px;align-items:center;justify-content:center;border-radius:20px;background:var(--gray-100);font-size:9px;font-weight:800;line-height:1.15;text-align:center;}
+.product-code,.source-codes {margin-top:4px;color:var(--black-500);font-size:0.6875rem;line-height:1.4;}
+.brand-badge {display:inline-flex;min-width:76px;min-height:32px;padding:5px 10px;align-items:center;justify-content:center;border-radius:20px;background:var(--gray-100);font-size:0.6875rem;font-weight:800;line-height:1.15;text-align:center;}
 .sales-value {color:var(--black);font-weight:800;white-space:normal;}
 .empty-row {padding:30px !important;color:var(--gray-500);text-align:center !important;}
 @media(max-width:1100px) {.ranking-grid {grid-template-columns:1fr;}}
@@ -786,6 +786,19 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 @media(max-width:700px) {.filter-grid,.summary-grid {grid-template-columns:1fr;}}
 </style>
 <link rel="stylesheet" href="../includes/report_tables.css">
+<style>
+.ranking-card .ranking-table{width:100%;min-width:0;table-layout:auto;}
+.ranking-card .ranking-table th,
+.ranking-card .ranking-table td{width:auto;padding-left:8px;padding-right:8px;}
+.ranking-card .ranking-table th{white-space:nowrap;overflow-wrap:normal;word-break:normal;}
+.ranking-card .ranking-table td{white-space:normal;overflow-wrap:anywhere;}
+.ranking-card .brand-badge{min-width:max-content;max-width:none;white-space:nowrap;overflow-wrap:normal;word-break:normal;}
+.ranking-card .ranking-table td:nth-child(3){white-space:nowrap;overflow-wrap:normal;word-break:normal;}
+@media(min-width:901px) and (max-width:1440px){
+    .ranking-card .ranking-table th{font-size:0.625rem;}
+    .ranking-card .ranking-table td{font-size:0.6875rem;}
+}
+</style>
 </head>
 
 <body>
@@ -1021,10 +1034,6 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 <script>
-<<<<<<< HEAD
-// AJAX functionality
-=======
->>>>>>> 300a6bb2759fbc8b97dbbbc4395af841c9c9fad7
 (function () {
     'use strict';
 
