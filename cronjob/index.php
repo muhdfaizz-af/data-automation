@@ -1,32 +1,57 @@
 <?php
 date_default_timezone_set('Asia/Kuala_Lumpur');
 
-session_start();
-
-if (empty($_SESSION['admin_id'])) {
-    header('Location: ../index.php');
-    exit;
-}
-
-if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > 7200) {
-    $_SESSION = [];
-    session_destroy();
-    header('Location: ../index.php?expired=1');
-    exit;
-}
-
-$_SESSION['last_activity'] = time();
-
 /**
  * SALES LIMIT MONITOR
  * Single PHP file - No Database
  *
- * Monitor:
- * Price Code : FOC
- * SKU        : MCA-1002
- *
- * Change the settings below.
+ * Boleh jalan 3 cara:
+ *  1. Cron CLI      : /usr/local/bin/php /path/sales_monitor.php
+ *  2. Cron URL+key  : curl -s "https://domain/admin/sales_monitor.php?key=XXXX"
+ *  3. Browser       : (kena login admin) tunjuk dashboard
  */
+
+// ============================================================
+// 0. CRON KEY (tukar ke string random panjang!)
+// ============================================================
+
+$cronKey = 's-asia';
+
+
+// ============================================================
+// 0.1 DETECT MODE + AUTH
+// ============================================================
+
+$isCli = (php_sapi_name() === 'cli');
+
+$isKeyCron =
+    !$isCli
+    && isset($_GET['key'])
+    && is_string($_GET['key'])
+    && hash_equals($cronKey, $_GET['key']);
+
+// Cron = CLI atau URL dengan key yang betul. Skip session.
+$isCron = $isCli || $isKeyCron;
+
+if (!$isCron) {
+
+    session_start();
+
+    if (empty($_SESSION['admin_id'])) {
+        header('Location: ../index.php');
+        exit;
+    }
+
+    if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > 7200) {
+        $_SESSION = [];
+        session_destroy();
+        header('Location: ../index.php?expired=1');
+        exit;
+    }
+
+    $_SESSION['last_activity'] = time();
+}
+
 
 // ============================================================
 // 1. SETTINGS
@@ -34,22 +59,35 @@ $_SESSION['last_activity'] = time();
 
 $settings = [
 
-    // Check every how many seconds if running continuously
+    // Auto refresh dashboard (saat) - untuk browser sahaja
     'check_interval' => 60,
 
     // Email recipient
     'email_to' => 'muhammadfaizzuddin.ahmadfakri6@gmail.com',
 
     // Email sender
-    'email_from' => 'noreply@saudagaarasia.com',
+    'email_from' => 'faizzuddin@saudagaarasia.com',
 
-    // Hour (24h, server time) after which the daily summary
-    // email is allowed to fire. It only sends once per day,
-    // on the first script run at/after this hour.
-    'daily_report_hour' => 9,
+    // Jam (24h, server time) selepas itu daily summary boleh dihantar.
+    // Hantar sekali sehari sahaja.
+    'daily_report_hour'   => 9,
+    'daily_report_minute' => 00,
 
-    // Fraction of the limit that triggers the 90% warning email
+    // Peratus limit yang trigger warning email
     'warning_threshold' => 0.9,
+
+    // Nama pengirim yang nampak dalam inbox
+    'email_from_name' => 'Sales Limit Monitor',
+
+    // SMTP (guna email account yang dibuat dalam cPanel)
+    'smtp' => [
+        'host'       => 'mail.saudagaarasia.com',
+        'port'       => 465,          // 465 = ssl, 587 = tls
+        'secure'     => 'ssl',        // 'ssl' atau 'tls'
+        'username'   => 'faizzuddin@saudagaarasia.com',
+        'password'   => 'Faiz2003',
+        'verify_ssl' => true,         // set false kalau error certificate
+    ],
 
     // Rules to monitor
     'rules' => [
@@ -77,12 +115,30 @@ $settings = [
 
 
 // ============================================================
-// 2. STATE FILE
+// 2. STATE FILE + LOCK FILE
 // ============================================================
-// No database.
-// This file is automatically created next to this PHP file.
 
 $stateFile = __DIR__ . DIRECTORY_SEPARATOR . '.sales_monitor_state.json';
+$lockFile  = __DIR__ . DIRECTORY_SEPARATOR . '.sales_monitor.lock';
+
+
+// ============================================================
+// 2.1 LOCK (elak dua run bertindih hantar email dua kali)
+// ============================================================
+
+$lockHandle = @fopen($lockFile, 'c');
+
+if ($lockHandle && !flock($lockHandle, LOCK_EX | LOCK_NB)) {
+
+    // Run lain tengah jalan
+    if ($isCron) {
+        echo date('Y-m-d H:i:s') . " | Another run in progress, skipped.\n";
+        exit;
+    }
+
+    // Untuk browser, tunggu sekejap sampai lock free
+    flock($lockHandle, LOCK_EX);
+}
 
 
 // ============================================================
@@ -107,15 +163,6 @@ if (file_exists($stateFile)) {
 // 4. FUNCTIONS
 // ============================================================
 
-/**
- * Fetch a URL using curl if available, otherwise fall back to
- * file_get_contents() with a stream context.
- *
- * Shared hosting sometimes has the curl extension disabled but
- * allow_url_fopen enabled (or vice versa), so this tries curl
- * first (more reliable, better error info) and only falls back
- * if curl_init/curl_exec don't exist.
- */
 function fetchReport($url)
 {
     if (function_exists('curl_init') && function_exists('curl_exec')) {
@@ -184,11 +231,6 @@ function fetchReportCurl($url)
 }
 
 
-/**
- * curl-free fallback using file_get_contents() + stream context.
- * Requires allow_url_fopen = On (usually enabled by default on
- * shared hosting, even when the curl extension is missing).
- */
 function fetchReportStream($url)
 {
     if (!ini_get('allow_url_fopen')) {
@@ -209,7 +251,7 @@ function fetchReportStream($url)
             'header'          =>
                 "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36\r\n"
                 . "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n",
-            'ignore_errors'   => true, // so we still get body + headers on 4xx/5xx
+            'ignore_errors'   => true,
         ],
         'ssl' => [
             'verify_peer'      => true,
@@ -221,7 +263,6 @@ function fetchReportStream($url)
 
     $httpCode = 0;
 
-    // $http_response_header is set automatically by file_get_contents()
     if (isset($http_response_header) && is_array($http_response_header)) {
 
         foreach ($http_response_header as $headerLine) {
@@ -313,8 +354,6 @@ function getReportData($html, $targetPriceCode, $targetSku)
             }
 
             /**
-             * Expected:
-             *
              * 0 = No.
              * 1 = Price Code
              * 2 = Product SKU
@@ -333,7 +372,6 @@ function getReportData($html, $targetPriceCode, $targetSku)
                 strtoupper(trim($sku)) === strtoupper(trim($targetSku))
             ) {
 
-                // Convert qty like "51", "1,200", "51.00"
                 $qtyClean = str_replace(',', '', $qty);
 
                 if (is_numeric($qtyClean)) {
@@ -365,6 +403,192 @@ function getReportData($html, $targetPriceCode, $targetSku)
 }
 
 
+$GLOBALS['mail_last_error'] = '';
+
+
+function smtpRead($fp)
+{
+    $data = '';
+
+    while (($line = fgets($fp, 515)) !== false) {
+
+        $data .= $line;
+
+        if (isset($line[3]) && $line[3] === ' ') {
+            break;
+        }
+    }
+
+    return $data;
+}
+
+
+function smtpCmd($fp, $command, $expectCode)
+{
+    fwrite($fp, $command . "\r\n");
+
+    $response = smtpRead($fp);
+
+    $code = (int) substr($response, 0, 3);
+
+    return [$code === $expectCode, trim($response)];
+}
+
+
+/**
+ * Hantar email melalui SMTP (tanpa library luar).
+ * Return true/false. Kalau gagal, sebab disimpan dalam
+ * $GLOBALS['mail_last_error'].
+ */
+function deliverMail($settings, $subject, $message)
+{
+    $GLOBALS['mail_last_error'] = '';
+
+    $smtp = $settings['smtp'];
+
+    if (empty($smtp['password']) || strpos($smtp['password'], 'GANTI') === 0) {
+        $GLOBALS['mail_last_error'] = 'SMTP password belum diisi dalam settings.';
+        return false;
+    }
+
+    $secure = strtolower($smtp['secure']);
+    $remote = ($secure === 'ssl' ? 'ssl://' : 'tcp://') . $smtp['host'] . ':' . $smtp['port'];
+    $verify = !isset($smtp['verify_ssl']) || $smtp['verify_ssl'];
+
+    $context = stream_context_create([
+        'ssl' => [
+            'verify_peer'       => $verify,
+            'verify_peer_name'  => $verify,
+            'allow_self_signed' => !$verify,
+        ],
+    ]);
+
+    $fp = @stream_socket_client($remote, $errno, $errstr, 20, STREAM_CLIENT_CONNECT, $context);
+
+    if (!$fp) {
+        $GLOBALS['mail_last_error'] = 'Cannot connect to ' . $smtp['host'] . ':' . $smtp['port'] . ' - ' . $errstr . ' (' . $errno . ')';
+        return false;
+    }
+
+    stream_set_timeout($fp, 20);
+
+    $fail = function ($step, $response) use ($fp) {
+        $GLOBALS['mail_last_error'] = 'SMTP failed at ' . $step . ': ' . $response;
+        @fwrite($fp, "QUIT\r\n");
+        @fclose($fp);
+        return false;
+    };
+
+    $greeting = smtpRead($fp);
+
+    if (substr($greeting, 0, 3) !== '220') {
+        return $fail('greeting', trim($greeting));
+    }
+
+    $ehloHost = isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : (string) gethostname();
+    $ehloHost = preg_replace('/[^A-Za-z0-9.\-]/', '', $ehloHost);
+
+    if ($ehloHost === '') {
+        $ehloHost = 'localhost';
+    }
+
+    list($ok, $resp) = smtpCmd($fp, 'EHLO ' . $ehloHost, 250);
+
+    if (!$ok) {
+        return $fail('EHLO', $resp);
+    }
+
+    if ($secure === 'tls') {
+
+        list($ok, $resp) = smtpCmd($fp, 'STARTTLS', 220);
+
+        if (!$ok) {
+            return $fail('STARTTLS', $resp);
+        }
+
+        if (!@stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+            return $fail('TLS handshake', 'could not enable encryption');
+        }
+
+        list($ok, $resp) = smtpCmd($fp, 'EHLO ' . $ehloHost, 250);
+
+        if (!$ok) {
+            return $fail('EHLO after TLS', $resp);
+        }
+    }
+
+    list($ok, $resp) = smtpCmd($fp, 'AUTH LOGIN', 334);
+
+    if (!$ok) {
+        return $fail('AUTH LOGIN', $resp);
+    }
+
+    list($ok, $resp) = smtpCmd($fp, base64_encode($smtp['username']), 334);
+
+    if (!$ok) {
+        return $fail('AUTH username', $resp);
+    }
+
+    list($ok, $resp) = smtpCmd($fp, base64_encode($smtp['password']), 235);
+
+    if (!$ok) {
+        return $fail('AUTH (username/password salah?)', $resp);
+    }
+
+    list($ok, $resp) = smtpCmd($fp, 'MAIL FROM:<' . $settings['email_from'] . '>', 250);
+
+    if (!$ok) {
+        return $fail('MAIL FROM', $resp);
+    }
+
+    list($ok, $resp) = smtpCmd($fp, 'RCPT TO:<' . $settings['email_to'] . '>', 250);
+
+    if (!$ok) {
+        return $fail('RCPT TO', $resp);
+    }
+
+    list($ok, $resp) = smtpCmd($fp, 'DATA', 354);
+
+    if (!$ok) {
+        return $fail('DATA', $resp);
+    }
+
+    $domain = substr(strrchr($settings['email_from'], '@'), 1);
+
+    $headers = [
+        'Date: ' . date('r'),
+        'From: =?UTF-8?B?' . base64_encode($settings['email_from_name']) . '?= <' . $settings['email_from'] . '>',
+        'To: <' . $settings['email_to'] . '>',
+        'Reply-To: ' . $settings['email_from'],
+        'Subject: =?UTF-8?B?' . base64_encode($subject) . '?=',
+        'Message-ID: <' . md5(uniqid('', true)) . '@' . $domain . '>',
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: base64',
+    ];
+
+    $data =
+        implode("\r\n", $headers)
+        . "\r\n\r\n"
+        . chunk_split(base64_encode($message), 76, "\r\n")
+        . ".\r\n";
+
+    fwrite($fp, $data);
+
+    $resp = smtpRead($fp);
+
+    if (substr($resp, 0, 3) !== '250') {
+        return $fail('sending message', trim($resp));
+    }
+
+    smtpCmd($fp, 'QUIT', 221);
+
+    @fclose($fp);
+
+    return true;
+}
+
+
 function sendAlertEmail($settings, $rule, $qty)
 {
     $subject =
@@ -373,11 +597,9 @@ function sendAlertEmail($settings, $rule, $qty)
         . ' - '
         . $rule['sku'];
 
-    $message = '';
-
-    $message .= "SALES LIMIT REACHED\n";
+    $message  = "SALES LIMIT REACHED\n";
     $message .= "===========================\n\n";
-
+    $message .= "Product      : " . $rule['name'] . "\n";
     $message .= "Country      : " . $rule['country'] . "\n";
     $message .= "Price Code   : " . $rule['price_code'] . "\n";
     $message .= "Product SKU  : " . $rule['sku'] . "\n";
@@ -385,28 +607,12 @@ function sendAlertEmail($settings, $rule, $qty)
     $message .= "Limit        : " . $rule['limit'] . "\n";
     $message .= "Remaining    : 0\n";
     $message .= "Checked At   : " . date('Y-m-d H:i:s') . "\n\n";
-
     $message .= "The configured sales limit has been reached.\n";
 
-    $headers = [];
-
-    $headers[] = 'From: ' . $settings['email_from'];
-    $headers[] = 'Reply-To: ' . $settings['email_from'];
-    $headers[] = 'Content-Type: text/plain; charset=UTF-8';
-
-    return mail(
-        $settings['email_to'],
-        $subject,
-        $message,
-        implode("\r\n", $headers)
-    );
+    return deliverMail($settings, $subject, $message);
 }
 
 
-/**
- * Sent once when a rule crosses the warning threshold
- * (default 90% of its limit) but hasn't reached the limit yet.
- */
 function sendWarningEmail($settings, $rule, $qty, $thresholdPct)
 {
     $remaining = $rule['limit'] - $qty;
@@ -417,11 +623,9 @@ function sendWarningEmail($settings, $rule, $qty, $thresholdPct)
         . ' - '
         . $rule['sku'];
 
-    $message = '';
-
-    $message .= "SALES NEARING LIMIT\n";
+    $message  = "SALES NEARING LIMIT\n";
     $message .= "===========================\n\n";
-
+    $message .= "Product      : " . $rule['name'] . "\n";
     $message .= "Country      : " . $rule['country'] . "\n";
     $message .= "Price Code   : " . $rule['price_code'] . "\n";
     $message .= "Product SKU  : " . $rule['sku'] . "\n";
@@ -429,29 +633,12 @@ function sendWarningEmail($settings, $rule, $qty, $thresholdPct)
     $message .= "Limit        : " . $rule['limit'] . "\n";
     $message .= "Remaining    : " . $remaining . "\n";
     $message .= "Checked At   : " . date('Y-m-d H:i:s') . "\n\n";
-
     $message .= "Sales have reached " . $thresholdPct . "% of the configured limit.\n";
 
-    $headers = [];
-
-    $headers[] = 'From: ' . $settings['email_from'];
-    $headers[] = 'Reply-To: ' . $settings['email_from'];
-    $headers[] = 'Content-Type: text/plain; charset=UTF-8';
-
-    return mail(
-        $settings['email_to'],
-        $subject,
-        $message,
-        implode("\r\n", $headers)
-    );
+    return deliverMail($settings, $subject, $message);
 }
 
 
-/**
- * Sent once a day (first run at/after daily_report_hour) with
- * a status summary of every rule, regardless of whether any
- * limit or warning threshold was hit.
- */
 function sendDailySummaryEmail($settings, $results)
 {
     $subject = '📊 Daily Sales Summary - ' . date('Y-m-d');
@@ -471,59 +658,24 @@ function sendDailySummaryEmail($settings, $results)
         $message .= "  Note       : " . $r['message'] . "\n\n";
     }
 
-    $headers = [];
-
-    $headers[] = 'From: ' . $settings['email_from'];
-    $headers[] = 'Reply-To: ' . $settings['email_from'];
-    $headers[] = 'Content-Type: text/plain; charset=UTF-8';
-
-    return mail(
-        $settings['email_to'],
-        $subject,
-        $message,
-        implode("\r\n", $headers)
-    );
+    return deliverMail($settings, $subject, $message);
 }
 
 
-/**
- * Sends a simple test email so you can verify mail() actually
- * works on this server (SMTP/sendmail configured, not blocked,
- * not landing in spam, etc).
- *
- * Returns an array with success flag + any PHP error captured,
- * because mail() itself doesn't tell you *why* it failed.
- */
 function sendTestEmail($settings)
 {
     $subject = 'Test Email - Sales Limit Monitor';
 
     $message  = "This is a test email from Sales Limit Monitor.\n\n";
-    $message .= "If you received this, the mail() function on this ";
+    $message .= "If you received this, the SMTP email setup on this ";
     $message .= "server is working correctly.\n\n";
     $message .= "Sent at: " . date('Y-m-d H:i:s') . "\n";
 
-    $headers = [];
-
-    $headers[] = 'From: ' . $settings['email_from'];
-    $headers[] = 'Reply-To: ' . $settings['email_from'];
-    $headers[] = 'Content-Type: text/plain; charset=UTF-8';
-
-    // Clear any previous error so we only capture what mail() causes here
-    error_clear_last();
-
-    $sent = mail(
-        $settings['email_to'],
-        $subject,
-        $message,
-        implode("\r\n", $headers)
-    );
-
-    $lastError = error_get_last();
+    $sent = deliverMail($settings, $subject, $message);
 
     return [
         'success' => $sent,
-        'error'   => (!$sent && $lastError) ? $lastError['message'] : '',
+        'error'   => $sent ? '' : $GLOBALS['mail_last_error'],
     ];
 }
 
@@ -542,17 +694,16 @@ function saveState($stateFile, $state)
 
 
 // ============================================================
-// 5. HANDLE "SEND TEST EMAIL" BUTTON
+// 5. HANDLE "SEND TEST EMAIL" BUTTON (browser POST sahaja)
 // ============================================================
-// IMPORTANT: this only runs on POST (form submit), never on a
-// normal page load or on the auto-refresh (meta refresh always
-// uses GET). This stops the test email from firing repeatedly
-// on its own.
 
 $testEmailResult = null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_test_email'])) {
-
+if (
+    !$isCron
+    && $_SERVER['REQUEST_METHOD'] === 'POST'
+    && isset($_POST['send_test_email'])
+) {
     $testEmailResult = sendTestEmail($settings);
 }
 
@@ -579,10 +730,7 @@ foreach ($settings['rules'] as $index => $rule) {
     ];
 
 
-    // --------------------------------------------------------
     // Fetch report
-    // --------------------------------------------------------
-
     $report = fetchReport($rule['url']);
 
     if (!$report['success']) {
@@ -596,16 +744,12 @@ foreach ($settings['rules'] as $index => $rule) {
     }
 
 
-    // --------------------------------------------------------
     // Find Price Code + SKU
-    // --------------------------------------------------------
-
     $data = getReportData(
         $report['html'],
         $rule['price_code'],
         $rule['sku']
     );
-
 
     if (!$data['success']) {
 
@@ -635,28 +779,16 @@ foreach ($settings['rules'] as $index => $rule) {
     }
 
 
-    // --------------------------------------------------------
     // Compare limit
-    // --------------------------------------------------------
-
     if ($qty >= $rule['limit']) {
 
         $result['status']  = 'LIMIT REACHED';
         $result['message'] = 'Limit has been reached.';
 
-
-        /**
-         * Only send email once.
-         *
-         * If email was already sent for this limit,
-         * don't send again every minute.
-         */
-
         $alreadyAlerted =
             isset($state[$ruleKey]['alerted'])
             &&
             $state[$ruleKey]['alerted'] === true;
-
 
         if (!$alreadyAlerted) {
 
@@ -666,35 +798,23 @@ foreach ($settings['rules'] as $index => $rule) {
                 $qty
             );
 
-
             $state[$ruleKey]['alerted']    = $emailSent;
             $state[$ruleKey]['qty']        = $qty;
             $state[$ruleKey]['alert_time'] = date('Y-m-d H:i:s');
 
-            // A rule that hit 100% has obviously also cleared 90%.
+            // Hit 100% bermaksud dah lepas 90% juga.
             $state[$ruleKey]['warned'] = true;
 
-
-            if ($emailSent) {
-
-                $result['message'] =
-                    'LIMIT REACHED - EMAIL SENT';
-
-            } else {
-
-                $result['message'] =
-                    'LIMIT REACHED - EMAIL FAILED';
-            }
-
+            $result['message'] = $emailSent
+                ? 'LIMIT REACHED - EMAIL SENT'
+                : 'LIMIT REACHED - EMAIL FAILED';
 
             saveState($stateFile, $state);
 
         } else {
 
-            $result['message'] =
-                'LIMIT REACHED - EMAIL ALREADY SENT';
+            $result['message'] = 'LIMIT REACHED - EMAIL ALREADY SENT';
         }
-
 
     } else {
 
@@ -702,20 +822,10 @@ foreach ($settings['rules'] as $index => $rule) {
 
         $isWarningZone = $qty >= ($rule['limit'] * $settings['warning_threshold']);
 
-        $result['status'] = $isWarningZone ? 'WARNING' : 'ACTIVE';
+        $result['status']  = $isWarningZone ? 'WARNING' : 'ACTIVE';
+        $result['message'] = 'Remaining: ' . $remaining;
 
-        $result['message'] =
-            'Remaining: ' . $remaining;
-
-
-        /**
-         * If quantity somehow goes below the limit again,
-         * reset the alert.
-         *
-         * This allows another email if it later reaches
-         * the limit again.
-         */
-
+        // Reset alert kalau qty turun bawah limit
         if (isset($state[$ruleKey]['alerted']) && $state[$ruleKey]['alerted'] === true) {
 
             $state[$ruleKey]['alerted'] = false;
@@ -723,11 +833,7 @@ foreach ($settings['rules'] as $index => $rule) {
             saveState($stateFile, $state);
         }
 
-
-        // ----------------------------------------------------
-        // 90% warning email (sent once per crossing)
-        // ----------------------------------------------------
-
+        // 90% warning email (sekali setiap kali cross)
         $alreadyWarned =
             isset($state[$ruleKey]['warned'])
             &&
@@ -742,8 +848,8 @@ foreach ($settings['rules'] as $index => $rule) {
                 $warningThresholdPct
             );
 
-            $state[$ruleKey]['warned']      = $warnSent;
-            $state[$ruleKey]['warn_time']   = date('Y-m-d H:i:s');
+            $state[$ruleKey]['warned']    = $warnSent;
+            $state[$ruleKey]['warn_time'] = date('Y-m-d H:i:s');
 
             $result['message'] .= $warnSent
                 ? ' - WARNING EMAIL SENT'
@@ -753,48 +859,93 @@ foreach ($settings['rules'] as $index => $rule) {
 
         } elseif (!$isWarningZone && $alreadyWarned) {
 
-            // Dropped back below the warning threshold, allow
-            // another warning email next time it crosses again.
             $state[$ruleKey]['warned'] = false;
 
             saveState($stateFile, $state);
         }
     }
 
-
     $results[] = $result;
 }
 
 
 // ============================================================
-// 7. DAILY SUMMARY EMAIL (once a day, first run at/after
-//    daily_report_hour, server time)
+// 7. DAILY SUMMARY EMAIL (sekali sehari)
 // ============================================================
 
-$today       = date('Y-m-d');
-$currentHour = (int) date('G');
+$today = date('Y-m-d');
+
+$nowMinutes    = ((int) date('G') * 60) + (int) date('i');
+$targetMinutes = ((int) $settings['daily_report_hour'] * 60) + (int) $settings['daily_report_minute'];
+
+// Reset status "sent today" untuk testing:
+// https://domain/cronjob/index.php?key=KEY&reset_daily=1
+if ($isKeyCron && isset($_GET['reset_daily'])) {
+
+    unset($state['_daily_report']);
+
+    saveState($stateFile, $state);
+}
 
 $dailyAlreadySent =
     isset($state['_daily_report']['date'])
     &&
     $state['_daily_report']['date'] === $today;
 
-if (!$dailyAlreadySent && $currentHour >= (int) $settings['daily_report_hour']) {
+// Daily summary HANYA dihantar oleh cron (bukan bila buka browser)
+if ($isCron && !$dailyAlreadySent && $nowMinutes >= $targetMinutes) {
 
     $dailySent = sendDailySummaryEmail($settings, $results);
 
-    $state['_daily_report'] = [
-        'date' => $today,
-        'sent' => $dailySent,
-        'time' => date('Y-m-d H:i:s'),
-    ];
+    $dailyLog = $dailySent
+        ? 'DAILY SUMMARY: EMAIL SENT'
+        : 'DAILY SUMMARY: EMAIL FAILED - ' . $GLOBALS['mail_last_error'] . ' (will retry next run)';
 
-    saveState($stateFile, $state);
+    // Hanya tanda "sent" kalau email berjaya, supaya cron cuba lagi kalau gagal
+    if ($dailySent) {
+
+        $state['_daily_report'] = [
+            'date' => $today,
+            'sent' => true,
+            'time' => date('Y-m-d H:i:s'),
+        ];
+
+        saveState($stateFile, $state);
+    }
 }
 
 
 // ============================================================
-// 8. OUTPUT DASHBOARD
+// 7.1 CRON MODE: output teks ringkas, tak perlu HTML
+// ============================================================
+
+if ($isCron) {
+
+    foreach ($results as $r) {
+
+        echo date('Y-m-d H:i:s')
+            . ' | ' . $r['country']
+            . ' | ' . $r['sku']
+            . ' | qty=' . ($r['qty'] !== null ? $r['qty'] : 'n/a')
+            . ' | ' . $r['status']
+            . ' | ' . $r['message']
+            . "\n";
+    }
+
+    if (!empty($dailyLog)) {
+        echo date('Y-m-d H:i:s') . ' | ' . $dailyLog . "\n";
+    }
+
+    if (!empty($GLOBALS['mail_last_error'])) {
+        echo date('Y-m-d H:i:s') . ' | MAIL ERROR: ' . $GLOBALS['mail_last_error'] . "\n";
+    }
+
+    exit;
+}
+
+
+// ============================================================
+// 8. OUTPUT DASHBOARD (browser sahaja)
 // ============================================================
 
 ?>
@@ -874,25 +1025,10 @@ if (!$dailyAlreadySent && $currentHour >= (int) $settings['daily_report_hour']) 
             font-size: 13px;
         }
 
-        .active {
-            background: #dff5e3;
-            color: #197333;
-        }
-
-        .warning {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .limit {
-            background: #ffd9d9;
-            color: #b00020;
-        }
-
-        .error {
-            background: #eee;
-            color: #555;
-        }
+        .active  { background: #dff5e3; color: #197333; }
+        .warning { background: #fff3cd; color: #856404; }
+        .limit   { background: #ffd9d9; color: #b00020; }
+        .error   { background: #eee;    color: #555; }
 
         .test-email-card {
             background: white;
@@ -934,15 +1070,8 @@ if (!$dailyAlreadySent && $currentHour >= (int) $settings['daily_report_hour']) 
             margin-top: 12px;
         }
 
-        .test-result.ok {
-            background: #dff5e3;
-            color: #197333;
-        }
-
-        .test-result.fail {
-            background: #ffd9d9;
-            color: #b00020;
-        }
+        .test-result.ok   { background: #dff5e3; color: #197333; }
+        .test-result.fail { background: #ffd9d9; color: #b00020; }
 
         @media(max-width: 700px) {
 
@@ -987,7 +1116,7 @@ if (!$dailyAlreadySent && $currentHour >= (int) $settings['daily_report_hour']) 
         <?php
         echo isset($state['_daily_report']['date']) && $state['_daily_report']['date'] === $today
             ? 'Sent today at ' . htmlspecialchars($state['_daily_report']['time'])
-            : 'Not sent yet today (fires on first check at/after ' . (int)$settings['daily_report_hour'] . ':00)';
+            : 'Not sent yet today (fires on first check at/after ' . sprintf('%02d:%02d', (int)$settings['daily_report_hour'], (int)$settings['daily_report_minute']) . ')';
         ?>
     </div>
 
@@ -999,7 +1128,7 @@ if (!$dailyAlreadySent && $currentHour >= (int) $settings['daily_report_hour']) 
             <div class="info">
                 Send a test email to
                 <?php echo htmlspecialchars($settings['email_to']); ?>
-                to confirm mail() works on this server.
+                to confirm SMTP email works.
             </div>
 
             <?php if ($testEmailResult !== null): ?>
@@ -1017,7 +1146,7 @@ if (!$dailyAlreadySent && $currentHour >= (int) $settings['daily_report_hour']) 
                         <?php if (!empty($testEmailResult['error'])): ?>
                             <br>Error: <?php echo htmlspecialchars($testEmailResult['error']); ?>
                         <?php else: ?>
-                            <br>mail() returned false. Check server mail/SMTP configuration.
+                            <br>Unknown error. Check SMTP settings.
                         <?php endif; ?>
                     </div>
 
@@ -1064,77 +1193,33 @@ if (!$dailyAlreadySent && $currentHour >= (int) $settings['daily_report_hour']) 
             <div class="row">
 
                 <div class="box">
-
-                    <div class="label">
-                        Price Code
-                    </div>
-
-                    <div class="value">
-                        <?php echo htmlspecialchars($result['price_code']); ?>
-                    </div>
-
+                    <div class="label">Price Code</div>
+                    <div class="value"><?php echo htmlspecialchars($result['price_code']); ?></div>
                 </div>
 
-
                 <div class="box">
-
-                    <div class="label">
-                        Product SKU
-                    </div>
-
-                    <div class="value">
-                        <?php echo htmlspecialchars($result['sku']); ?>
-                    </div>
-
+                    <div class="label">Product SKU</div>
+                    <div class="value"><?php echo htmlspecialchars($result['sku']); ?></div>
                 </div>
 
-
                 <div class="box">
-
-                    <div class="label">
-                        Current Qty
-                    </div>
-
+                    <div class="label">Current Qty</div>
                     <div class="value">
-
-                        <?php
-
-                        echo $result['qty'] !== null
-                            ? number_format($result['qty'])
-                            : '-';
-
-                        ?>
-
+                        <?php echo $result['qty'] !== null ? number_format($result['qty']) : '-'; ?>
                     </div>
-
                 </div>
 
-
                 <div class="box">
-
-                    <div class="label">
-                        Limit
-                    </div>
-
-                    <div class="value">
-
-                        <?php
-                        echo number_format($result['limit']);
-                        ?>
-
-                    </div>
-
+                    <div class="label">Limit</div>
+                    <div class="value"><?php echo number_format($result['limit']); ?></div>
                 </div>
 
             </div>
 
-
             <br>
 
             <span class="status <?php echo $statusClass; ?>">
-
                 <?php echo htmlspecialchars($result['status']); ?>
-
             </span>
 
             &nbsp;
@@ -1144,7 +1229,6 @@ if (!$dailyAlreadySent && $currentHour >= (int) $settings['daily_report_hour']) 
         </div>
 
     <?php endforeach; ?>
-
 
 </div>
 
