@@ -38,6 +38,7 @@ require_once __DIR__ . '/../config/db.php';
 
 // ── SGD -> MYR conversion rate (fixed, matches the currency converter) ──
 define('SGD_TO_MYR_RATE', 3.27);
+define('SALES_TARGET_LOG_FILE', __DIR__ . '/../error.log');
 
 // ── Auth guard (same as dashboard) ──
 if (empty($_SESSION['admin_id'])) {
@@ -65,7 +66,16 @@ function getDBConnection() {
         $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', DB_HOST, DB_PORT, DB_NAME, DB_CHARSET);
         $opts = [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false];
         return new PDO($dsn, DB_USER, DB_PASS, $opts);
-    } catch (Exception $e) { return null; }
+    } catch (Throwable $e) {
+        salesTargetLog('DB connection failed', ['error' => $e->getMessage()]);
+        return null;
+    }
+}
+
+function salesTargetLog($message, array $context = []) {
+    $suffix = $context ? ' ' . json_encode($context, JSON_UNESCAPED_SLASHES) : '';
+    $line = sprintf("[%s] [sales_target] %s%s\n", date('Y-m-d H:i:s'), $message, $suffix);
+    file_put_contents(SALES_TARGET_LOG_FILE, $line, FILE_APPEND | LOCK_EX);
 }
 
 function toMyr($amount, $companyCode) {
@@ -121,12 +131,24 @@ function getMonthlyTargetMap($pdo, $year, $month) {
         $dim = daysInMonth($year, $month);
         $from = sprintf('%04d-%02d-01', $year, $month);
         $to   = sprintf('%04d-%02d-%02d', $year, $month, $dim);
-        $stmt = $pdo->prepare("SELECT target_date, target_amount FROM sales_target WHERE target_date BETWEEN :from AND :to");
+        $stmt = $pdo->prepare("SELECT st.target_date, st.target_amount, au.username AS created_by
+                               FROM sales_target st
+                               LEFT JOIN admin_users au ON au.id = st.created_by
+                               WHERE st.target_date BETWEEN :from AND :to");
         $stmt->execute(['from' => $from, 'to' => $to]);
         foreach ($stmt->fetchAll() as $r) {
-            $map[$r['target_date']] = (float)$r['target_amount'];
+            $map[$r['target_date']] = [
+                'amount' => (float)$r['target_amount'],
+                'created_by' => $r['created_by'] ?: null,
+            ];
         }
-    } catch (Exception $e) { /* table might not exist yet - treat as no targets set */ }
+    } catch (Throwable $e) {
+        salesTargetLog('Failed to load monthly targets', [
+            'year' => $year,
+            'month' => $month,
+            'error' => $e->getMessage(),
+        ]);
+    }
     return $map;
 }
 
@@ -160,7 +182,14 @@ function getDailyActualMap($pdo, $year, $month, $statusFilter = 'all') {
             $key = $r['d'];
             $map[$key] = ($map[$key] ?? 0.0) + toMyr($r['total'], $r['company_code']);
         }
-    } catch (Exception $e) { /* keep empty */ }
+    } catch (Throwable $e) {
+        salesTargetLog('Failed to load daily actual sales', [
+            'year' => $year,
+            'month' => $month,
+            'status_filter' => $statusFilter,
+            'error' => $e->getMessage(),
+        ]);
+    }
     return $map;
 }
 
@@ -170,6 +199,19 @@ function getDailyActualMap($pdo, $year, $month, $statusFilter = 'all') {
 function saveMonthlyTargets($pdo, $targets, $adminId) {
     if (!$pdo) return false;
     try {
+        $createdBy = null;
+        if ($adminId !== null && ctype_digit((string)$adminId)) {
+            $adminStmt = $pdo->prepare('SELECT id FROM admin_users WHERE id = :id LIMIT 1');
+            $adminStmt->execute(['id' => $adminId]);
+            $existingAdminId = $adminStmt->fetchColumn();
+            if ($existingAdminId === false) {
+                throw new RuntimeException('Logged-in admin user was not found in admin_users. Please log in again.');
+            }
+            $createdBy = (int)$existingAdminId;
+        } else {
+            throw new RuntimeException('No valid logged-in admin user was found.');
+        }
+
         $sql = "INSERT INTO sales_target (target_date, target_amount, created_by)
                 VALUES (:target_date, :target_amount, :created_by)
                 ON DUPLICATE KEY UPDATE target_amount = VALUES(target_amount), created_by = VALUES(created_by)";
@@ -179,11 +221,18 @@ function saveMonthlyTargets($pdo, $targets, $adminId) {
             $stmt->execute([
                 'target_date'   => $date,
                 'target_amount' => round((float)$amount, 2),
-                'created_by'    => $adminId,
+                'created_by'    => $createdBy,
             ]);
         }
         return true;
-    } catch (Exception $e) { return false; }
+    } catch (Throwable $e) {
+        salesTargetLog('Failed to save targets', [
+            'admin_id' => $adminId,
+            'target_count' => count($targets),
+            'error' => $e->getMessage(),
+        ]);
+        return false;
+    }
 }
 
 // ════════════════════════════════════════════════════
@@ -211,7 +260,9 @@ function buildEstimation($targetMap, $actualMap, $year, $month, $todayStr) {
         $date = sprintf('%04d-%02d-%02d', $year, $month, $d);
         $dateObj = new DateTime($date);
         $isPast = $dateObj < $today;
-        $target = $targetMap[$date] ?? 0.0;
+        $targetData = $targetMap[$date] ?? ['amount' => 0.0, 'created_by' => null];
+        $target = is_array($targetData) ? $targetData['amount'] : (float)$targetData;
+        $createdBy = is_array($targetData) ? $targetData['created_by'] : null;
         $actual = $actualMap[$date] ?? 0.0;
         $different = $isPast ? ($actual - $target) : null;
         if ($isPast) $cumVariance += $different;
@@ -221,6 +272,7 @@ function buildEstimation($targetMap, $actualMap, $year, $month, $todayStr) {
             'is_past'   => $isPast,
             'is_today'  => $date === $today->format('Y-m-d'),
             'target'    => round($target, 2),
+            'created_by' => $createdBy,
             'sales'     => $isPast ? round($actual, 2) : null,
             'different' => $different === null ? null : round($different, 2),
         ];
@@ -511,6 +563,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;}
           <tr>
             <th>Date</th>
             <th>Target</th>
+            <th>Created By</th>
             <th>Sales</th>
             <th>Different</th>
             <th>New Target</th>
@@ -582,6 +635,7 @@ function renderTable(data){
         tr.innerHTML = `
             <td>${row.day_label}${row.is_today ? ' (reporting date)' : ''}</td>
             <td><input type="number" min="0" step="0.01" class="target-input" data-date="${row.date}" value="${row.target}"></td>
+            <td>${row.created_by || '<span class="muted">—</span>'}</td>
             <td>${row.sales === null ? '<span class="muted">—</span>' : formatRM(row.sales)}</td>
             <td class="${diffClass(row.different)}">${row.different === null ? '<span class="muted">—</span>' : formatRM(row.different)}</td>
             <td class="muted">${formatRM(row.new_target)}</td>
@@ -593,6 +647,7 @@ function renderTable(data){
     document.getElementById('targetTotalRow').innerHTML = `
         <td>Total</td>
         <td>${formatRM(t.target)}</td>
+        <td></td>
         <td>${formatRM(t.sales)}</td>
         <td class="${diffClass(t.different)}">${formatRM(t.different)}</td>
         <td>${formatRM(t.new_target)}</td>

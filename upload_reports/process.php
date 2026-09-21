@@ -300,6 +300,14 @@ function processFile($filePath, $originalName, PDO $pdo, $delimiter) {
         $orderLookup = $pdo->prepare('SELECT id FROM orders WHERE company_id = ? AND order_id = ? LIMIT 1');
         $deleteItems = $pdo->prepare('DELETE FROM order_items WHERE order_id = ?');
         $replacedOrders = [];
+
+        $memberStmt = $pdo->prepare('
+            INSERT INTO members (company_id, member_code, member_name, mobile_no)
+            VALUES (?, ?, NULLIF(?, \'\'), NULLIF(?, \'\'))
+            ON DUPLICATE KEY UPDATE
+                member_name = COALESCE(NULLIF(members.member_name, \'\'), VALUES(member_name)),
+                mobile_no = COALESCE(NULLIF(members.mobile_no, \'\'), VALUES(mobile_no))
+        ');
         
         foreach (array_slice($rows, 1) as $rowNum => $row) {
             // Skip empty
@@ -323,10 +331,24 @@ function processFile($filePath, $originalName, PDO $pdo, $delimiter) {
                     error_log("Failed to parse date for order: " . $orderId);
                     continue; 
                 }
+
+                $memberCode = trim((string)getRowValue($row, $headerMap, ['memberid']));
+                if ($memberCode === '') {
+                    $failed++;
+                    error_log("Missing member ID for order: " . $orderId);
+                    continue;
+                }
+
+                $memberStmt->execute([
+                    $comp['company_id'],
+                    $memberCode,
+                    getRowValue($row, $headerMap, ['membername']),
+                    getRowValue($row, $headerMap, ['mobileno'])
+                ]);
                 
                 $orderStmt->execute([
                     $comp['company_id'], $batchId, $orderId, $datetime,
-                    getRowValue($row, $headerMap, ['memberid']),
+                    $memberCode,
                     getRowValue($row, $headerMap, ['membertype']),
                     getRowValue($row, $headerMap, ['membername']),
                     getRowValue($row, $headerMap, ['remark']),
