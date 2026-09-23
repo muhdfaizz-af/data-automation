@@ -75,6 +75,7 @@ function convertSalesToMyr(string $companyCode, float $sales): float
     : $sales;
 }
 
+// Define SPC
 function isSpcMemberType(string $memberType): bool
 {
     return in_array(strtoupper(trim($memberType)), ['PRIVILEGE MEMBER', 'SPC'], true);
