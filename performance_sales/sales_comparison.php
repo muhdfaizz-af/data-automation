@@ -681,7 +681,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .chart-empty.show{display:flex;}
 
 /* ════════════════════════════════════════════════════
-   BREAKDOWN TABLE — polished, section-aware design
+   BREAKDOWN TABLE — polished, aligned, no senget
    ════════════════════════════════════════════════════ */
 .comparison-table-wrap{margin-top:24px;width:100%;}
 .comparison-table-wrap.is-loading{opacity:.35;pointer-events:none;}
@@ -698,27 +698,54 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .card-gold .comparison-table-title::before{background:var(--gold);}
 
 .comparison-table-scroll{
-  overflow-x:auto;border:1px solid var(--gray-100);
-  border-radius:var(--radius-md);background:#fff;
+  overflow-x:auto;
+  border:1px solid var(--gray-100);
+  border-radius:var(--radius-md);
+  background:#fff;
   box-shadow:0 1px 2px rgba(20,20,30,.03);
 }
+
+/* ── table: collapse + fixed layout supaya semua column sejajar ── */
 .comparison-table{
-  width:100%;border-collapse:separate;border-spacing:0;
+  width:100%;
+  border-collapse:collapse;
+  border-spacing:0;
   font-size:0.75rem;
+  table-layout:fixed;
 }
+
+/* ── column widths (4 columns) ── */
+.comparison-table thead th:nth-child(1),
+.comparison-table tbody td:nth-child(1),
+.comparison-table tfoot td:nth-child(1){ width:34%; }
+
+.comparison-table thead th:nth-child(2),
+.comparison-table tbody td:nth-child(2),
+.comparison-table tfoot td:nth-child(2){ width:22%; }
+
+.comparison-table thead th:nth-child(3),
+.comparison-table tbody td:nth-child(3),
+.comparison-table tfoot td:nth-child(3){ width:22%; }
+
+.comparison-table thead th:nth-child(4),
+.comparison-table tbody td:nth-child(4),
+.comparison-table tfoot td:nth-child(4){ width:22%; }
+
+/* ── header ── */
 .comparison-table thead th{
   padding:12px 16px;
   background:#F9F9FB;
   color:var(--gray-700);
-  font-size:0.6875rem;font-weight:800;text-align:left;
+  font-size:0.6875rem;font-weight:800;
+  text-align:left;
   text-transform:uppercase;letter-spacing:.5px;
   white-space:nowrap;
   border-bottom:1.5px solid var(--gray-300);
-  position:sticky;top:0;z-index:1;
+  position:sticky;top:0;z-index:2;
 }
 .comparison-table thead th:not(:first-child){text-align:right;}
 
-/* header colour per section */
+/* header colours per section */
 #dailyCard .comparison-table thead th{
   background:linear-gradient(180deg,#FFF5F6,#FDEDEE);
   color:var(--red-dark);
@@ -735,18 +762,20 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
   border-bottom-color:#F3D9A3;
 }
 
+/* ── body ── */
 .comparison-table tbody td{
   padding:11px 16px;
   border-top:1px solid var(--gray-100);
-  white-space:nowrap;font-weight:600;color:var(--ink);
+  white-space:nowrap;
+  font-weight:600;
+  color:var(--ink);
   font-variant-numeric:tabular-nums;
+  vertical-align:middle;
 }
 .comparison-table tbody td:not(:first-child){text-align:right;}
 
-/* zebra striping */
+/* zebra + hover */
 .comparison-table tbody tr:nth-child(even){background:#FAFAFC;}
-
-/* hover */
 .comparison-table tbody tr{transition:background .15s ease;}
 .comparison-table tbody tr:hover{background:#FFF0F1;}
 .card-teal .comparison-table tbody tr:hover{background:#EAFBFA;}
@@ -758,29 +787,30 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
   border-right:1px solid var(--gray-100);
 }
 /* Total sales column — section colour */
-.comparison-table tbody td.col-total{
-  font-weight:800;
-  color:var(--red-dark);
-}
+.comparison-table tbody td.col-total{ font-weight:800; color:var(--red-dark); }
 .card-teal .comparison-table tbody td.col-total{color:var(--teal-dark);}
 .card-gold .comparison-table tbody td.col-total{color:#8A5A0E;}
 
-/* Difference badges (pill style) */
+/* ── difference badges — inline-block, sejajar dgn header ── */
 .change-positive,
 .change-negative,
 .change-neutral{
-  display:inline-flex;align-items:center;justify-content:flex-end;gap:3px;
-  min-width:72px;
-  padding:3px 9px;border-radius:999px;
+  display:inline-block;
+  padding:3px 9px;
+  border-radius:999px;
   font-size:inherit;font-weight:800;
   line-height:1.2;
+  min-width:72px;
+  text-align:right;
 }
 .change-positive{color:#065F46;background:#D1FAE5;}
 .change-negative{color:#991B1B;background:#FEE2E2;}
 .change-neutral {color:#6B7280;background:#F3F4F6;font-weight:700;}
+
+/* empty (first row) — sama alignment dgn row lain, cuma warna pudar */
 .comparison-table tbody td.empty-value,
-.comparison-table tfoot td.empty-value{text-align:center;}
-.empty-value .change-neutral{justify-content:center;}
+.comparison-table tfoot td.empty-value{text-align:right;}
+.empty-value .change-neutral{color:#B0B0B8;background:transparent;font-weight:700;min-width:0;padding:0;}
 
 /* footer total */
 .comparison-table tfoot td{
@@ -790,11 +820,10 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
   background:#F9F9FB;
   color:var(--ink);
   font-variant-numeric:tabular-nums;
+  white-space:nowrap;
 }
 .comparison-table tfoot td:not(:first-child){text-align:right;}
-.comparison-table tfoot td.col-total{
-  color:var(--red-dark);font-size:0.75rem;
-}
+.comparison-table tfoot td.col-total{ color:var(--red-dark); }
 .card-teal .comparison-table tfoot td.col-total{color:var(--teal-dark);}
 .card-gold .comparison-table tfoot td.col-total{color:#8A5A0E;}
 
