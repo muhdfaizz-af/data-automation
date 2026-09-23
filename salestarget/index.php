@@ -38,6 +38,7 @@ require_once __DIR__ . '/../config/db.php';
 
 // ── SGD -> MYR conversion rate (fixed, matches the currency converter) ──
 define('SGD_TO_MYR_RATE', 3.27);
+define('SALES_TARGET_LOG_FILE', __DIR__ . '/../error.log');
 
 // ── Auth guard (same as dashboard) ──
 if (empty($_SESSION['admin_id'])) {
@@ -65,7 +66,16 @@ function getDBConnection() {
         $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', DB_HOST, DB_PORT, DB_NAME, DB_CHARSET);
         $opts = [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false];
         return new PDO($dsn, DB_USER, DB_PASS, $opts);
-    } catch (Exception $e) { return null; }
+    } catch (Throwable $e) {
+        salesTargetLog('DB connection failed', ['error' => $e->getMessage()]);
+        return null;
+    }
+}
+
+function salesTargetLog($message, array $context = []) {
+    $suffix = $context ? ' ' . json_encode($context, JSON_UNESCAPED_SLASHES) : '';
+    $line = sprintf("[%s] [sales_target] %s%s\n", date('Y-m-d H:i:s'), $message, $suffix);
+    file_put_contents(SALES_TARGET_LOG_FILE, $line, FILE_APPEND | LOCK_EX);
 }
 
 function toMyr($amount, $companyCode) {
@@ -121,12 +131,24 @@ function getMonthlyTargetMap($pdo, $year, $month) {
         $dim = daysInMonth($year, $month);
         $from = sprintf('%04d-%02d-01', $year, $month);
         $to   = sprintf('%04d-%02d-%02d', $year, $month, $dim);
-        $stmt = $pdo->prepare("SELECT target_date, target_amount FROM sales_target WHERE target_date BETWEEN :from AND :to");
+        $stmt = $pdo->prepare("SELECT st.target_date, st.target_amount, au.username AS created_by
+                               FROM sales_target st
+                               LEFT JOIN admin_users au ON au.id = st.created_by
+                               WHERE st.target_date BETWEEN :from AND :to");
         $stmt->execute(['from' => $from, 'to' => $to]);
         foreach ($stmt->fetchAll() as $r) {
-            $map[$r['target_date']] = (float)$r['target_amount'];
+            $map[$r['target_date']] = [
+                'amount' => (float)$r['target_amount'],
+                'created_by' => $r['created_by'] ?: null,
+            ];
         }
-    } catch (Exception $e) { /* table might not exist yet - treat as no targets set */ }
+    } catch (Throwable $e) {
+        salesTargetLog('Failed to load monthly targets', [
+            'year' => $year,
+            'month' => $month,
+            'error' => $e->getMessage(),
+        ]);
+    }
     return $map;
 }
 
@@ -160,7 +182,14 @@ function getDailyActualMap($pdo, $year, $month, $statusFilter = 'all') {
             $key = $r['d'];
             $map[$key] = ($map[$key] ?? 0.0) + toMyr($r['total'], $r['company_code']);
         }
-    } catch (Exception $e) { /* keep empty */ }
+    } catch (Throwable $e) {
+        salesTargetLog('Failed to load daily actual sales', [
+            'year' => $year,
+            'month' => $month,
+            'status_filter' => $statusFilter,
+            'error' => $e->getMessage(),
+        ]);
+    }
     return $map;
 }
 
@@ -170,6 +199,19 @@ function getDailyActualMap($pdo, $year, $month, $statusFilter = 'all') {
 function saveMonthlyTargets($pdo, $targets, $adminId) {
     if (!$pdo) return false;
     try {
+        $createdBy = null;
+        if ($adminId !== null && ctype_digit((string)$adminId)) {
+            $adminStmt = $pdo->prepare('SELECT id FROM admin_users WHERE id = :id LIMIT 1');
+            $adminStmt->execute(['id' => $adminId]);
+            $existingAdminId = $adminStmt->fetchColumn();
+            if ($existingAdminId === false) {
+                throw new RuntimeException('Logged-in admin user was not found in admin_users. Please log in again.');
+            }
+            $createdBy = (int)$existingAdminId;
+        } else {
+            throw new RuntimeException('No valid logged-in admin user was found.');
+        }
+
         $sql = "INSERT INTO sales_target (target_date, target_amount, created_by)
                 VALUES (:target_date, :target_amount, :created_by)
                 ON DUPLICATE KEY UPDATE target_amount = VALUES(target_amount), created_by = VALUES(created_by)";
@@ -179,11 +221,18 @@ function saveMonthlyTargets($pdo, $targets, $adminId) {
             $stmt->execute([
                 'target_date'   => $date,
                 'target_amount' => round((float)$amount, 2),
-                'created_by'    => $adminId,
+                'created_by'    => $createdBy,
             ]);
         }
         return true;
-    } catch (Exception $e) { return false; }
+    } catch (Throwable $e) {
+        salesTargetLog('Failed to save targets', [
+            'admin_id' => $adminId,
+            'target_count' => count($targets),
+            'error' => $e->getMessage(),
+        ]);
+        return false;
+    }
 }
 
 // ════════════════════════════════════════════════════
@@ -211,7 +260,9 @@ function buildEstimation($targetMap, $actualMap, $year, $month, $todayStr) {
         $date = sprintf('%04d-%02d-%02d', $year, $month, $d);
         $dateObj = new DateTime($date);
         $isPast = $dateObj < $today;
-        $target = $targetMap[$date] ?? 0.0;
+        $targetData = $targetMap[$date] ?? ['amount' => 0.0, 'created_by' => null];
+        $target = is_array($targetData) ? $targetData['amount'] : (float)$targetData;
+        $createdBy = is_array($targetData) ? $targetData['created_by'] : null;
         $actual = $actualMap[$date] ?? 0.0;
         $different = $isPast ? ($actual - $target) : null;
         if ($isPast) $cumVariance += $different;
@@ -221,6 +272,7 @@ function buildEstimation($targetMap, $actualMap, $year, $month, $todayStr) {
             'is_past'   => $isPast,
             'is_today'  => $date === $today->format('Y-m-d'),
             'target'    => round($target, 2),
+            'created_by' => $createdBy,
             'sales'     => $isPast ? round($actual, 2) : null,
             'different' => $different === null ? null : round($different, 2),
         ];
@@ -350,48 +402,48 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;}
 @media(max-width:900px){.main{margin-left:0;padding:20px;} body.sidebar-collapsed .main{margin-left:0;}}
 
 .page-header{margin-bottom:24px;}
-.page-header h1{font-size:1.5rem;font-weight:800;margin-bottom:3px;}
-.page-header p{font-size:0.875rem;color:var(--gray-500);}
+.page-header h1{font-size:24px;font-weight:800;margin-bottom:3px;}
+.page-header p{font-size:13.5px;color:var(--gray-500);}
 
 .report-card{background:var(--white);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow-card);border:1px solid var(--gray-100);margin-bottom:24px;}
 .report-card-head{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
 .report-icon{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:linear-gradient(135deg,var(--gold),#c97e0e);}
 .report-icon svg{width:20px;height:20px;stroke:#fff;}
-.report-card-title{font-size:1rem;font-weight:800;}
-.report-card-sub{font-size:0.75rem;color:var(--gray-500);font-weight:500;margin-top:1px;}
+.report-card-title{font-size:16px;font-weight:800;}
+.report-card-sub{font-size:12px;color:var(--gray-500);font-weight:500;margin-top:1px;}
 
 .filter-row{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;}
 .filter-group{display:flex;flex-direction:column;gap:6px;min-width:150px;}
-.filter-group label{font-size:0.6875rem;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
-.filter-group select{padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:0.875rem;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;}
+.filter-group label{font-size:11px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.3px;}
+.filter-group select{padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:9px;font-size:13.5px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);background:#fff;outline:none;}
 .filter-group select:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(27,27,31,.1);}
-.btn-apply{padding:11px 22px;background:var(--ink);color:#fff;border-radius:9px;font-size:0.8125rem;font-weight:800;display:inline-flex;align-items:center;gap:8px;}
+.btn-apply{padding:11px 22px;background:var(--ink);color:#fff;border-radius:9px;font-size:13px;font-weight:800;display:inline-flex;align-items:center;gap:8px;}
 .btn-apply:hover{background:#000;}
 .btn-apply:disabled{opacity:.6;cursor:not-allowed;}
 .btn-apply svg{width:14px;height:14px;stroke:#fff;fill:none;}
-.btn-save{padding:11px 22px;background:var(--gold);color:#fff;border-radius:9px;font-size:0.8125rem;font-weight:800;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(245,166,35,.25);margin-left:auto;}
+.btn-save{padding:11px 22px;background:var(--gold);color:#fff;border-radius:9px;font-size:13px;font-weight:800;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(245,166,35,.25);margin-left:auto;}
 .btn-save:hover{background:#c97e0e;}
 .btn-save:disabled{opacity:.6;cursor:not-allowed;}
 .btn-save svg{width:14px;height:14px;stroke:#fff;fill:none;}
-.filter-msg{font-size:0.75rem;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:14px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+.filter-msg{font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:14px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
 .filter-msg.success{background:#d1fae5;color:#065f46;border-color:#a7f3d0;}
 
 .stats-row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;}
 .stat-card{flex:1;min-width:160px;background:var(--gray-100);border-radius:var(--radius-md);padding:14px 16px;}
-.stat-card .stat-label{font-size:0.6875rem;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;}
-.stat-card .stat-value{font-size:1.125rem;font-weight:800;}
+.stat-card .stat-label{font-size:10.5px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;}
+.stat-card .stat-value{font-size:18px;font-weight:800;}
 .stat-target .stat-value{color:var(--ink);}
 .stat-sales .stat-value{color:var(--teal-dark);}
 .stat-variance .stat-value.diff-pos{color:var(--green);}
 .stat-variance .stat-value.diff-neg{color:var(--red);}
 .stat-achievement .stat-value{color:#c97e0e;}
 
-.target-note{font-size:0.75rem;color:var(--gray-500);margin-bottom:16px;display:flex;align-items:flex-start;gap:7px;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;border-radius:9px;padding:10px 12px;}
+.target-note{font-size:11.5px;color:var(--gray-500);margin-bottom:16px;display:flex;align-items:flex-start;gap:7px;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;border-radius:9px;padding:10px 12px;}
 .target-note svg{width:14px;height:14px;stroke:#3730a3;flex-shrink:0;margin-top:1px;}
 
 .target-table-scroll{overflow-x:auto;}
-.target-table{width:100%;border-collapse:collapse;font-size:0.8125rem;min-width:680px;}
-.target-table th{text-align:right;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);padding:8px 8px;border-bottom:1.5px solid var(--gray-300);white-space:nowrap;}
+.target-table{width:100%;border-collapse:collapse;font-size:13px;min-width:680px;}
+.target-table th{text-align:right;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);padding:8px 8px;border-bottom:1.5px solid var(--gray-300);white-space:nowrap;}
 .target-table th:first-child{text-align:left;}
 .target-table td{padding:7px 8px;border-bottom:1px solid var(--gray-300);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .target-table td:first-child{text-align:left;font-weight:700;}
@@ -399,7 +451,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;}
 .target-table tr.row-today{background:#fff8ec;}
 .target-table tr.row-past td{color:var(--gray-700);}
 .target-table tfoot td{font-weight:800;border-top:1.5px solid var(--ink);background:var(--gray-100);}
-.target-input{width:110px;padding:6px 8px;border:1.5px solid var(--gray-300);border-radius:7px;font-size:0.75rem;font-family:'Plus Jakarta Sans',sans-serif;text-align:right;font-variant-numeric:tabular-nums;outline:none;}
+.target-input{width:110px;padding:6px 8px;border:1.5px solid var(--gray-300);border-radius:7px;font-size:12.5px;font-family:'Plus Jakarta Sans',sans-serif;text-align:right;font-variant-numeric:tabular-nums;outline:none;}
 .target-input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(245,166,35,.15);}
 .target-input:disabled{background:var(--gray-100);color:var(--gray-500);}
 .diff-pos{color:var(--green);}
@@ -408,7 +460,6 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;}
 
 @media(max-width:600px){.main{padding:16px 14px 40px;} .btn-save{margin-left:0;width:100%;justify-content:center;}}
 </style>
-<link rel="stylesheet" href="../includes/report_tables.css">
 </head>
 <body>
 <script>
@@ -512,6 +563,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;}
           <tr>
             <th>Date</th>
             <th>Target</th>
+            <th>Created By</th>
             <th>Sales</th>
             <th>Different</th>
             <th>New Target</th>
@@ -583,6 +635,7 @@ function renderTable(data){
         tr.innerHTML = `
             <td>${row.day_label}${row.is_today ? ' (reporting date)' : ''}</td>
             <td><input type="number" min="0" step="0.01" class="target-input" data-date="${row.date}" value="${row.target}"></td>
+            <td>${row.created_by || '<span class="muted">—</span>'}</td>
             <td>${row.sales === null ? '<span class="muted">—</span>' : formatRM(row.sales)}</td>
             <td class="${diffClass(row.different)}">${row.different === null ? '<span class="muted">—</span>' : formatRM(row.different)}</td>
             <td class="muted">${formatRM(row.new_target)}</td>
@@ -594,6 +647,7 @@ function renderTable(data){
     document.getElementById('targetTotalRow').innerHTML = `
         <td>Total</td>
         <td>${formatRM(t.target)}</td>
+        <td></td>
         <td>${formatRM(t.sales)}</td>
         <td class="${diffClass(t.different)}">${formatRM(t.different)}</td>
         <td>${formatRM(t.new_target)}</td>

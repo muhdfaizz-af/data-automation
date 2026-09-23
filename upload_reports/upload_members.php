@@ -1,7 +1,7 @@
 <?php
 /**
- * S ASIA SALES REPORT - Data Upload Interface
- * Web form untuk upload Order History & Tax Invoice
+ * S ASIA SALES REPORT - Members Upload Interface
+ * Web form untuk upload Member List (Excel / CSV)
  */
 
 session_start();
@@ -29,7 +29,7 @@ if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) 
 $_SESSION['last_activity'] = time();
 
 // Define active nav for sidebar
-$activeNav = 'upload';
+$activeNav = 'upload_members';
 $navBasePath = '../';
 ?>
 <!DOCTYPE html>
@@ -37,7 +37,7 @@ $navBasePath = '../';
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Upload Reports — S ASIA SALES REPORT</title>
+<title>Upload Members — S ASIA SALES REPORT</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="icon" href="../images/icon-sasia.png"/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -85,6 +85,20 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
 .delimiter-input{width:60px;padding:8px 12px;border:1.5px solid var(--gray-300);border-radius:var(--radius-sm);font-size:13px;font-family:inherit;}.button-group{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;}.btn{padding:12px 24px;border-radius:var(--radius-md);font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;}.btn-primary{background:var(--red);color:white;box-shadow:0 4px 12px rgba(224,32,46,.3);}.btn-primary:hover{background:var(--red-dark);}.btn-primary:disabled{opacity:.5;cursor:not-allowed;}.btn-secondary{background:transparent;border:1.5px solid var(--gray-300);color:var(--ink);}.btn-secondary:hover{background:var(--gray-100);}.btn svg{width:16px;height:16px;}
 .alert{padding:14px 16px;border-radius:var(--radius-md);margin-bottom:16px;font-size:13px;font-weight:600;}.alert-success{background:#d1fae5;border:1px solid #6ee7b7;color:#047857;}.alert-error{background:#fee2e2;border:1px solid #fecaca;color:#991b1b;}.progress-bar{width:100%;height:6px;background:var(--gray-100);border-radius:3px;overflow:hidden;margin:12px 0;}.progress-fill{height:100%;background:var(--red);width:0%;transition:width .3s;}.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;}@media(max-width:768px){.grid-2{grid-template-columns:1fr;}}
 
+/* ── MEMBERS PAGE EXTRAS ── */
+.columns-list{display:flex;flex-wrap:wrap;gap:8px;}
+.column-chip{padding:6px 12px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:999px;font-size:12px;font-weight:600;color:var(--gray-700);}
+.column-chip.required{background:#fff0f1;border-color:var(--red);color:var(--red-dark);}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px;}
+.stat-box{background:var(--gray-100);border-radius:var(--radius-md);padding:14px 16px;}
+.stat-box .stat-num{font-size:22px;font-weight:800;color:var(--ink);}
+.stat-box .stat-lbl{font-size:12px;color:var(--gray-500);font-weight:600;margin-top:2px;}
+.stat-box.ok .stat-num{color:var(--green);}
+.stat-box.warn .stat-num{color:var(--gold);}
+.stat-box.bad .stat-num{color:var(--red);}
+.error-list{margin-top:16px;font-size:12px;color:var(--gray-700);max-height:180px;overflow:auto;background:var(--gray-100);border-radius:var(--radius-sm);padding:12px 14px;line-height:1.7;}
+@media(max-width:768px){.stat-grid{grid-template-columns:repeat(2,1fr);}}
+
  </style>
 </head>
 <body>
@@ -98,7 +112,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
 })();
 </script>
 
-<?php $pageTitle = 'Upload Reports'; $showMobileMenu = true; include __DIR__ . '/../includes/topnav.php'; ?>
+<?php $pageTitle = 'Upload Members'; $showMobileMenu = true; include __DIR__ . '/../includes/topnav.php'; ?>
 
 <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
@@ -106,52 +120,35 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
 <div class="layout">
 <main class="main">
   <div class="page-header">
-    <h1>Upload Order Reports</h1>
-    <p>Import Order History &amp; Tax Invoice data from Excel or CSV files</p>
+    <h1>Upload Members</h1>
+    <p>Import Member List data from Excel or CSV files</p>
   </div>
 
   <div id="statusContainer"></div>
 
   <!-- UPLOAD FORM -->
   <div class="card">
-    <div class="card-title">📁 Select Files</div>
-    
-    <div class="grid-2">
-      <!-- ORDER HISTORY UPLOAD -->
-      <div class="upload-group">
-        <label class="upload-label">Order History File</label>
-        <span class="upload-hint">Supported: .xlsx, .csv</span>
-        <div class="upload-dropzone" id="orderHistoryDropZone">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <div class="upload-dropzone-text">Drag files here or click</div>
-          <div class="upload-dropzone-sub">or paste your Order History file</div>
-        </div>
-        <div id="orderHistoryPreview"></div>
-        <input type="file" id="orderHistoryFile" class="upload-input" accept=".xlsx,.csv">
-      </div>
+    <div class="card-title">📁 Select File</div>
 
-      <!-- TAX INVOICE UPLOAD -->
-      <div class="upload-group">
-        <label class="upload-label">Tax Invoice File</label>
-        <span class="upload-hint">Supported: .xlsx, .csv</span>
-        <div class="upload-dropzone" id="taxInvoiceDropZone">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <div class="upload-dropzone-text">Drag files here or click</div>
-          <div class="upload-dropzone-sub">or paste your Tax Invoice file</div>
-        </div>
-        <div id="taxInvoicePreview"></div>
-        <input type="file" id="taxInvoiceFile" class="upload-input" accept=".xlsx,.csv">
+    <!-- MEMBER LIST UPLOAD -->
+    <div class="upload-group">
+      <label class="upload-label">Member List File</label>
+      <span class="upload-hint">Supported: .xlsx, .csv, .txt (tab-separated)</span>
+      <div class="upload-dropzone" id="membersDropZone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <div class="upload-dropzone-text">Drag files here or click</div>
+        <div class="upload-dropzone-sub">or paste your Member List file</div>
       </div>
+      <div id="membersPreview"></div>
+      <input type="file" id="membersFile" class="upload-input" accept=".xlsx,.csv,.txt,.tsv">
     </div>
 
     <!-- DELIMITER SETTING -->
     <div class="upload-group">
-      <label class="upload-label">CSV Delimiter (if CSV file)</label>
-      <span class="upload-hint">Usually comma (,) or semicolon (;)</span>
+      <label class="upload-label">CSV Delimiter (if CSV / TXT file)</label>
+      <span class="upload-hint">Usually comma (,) or semicolon (;). Taip <strong>t</strong> untuk Tab</span>
       <input type="text" id="delimiter" class="delimiter-input" value="," placeholder="," maxlength="1">
     </div>
 
@@ -161,7 +158,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        Upload Files
+        Upload File
       </button>
       <button id="clearBtn" class="btn btn-secondary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -180,6 +177,34 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
     </div>
   </div>
 
+  <!-- EXPECTED COLUMNS -->
+  <div class="card">
+    <div class="card-title">📋 Expected Columns</div>
+    <span class="upload-hint">Header row mesti ada column berikut. Yang berwarna merah wajib diisi.</span>
+    <div class="columns-list">
+      <span class="column-chip required">Company</span>
+      <span class="column-chip required">Member ID</span>
+      <span class="column-chip">Name as per IC</span>
+      <span class="column-chip">NRIC</span>
+      <span class="column-chip">Mobile No</span>
+      <span class="column-chip">Email</span>
+      <span class="column-chip">Joined Date</span>
+      <span class="column-chip">Sponsor ID</span>
+      <span class="column-chip">Sponsor Name</span>
+      <span class="column-chip">Status</span>
+      <span class="column-chip">CL Code</span>
+      <span class="column-chip">CL Name</span>
+      <span class="column-chip">Occupation</span>
+      <span class="column-chip">Date of Birth</span>
+      <span class="column-chip">Source of Funds</span>
+      <span class="column-chip">Estimated Monthly Income</span>
+      <span class="column-chip">Gender</span>
+      <span class="column-chip">Marital Status</span>
+      <span class="column-chip">Current Rank</span>
+      <span class="column-chip">Highest Rank</span>
+    </div>
+  </div>
+
   <!-- RESULTS CARD -->
   <div id="resultsCard" class="card" style="display:none;">
     <div class="card-title">📊 Upload Results</div>
@@ -193,12 +218,9 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
 // ============================================================
 // DOM References
 // ============================================================
-const orderHistoryDropZone = document.getElementById('orderHistoryDropZone');
-const taxInvoiceDropZone = document.getElementById('taxInvoiceDropZone');
-const orderHistoryFile = document.getElementById('orderHistoryFile');
-const taxInvoiceFile = document.getElementById('taxInvoiceFile');
-const orderHistoryPreview = document.getElementById('orderHistoryPreview');
-const taxInvoicePreview = document.getElementById('taxInvoicePreview');
+const membersDropZone = document.getElementById('membersDropZone');
+const membersFile = document.getElementById('membersFile');
+const membersPreview = document.getElementById('membersPreview');
 const uploadBtn = document.getElementById('uploadBtn');
 const clearBtn = document.getElementById('clearBtn');
 const statusContainer = document.getElementById('statusContainer');
@@ -210,20 +232,29 @@ const resultsContent = document.getElementById('resultsContent');
 const delimiterInput = document.getElementById('delimiter');
 
 // ============================================================
+// Helpers
+// ============================================================
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+// ============================================================
 // Upload Dropzone Setup
 // ============================================================
 function setupDropZone(dropZone, fileInput, previewDiv) {
   dropZone.addEventListener('click', () => fileInput.click());
-  
+
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     dropZone.classList.add('dragover');
   });
-  
+
   dropZone.addEventListener('dragleave', () => {
     dropZone.classList.remove('dragover');
   });
-  
+
   dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('dragover');
@@ -243,7 +274,7 @@ function showPreview(fileInput, previewDiv) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>
         </svg>
-        <span>${file.name}</span>
+        <span>${escapeHtml(file.name)}</span>
         <span class="file-preview-clear" onclick="document.getElementById('${fileInput.id}').value=''; document.getElementById('${fileInput.id}').dispatchEvent(new Event('change'));">✕</span>
       </div>
     `;
@@ -254,20 +285,17 @@ function showPreview(fileInput, previewDiv) {
 }
 
 function updateUploadBtn() {
-  uploadBtn.disabled = !orderHistoryFile.files.length && !taxInvoiceFile.files.length;
+  uploadBtn.disabled = !membersFile.files.length;
 }
 
-setupDropZone(orderHistoryDropZone, orderHistoryFile, orderHistoryPreview);
-setupDropZone(taxInvoiceDropZone, taxInvoiceFile, taxInvoicePreview);
+setupDropZone(membersDropZone, membersFile, membersPreview);
 
 // ============================================================
 // Clear Button
 // ============================================================
 clearBtn.addEventListener('click', () => {
-  orderHistoryFile.value = '';
-  taxInvoiceFile.value = '';
-  orderHistoryPreview.innerHTML = '';
-  taxInvoicePreview.innerHTML = '';
+  membersFile.value = '';
+  membersPreview.innerHTML = '';
   updateUploadBtn();
   statusContainer.innerHTML = '';
   resultsCard.style.display = 'none';
@@ -283,49 +311,48 @@ uploadBtn.addEventListener('click', async () => {
   resultsCard.style.display = 'none';
   progressSection.style.display = 'block';
   progressFill.style.width = '0%';
-  progressText.textContent = '⏳ Preparing files...';
-  
+  progressText.textContent = '⏳ Preparing file...';
+
   const formData = new FormData();
-  if (orderHistoryFile.files.length) {
-    formData.append('order_history', orderHistoryFile.files[0]);
-  }
-  if (taxInvoiceFile.files.length) {
-    formData.append('tax_invoice', taxInvoiceFile.files[0]);
+  if (membersFile.files.length) {
+    formData.append('members', membersFile.files[0]);
   }
   if (delimiterInput.value) {
-    formData.append('delimiter', delimiterInput.value);
+    // "t" = Tab
+    const d = delimiterInput.value.toLowerCase() === 't' ? '\t' : delimiterInput.value;
+    formData.append('delimiter', d);
   }
-  
+
   try {
-    progressText.textContent = '⏳ Uploading and processing files...';
+    progressText.textContent = '⏳ Uploading and processing file...';
     progressFill.style.width = '30%';
-    
-    const response = await fetch('process.php', {
+
+    const response = await fetch('process_members.php', {
       method: 'POST',
       body: formData
     });
-    
+
     progressFill.style.width = '70%';
     progressText.textContent = '⏳ Finalizing...';
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error('Server error: ' + response.status + ' - ' + errorText.substring(0, 200));
     }
-    
+
     const result = await response.json();
     progressFill.style.width = '100%';
     progressText.textContent = '✅ Complete!';
-    
+
     setTimeout(() => {
       progressSection.style.display = 'none';
       showResults(result);
       uploadBtn.disabled = false;
     }, 500);
-    
+
   } catch (error) {
     progressSection.style.display = 'none';
-    showAlert('❌ Error: ' + error.message, 'error');
+    showAlert('❌ Error: ' + escapeHtml(error.message), 'error');
     uploadBtn.disabled = false;
   }
 });
@@ -339,53 +366,41 @@ function showAlert(message, type) {
 
 function showResults(result) {
   if (result.status === 'success') {
-    let html = '<div class="alert alert-success">✅ Upload completed successfully!</div><div style="font-size:13px;line-height:1.8;">';
-    
-    if (result.order_history) {
-      if (result.order_history.skipped) {
-        html += `<p><strong>Order History:</strong> ⏭️ Skipped - ${result.order_history.message || 'Already imported'}</p>`;
-      } else {
-        html += `<p><strong>Order History:</strong> ✅ ${result.order_history.success || 0} rows imported`;
-        if (result.order_history.failed) {
-          html += `, ⚠️ ${result.order_history.failed} failed`;
-        }
-        html += `</p>`;
+    const m = result.members || {};
+    let html = '<div class="alert alert-success">✅ Upload completed successfully!</div>';
+
+    if (m.skipped) {
+      html += `<p style="font-size:13px;"><strong>Members:</strong> ⏭️ Skipped - ${escapeHtml(m.message || 'Already imported')}</p>`;
+    } else {
+      html += `
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-num">${m.total || 0}</div><div class="stat-lbl">Total Rows</div></div>
+          <div class="stat-box ok"><div class="stat-num">${m.inserted || 0}</div><div class="stat-lbl">New Members</div></div>
+          <div class="stat-box warn"><div class="stat-num">${m.updated || 0}</div><div class="stat-lbl">Updated</div></div>
+          <div class="stat-box bad"><div class="stat-num">${m.failed || 0}</div><div class="stat-lbl">Failed</div></div>
+        </div>`;
+
+      if (m.errors && m.errors.length) {
+        html += '<div class="error-list"><strong>Failed rows:</strong><br>' +
+          m.errors.map(e => escapeHtml(e)).join('<br>') + '</div>';
       }
     }
-    
-    if (result.tax_invoice) {
-      if (result.tax_invoice.skipped) {
-        html += `<p><strong>Tax Invoice:</strong> ⏭️ Skipped - ${result.tax_invoice.message || 'Already imported'}</p>`;
-      } else {
-        html += `<p><strong>Tax Invoice:</strong> ✅ ${result.tax_invoice.success || 0} rows imported`;
-        if (result.tax_invoice.failed) {
-          html += `, ⚠️ ${result.tax_invoice.failed} failed`;
-        }
-        html += `</p>`;
-      }
-    }
-    
-    html += '</div>';
+
     resultsContent.innerHTML = html;
-    
-    // Clear file inputs
-    orderHistoryFile.value = '';
-    taxInvoiceFile.value = '';
-    orderHistoryPreview.innerHTML = '';
-    taxInvoicePreview.innerHTML = '';
+
+    // Clear file input
+    membersFile.value = '';
+    membersPreview.innerHTML = '';
     updateUploadBtn();
-    
+
   } else {
-    let errors = result.message || 'Upload failed';
-    if (result.order_history && result.order_history.error) {
-      errors += `<br><strong>Order History:</strong> ${result.order_history.error}`;
-    }
-    if (result.tax_invoice && result.tax_invoice.error) {
-      errors += `<br><strong>Tax Invoice:</strong> ${result.tax_invoice.error}`;
+    let errors = escapeHtml(result.message || 'Upload failed');
+    if (result.members && result.members.error) {
+      errors += `<br><strong>Members:</strong> ${escapeHtml(result.members.error)}`;
     }
     resultsContent.innerHTML = `<div class="alert alert-error">❌ ${errors}</div>`;
   }
-  
+
   resultsCard.style.display = 'block';
 }
 

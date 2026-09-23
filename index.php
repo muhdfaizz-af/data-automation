@@ -237,7 +237,7 @@ function getDashboardData($pdo, $requestedDate = null) {
     $trendStart = date('Y-m-d', strtotime($reportDate . ' -6 days'));
     $data = [
         'report_date' => $reportDate, 'total' => 0, 'mtd' => 0, 'ytd' => 0,
-        'previous_total' => 0, 'target' => 0, 'monthly_target' => 0, 'active_agents' => 0,
+        'previous_total' => 0, 'target' => 0, 'monthly_target' => 0, 'monthly_target_full' => 0, 'active_agents' => 0,
         'new_agent_mtd' => 0, 'new_agent_mtd_prev' => 0,
         'active_agents_prev' => 0, 'mtd_prev' => 0, 'ytd_prev' => 0, 'asd' => 0, 'asd_prev' => 0,
         'trend' => [], 'trend_prev_total' => 0,
@@ -384,6 +384,10 @@ function getDashboardData($pdo, $requestedDate = null) {
             $stmt = $pdo->prepare('SELECT COALESCE(SUM(target_amount), 0) FROM sales_target WHERE target_date BETWEEN :from AND :to');
             $stmt->execute(['from' => $monthStart, 'to' => $reportDate]);
             $data['monthly_target'] = (float)$stmt->fetchColumn();
+
+            $stmt = $pdo->prepare('SELECT COALESCE(SUM(target_amount), 0) FROM sales_target WHERE target_date BETWEEN :from AND :to');
+            $stmt->execute(['from' => $monthStart, 'to' => date('Y-m-t', strtotime($reportDate))]);
+            $data['monthly_target_full'] = (float)$stmt->fetchColumn();
         } catch (Exception $e) {}
     } catch (Exception $e) {}
     return $data;
@@ -920,7 +924,7 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
                 <h2>Monthly Performance (<?= htmlspecialchars(date('M Y', strtotime($d['report_date']))) ?>)</h2>
                 <span class="monthly-pill <?= $onTrack ? '' : 'behind' ?>">&#127919; <?= $onTrack ? 'On track to meet monthly target!' : 'Behind monthly target pace' ?></span>
             </div>
-            <div class="monthly-value"><?= dashboardMoney($d['mtd']) ?> <small>/ <?= $d['monthly_target'] > 0 ? dashboardMoney($d['monthly_target']) : 'No target set' ?></small></div>
+            <div class="monthly-value"><?= dashboardMoney($d['mtd']) ?> <small>/ <?= $d['monthly_target_full'] > 0 ? dashboardMoney($d['monthly_target_full']) : 'No target set' ?></small></div>
             <div class="monthly-progress"><span style="width:<?= $monthlyProgress ?>%"></span></div>
             <div class="monthly-stats">
                 <div class="monthly-stat">Supposedly Current Target<strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>

@@ -418,6 +418,35 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
     failed = 0
     batch_params = []
 
+    member_params = {}
+    for row in rows[1:]:
+        order_id = str(get_row_value(row, header_map, ["orderid", "orderno"]) or "").strip()
+        member_code = str(get_row_value(row, header_map, ["memberid"]) or "").strip()
+        if not order_id or not member_code:
+            continue
+        comp = company_cache.get(order_id)
+        key = (comp["company_id"], member_code)
+        member_params[key] = (
+            comp["company_id"],
+            member_code,
+            get_row_value(row, header_map, ["membername"]),
+            get_row_value(row, header_map, ["mobileno"]),
+        )
+
+    if member_params:
+        with conn.cursor() as member_cur:
+            member_cur.executemany(
+                """
+                INSERT INTO members (company_id, member_code, member_name, mobile_no)
+                VALUES (%s, %s, NULLIF(%s, ''), NULLIF(%s, ''))
+                ON DUPLICATE KEY UPDATE
+                    member_name = COALESCE(NULLIF(members.member_name, ''), VALUES(member_name)),
+                    mobile_no = COALESCE(NULLIF(members.mobile_no, ''), VALUES(mobile_no))
+                """,
+                list(member_params.values()),
+            )
+        conn.commit()
+
     with conn.cursor() as cur:
         for row in rows[1:]:
             has_data = any(str(v).strip() != "" for v in row if v is not None)
@@ -437,9 +466,14 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
                 failed += 1
                 continue
 
+            member_code = str(get_row_value(row, header_map, ["memberid"]) or "").strip()
+            if not member_code:
+                failed += 1
+                continue
+
             batch_params.append((
                 comp["company_id"], batch_id, order_id, dt,
-                get_row_value(row, header_map, ["memberid"]),
+                member_code,
                 get_row_value(row, header_map, ["membertype"]),
                 get_row_value(row, header_map, ["membername"]),
                 get_row_value(row, header_map, ["remark"]),

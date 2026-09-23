@@ -1,0 +1,2 @@
+[2026-09-21 14:49:05] [sales_target] Failed to save targets {"admin_id":1,"target_count":31,"error":"SQLSTATE[HY000]: General error: 1366 Incorrect integer value: '' for column 'created_by' at row 1"}
+[2026-09-21 14:54:37] [sales_target] Failed to save targets {"admin_id":1,"target_count":31,"error":"Logged-in admin user was not found in admin_users. Please log in again."}

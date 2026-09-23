@@ -587,12 +587,19 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .metric-change.neutral {color: var(--gray-500);}
 .table-wrap {overflow-x: auto;}
 
-/* ── COMPARISON TABLE ── */
-.comparison-table {width: 100%;border-collapse: collapse;}
-.comparison-table th,.comparison-table td {padding: 13px 15px;border-bottom: 1px solid var(--black-100);text-align: right;font-size: 0.8125rem;}
-.comparison-table th:first-child,.comparison-table td:first-child {text-align: left;}
-.comparison-table th {color: var(--black-500);font-size: 0.6875rem;letter-spacing: .35px;text-transform: uppercase;}
-.comparison-table td {font-weight: 700;}
+/* ── TABLE STYLING ── */
+.main .table-wrap {width: 100%; overflow-x: auto; border: 1px solid #E6E6EA; border-radius: 12px; background: #FFFFFF;}
+.main .comparison-table.country-breakdown-table {width: 100%; min-width: 850px; table-layout: auto; border-collapse: separate; border-spacing: 0;}
+.main .comparison-table.country-breakdown-table th, .main .comparison-table.country-breakdown-table td {width: auto; padding: 14px 16px; border-bottom: 1px solid #ECECF0; text-align: right; vertical-align: middle; font-size: 0.75rem;}
+.main .comparison-table.country-breakdown-table th {background: #F7F7F9; color: var(--gray-700, #4A4A52); font-size: 0.6875rem; font-weight: 800; letter-spacing: .3px; text-transform: uppercase; white-space: normal;}
+.main .comparison-table.country-breakdown-table td {font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap;}
+.main .comparison-table.country-breakdown-table th:first-child,
+.main .comparison-table.country-breakdown-table td:first-child {text-align: left; font-weight: 800;}
+.main .comparison-table.country-breakdown-table tbody tr {transition: background-color .15s ease;}
+.main .comparison-table.country-breakdown-table tbody tr:hover td {background: #FAFAFB;}
+.main .comparison-table.country-breakdown-table tbody tr:last-child td {border-bottom: 0;}
+.main .comparison-table.country-breakdown-table tbody tr:first-child td {background: #F7F7F9; font-weight: 800;}
+
 .note {margin-top: 16px;color: var(--black-500);font-size: 0.75rem;line-height: 1.7;}
 .order-type-option:hover {border-color: var(--red);}
 .order-type-option input {width: 16px;height: 16px;accent-color: var(--red);}

@@ -75,6 +75,11 @@ function convertSalesToMyr(string $companyCode, float $sales): float
     : $sales;
 }
 
+function isSpcMemberType(string $memberType): bool
+{
+    return in_array(strtoupper(trim($memberType)), ['PRIVILEGE MEMBER', 'SPC'], true);
+}
+
 // Read report date
 $defaultDate = date('Y-m-d', strtotime('-1 day'));
 
@@ -97,7 +102,7 @@ $monthlyFrom = (new DateTimeImmutable($toDate))
     ->modify('first day of this month')
     ->format('Y-m-d');
 
-// Main Calculation
+// Main calculation receives the database connection, dates, and mode
 function getAgentBehaviourReport(
     PDO $pdo,
     string $from,
@@ -117,7 +122,7 @@ function getAgentBehaviourReport(
     ];
 
     /*
-     * This query loads qualifying Distributor orders.
+     * This query loads qualifying Distributor and SPC repurchase orders.
      *
      * Only repurchase subtotals contribute to sales. New Agent is determined
      * from joining or a confirmed upgrade in the order's calendar month.
@@ -197,8 +202,11 @@ function getAgentBehaviourReport(
           AND o.order_datetime < :to_exclusive
           AND o.order_status = :status
 
-          AND UPPER(TRIM(COALESCE(o.member_type, ''))) =
-              UPPER(:member_type)
+          AND UPPER(TRIM(COALESCE(o.member_type, ''))) IN (
+              UPPER(:member_type),
+              'PRIVILEGE MEMBER',
+              'SPC'
+          )
 
           AND o.order_type IN (
               'Repurchase Order',
@@ -222,13 +230,18 @@ function getAgentBehaviourReport(
     ));
 
     if (empty($memberCodes)) {
+        $emptyMetrics = [
+            'existing_agent' => 0,
+            'new_agent' => 0,
+            'first_purchase' => 0,
+            'spc' => 0,
+            'total' => 0,
+        ];
+
         return [
-            'summary' => [
-                'existing_agent' => 0,
-                'new_agent' => 0,
-                'first_purchase' => 0,
-                'total' => 0,
-            ],
+            'summary' => $emptyMetrics,
+            'agentCounts' => $emptyMetrics,
+            'asd' => $emptyMetrics,
             'firstPurchaseAgents' => [],
         ];
     }
@@ -290,16 +303,39 @@ function getAgentBehaviourReport(
         'existing_agent' => 0.00,
         'new_agent' => 0.00,
         'first_purchase' => 0.00,
+        'spc' => 0.00,
         'total' => 0.00,
+    ];
+
+    $purchasingMembers = [
+        'existing_agent' => [],
+        'new_agent' => [],
+        'first_purchase' => [],
+        'spc' => [],
+        'total' => [],
     ];
 
     $firstPurchaseAgents = [];
 
     foreach ($selectedRows as $row) {
         $memberCode = $row['member_code'];
+        $agentKey = $row['company_id'] . ':' . $memberCode;
+
+        // SPC purchases remain separate from all Distributor categories.
+        if (isSpcMemberType((string)($row['member_type']?? ''))) {
+            $sales = (float)$row['sales_myr'];
+
+            $summary['spc'] += $sales;
+            $summary['total'] += $sales;
+
+            $purchasingMembers['spc'][$agentKey] = true;
+            $purchasingMembers['total'][$agentKey] = true;
+
+            continue;
+        }
+
         $orderType = $row['order_type'];
         $orderDate = new DateTimeImmutable($row['order_datetime']);
-        $agentKey = $row['company_id'] . ':' . $memberCode;
         $history = $agentHistory[$agentKey] ?? null;
 
         if (!$history) {
@@ -343,14 +379,37 @@ function getAgentBehaviourReport(
 
         $summary[$category] += $sales;
         $summary['total'] += $sales;
+        $purchasingMembers[$category][$agentKey] = true;
+        $purchasingMembers['total'][$agentKey] = true;
     }
 
     foreach ($summary as $key => $value) {
         $summary[$key] = round($value, 2);
     }
 
+    $summary['total'] = round(
+        $summary['existing_agent']
+        + $summary['first_purchase']
+        + $summary['new_agent']
+        + $summary['spc'],
+        2
+    );
+
+    $agentCounts = [];
+    $asd = [];
+
+    foreach ($purchasingMembers as $category => $members) {
+        $agentCounts[$category] = count($members);
+
+        $asd[$category] = $agentCounts[$category] > 0
+            ? round($summary[$category] / $agentCounts[$category], 2)
+            : 0.00;
+    }
+
     return [
         'summary' => $summary,
+        'agentCounts' => $agentCounts,
+        'asd' => $asd,
         'firstPurchaseAgents' => array_values($firstPurchaseAgents),
     ];
 }
@@ -381,6 +440,7 @@ if (!$pdo) {
 } else {
     foreach ($reports as $reportMode => $configuration) {
         try {
+            // Initializes an empty report, and connects to the database
             $reports[$reportMode]['data'] = getAgentBehaviourReport(
                 $pdo,
                 $configuration['from'],
@@ -399,11 +459,37 @@ if (!$pdo) {
     }
 }
 
-function percentageOfTotal(float $sales, float $total): float
+// Calculate percentages
+function calculateContributions(array $summary, array $categoryKeys): array
 {
-    return $total > 0
-        ? round(($sales / $total) * 100, 2)
-        : 0.00;
+    $units = array_fill_keys($categoryKeys, 0);
+    $total = (float)$summary['total'];
+
+    if ($total <= 0 || empty($categoryKeys)) {
+        return $units;
+    }
+
+    $largestCategory = $categoryKeys[0];
+
+    foreach ($categoryKeys as $key) {
+        // Integer hundredths of a percent: 100.00% = 10000.
+        $units[$key] = (int)round(
+            ((float)$summary[$key] / $total) * 10000
+        );
+
+        if($summary[$key] > $summary[$largestCategory]) {
+            $largestCategory = $key;
+        }
+    }
+
+    // Reconcile displayed rounding to exactly 100.00%
+    $units[$largestCategory] += 10000 - array_sum($units);
+
+
+    return array_map(
+        static fn ($value) => $value / 100,
+        $units
+    );
 }
 ?>
 
@@ -479,6 +565,9 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .brand-table th:not(:first-child),.brand-table td:not(:first-child) {text-align: right;}
 .brand-name {font-weight: 800;}
 .brand-total {font-weight: 800;white-space: nowrap;}
+.table-wrap {overflow-x: auto;}
+.sales-table {min-width: 760px;}
+.sales-table th, .sales-table td:not(:first-child) {white-space: nowrap;}
 
 /* ── PERCENTAGE INDICATOR ── */
 .percentage-bar {display: inline-flex;width: 100%;max-width: 170px;align-items: center;justify-content: flex-end;gap: 9px;}
@@ -508,8 +597,8 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
             <h1>Agent Behaviour</h1>
 
             <p>
-                Confirmed Distributor repurchase sales for Existing Agents,
-                New Agents, and First Purchase behaviour.
+                Confirmed eligible sales for Existing Agents,
+                New Agents, First Purchase, and SPC members.
             </p>
         </header>
 
@@ -561,6 +650,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
             'existing_agent' => 'Existing Agent',
             'new_agent' => 'New Agent',
             'first_purchase' => 'First Purchase',
+            'spc' => 'SPC',
         ];
         ?>
 
@@ -578,7 +668,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                     <?= htmlspecialchars(
                         date('d M Y', strtotime($configuration['to']))
                     ) ?>
-                    &middot; Repurchase sales in MYR.
+                    &middot; Eligible Sales in MYR.
                     <br>
                     New Agent: joined or upgraded in the same month as the order.
                 </p>
@@ -588,26 +678,29 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                         Report data is unavailable.
                     </p>
                 <?php else: ?>
-                    <?php $summary = $configuration['data']['summary']; ?>
+                    <?php 
+                        $summary = $configuration['data']['summary']; 
+                        $agentCounts = $configuration['data']['agentCounts']; 
+                        $asd = $configuration['data']['asd']; 
+                        $contributions = calculateContributions($summary, array_keys($categoryLabels));
+                    ?>
 
                     <div class="table-wrap">
                         <table class="brand-table sales-table">
                             <thead>
                                 <tr>
-                                    <th scope="col">Type</th>
-                                    <th scope="col">Sales</th>
-                                    <th scope="col">(%)</th>
+                                    <th scope="col">Customer Type</th>
+                                    <th scope="col">Sales (RM)</th>
+                                    <th scope="col">Contribution %</th>
+                                    <th scope="col">No. of Agents</th>
+                                    <th scope="col">ASD(RM)</th>
                                 </tr>
                             </thead>
 
                             <tbody>
                                 <?php foreach ($categoryLabels as $key => $label): ?>
                                     <?php
-                                    $percentage = percentageOfTotal(
-                                        $summary[$key],
-                                        $summary['total']
-                                    );
-
+                                    $percentage = $contributions[$key];
                                     $barWidth = max(0, min(100, $percentage));
                                     ?>
 
@@ -615,8 +708,9 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                                         <td class="brand-name">
                                             <?= htmlspecialchars($label) ?>
                                         </td>
+
                                         <td class="brand-total">
-                                            <?= formatMoney($summary[$key]) ?>
+                                            <?= number_format($summary[$key], 2) ?>
                                         </td>
 
                                         <td>
@@ -624,8 +718,18 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                                                 <div class="percentage-track" aria-hidden="true">
                                                     <div class="percentage-fill" style="width:<?= $barWidth ?>%"></div>
                                                 </div>
-                                                <span><?= number_format($percentage, 2) ?>%</span>
+                                                <span>
+                                                    <?= number_format($percentage, 2) ?>%
+                                                </span>
                                             </div>
+                                        </td>
+
+                                        <td>
+                                            <?= number_format($agentCounts[$key]) ?>
+                                        </td>
+
+                                        <td class="brand-total">
+                                            <?= number_format($asd[$key], 2) ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -633,17 +737,25 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                                 <tr class="total-row">
                                     <td>Total</td>
 
-                                    <td class="brand-total">
-                                        <?= formatMoney($summary['total']) ?>
-                                    </td>
+                                    <td class="brand-total"><?= number_format($summary['total'], 2) ?></td>
 
-                                    <td>
-                                        <?= $summary['total'] > 0 ? '100.00%' : '0.00%' ?>
-                                    </td>
+                                    <td><?= $summary['total'] > 0 ? '100.00%' : '0.00%' ?></td>
+
+                                    <td><?= number_format($agentCounts['total']) ?></td>
+
+                                    <td class="brand-total"><?= number_format($asd['total'], 2) ?></td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
+                    <p class="card-subtitle">
+                        No. of Agents counts unique purchasing members within each customer type;
+                        SPC counts purchasing SPC members.
+                        Total counts each purchaser once across all customer types.
+                        ASD = Sales / unique purchasing members.
+                        Contributions are adjusted for rounding to total 100% when total sales
+                        are positive.
+                    </p>
                 <?php endif; ?>
             </section>
         <?php endforeach; ?>
