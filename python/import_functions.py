@@ -492,10 +492,8 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
                 failed += 1
                 continue
 
-            member_comp = company_cache.get_for_member(member_code)
-
             batch_params.append((
-                member_comp["company_id"], batch_id, order_id, dt,
+                order_comp["company_id"], batch_id, order_id, dt,
                 member_code,
                 get_row_value(row, header_map, ["membertype"]),
                 get_row_value(row, header_map, ["membername"]),
@@ -518,7 +516,7 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
                 get_row_value(row, header_map, ["deliverystatus"]),
                 get_row_value(row, header_map, ["paymentgateway"]),
                 get_row_value(row, header_map, ["paymentgatewayid"]),
-                member_comp["currency_code"],
+                order_comp["currency_code"],
                 order_comp["invoice_prefix"],
             ))
             success += 1

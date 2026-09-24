@@ -307,19 +307,11 @@ CREATE TABLE `orders` (
         ON UPDATE CASCADE
         ON DELETE SET NULL,
     -- ========================================================
-    -- MEMBER FK
-    --
-    -- orders.company_id
-    -- orders.member_code
-    --
-    --        ↓
-    --
-    -- members.company_id
-    -- members.member_code
+    -- MEMBER FK: Member ID is globally unique; order company is independent
     -- ========================================================
     CONSTRAINT `fk_orders_member`
-        FOREIGN KEY (`company_id`, `member_code`)
-        REFERENCES `members` (`company_id`, `member_code`)
+        FOREIGN KEY (`member_code`)
+        REFERENCES `members` (`member_code`)
         ON UPDATE CASCADE
         ON DELETE RESTRICT
 
