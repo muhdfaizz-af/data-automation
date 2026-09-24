@@ -104,21 +104,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $headers = [];
     foreach ($rows[0] as $index => $header) $headers[memberHeader($header)] = $index;
-    $companyNames = ['company', 'companycode', 'companyname'];
     $memberIdNames = ['memberid', 'membercode', 'memberno', 'id'];
-    $hasCompany = false;
-    foreach ($companyNames as $name) $hasCompany = $hasCompany || isset($headers[memberHeader($name)]);
     $hasMemberId = false;
     foreach ($memberIdNames as $name) $hasMemberId = $hasMemberId || isset($headers[memberHeader($name)]);
-    if (!$hasCompany || !$hasMemberId) throw new RuntimeException('Required columns missing. Header must include Company and Member ID.');
+    if (!$hasMemberId) throw new RuntimeException('Required columns missing. Header must include Member ID.');
 
-    $companyId = memberCompanyId($pdo, memberValue($rows[1], $headers, $companyNames));
+    $firstMemberId = memberValue($rows[1], $headers, $memberIdNames);
+    $firstCompanyCode = strtoupper(substr($firstMemberId, 0, 2)) === 'SG' ? 'SG' : 'MY';
+    $companyId = memberCompanyId($pdo, $firstCompanyCode);
     if (!$companyId) throw new RuntimeException('Company code was not found in the companies table.');
     $batch = $pdo->prepare("INSERT INTO import_batches (company_id, file_type, original_filename, file_hash, total_rows, status) VALUES (:company_id, 'MEMBERS', :filename, :hash, :total_rows, 'processing')");
     $batch->execute(['company_id' => $companyId, 'filename' => $file['name'], 'hash' => $hash, 'total_rows' => count($rows) - 1]);
     $batchId = (int)$pdo->lastInsertId();
 
-    $statement = $pdo->prepare("INSERT INTO members (company_id, import_batch_id, member_code, member_name, nric, mobile_no, email, joined_date, sponsor_code, sponsor_name, status, cl_code, cl_name, occupation, date_of_birth, source_of_funds, estimated_monthly_income, gender, marital_status, current_rank, highest_rank) VALUES (:company_id, :batch_id, :member_code, :member_name, :nric, :mobile_no, :email, :joined_date, :sponsor_code, :sponsor_name, :status, :cl_code, :cl_name, :occupation, :date_of_birth, :source_of_funds, :estimated_monthly_income, :gender, :marital_status, :current_rank, :highest_rank) ON DUPLICATE KEY UPDATE import_batch_id = VALUES(import_batch_id), member_name = VALUES(member_name), nric = VALUES(nric), mobile_no = VALUES(mobile_no), email = VALUES(email), joined_date = VALUES(joined_date), sponsor_code = VALUES(sponsor_code), sponsor_name = VALUES(sponsor_name), status = VALUES(status), cl_code = VALUES(cl_code), cl_name = VALUES(cl_name), occupation = VALUES(occupation), date_of_birth = VALUES(date_of_birth), source_of_funds = VALUES(source_of_funds), estimated_monthly_income = VALUES(estimated_monthly_income), gender = VALUES(gender), marital_status = VALUES(marital_status), current_rank = VALUES(current_rank), highest_rank = VALUES(highest_rank)");
+    $statement = $pdo->prepare("INSERT INTO members (company_id, import_batch_id, member_code, member_name, nric, mobile_no, email, joined_date, sponsor_code, sponsor_name, status, cl_code, cl_name, occupation, date_of_birth, source_of_funds, estimated_monthly_income, gender, marital_status, current_rank, highest_rank) VALUES (:company_id, :batch_id, :member_code, :member_name, :nric, :mobile_no, :email, :joined_date, :sponsor_code, :sponsor_name, :status, :cl_code, :cl_name, :occupation, :date_of_birth, :source_of_funds, :estimated_monthly_income, :gender, :marital_status, :current_rank, :highest_rank) ON DUPLICATE KEY UPDATE company_id = VALUES(company_id), import_batch_id = VALUES(import_batch_id), member_name = VALUES(member_name), nric = VALUES(nric), mobile_no = VALUES(mobile_no), email = VALUES(email), joined_date = VALUES(joined_date), sponsor_code = VALUES(sponsor_code), sponsor_name = VALUES(sponsor_name), status = VALUES(status), cl_code = VALUES(cl_code), cl_name = VALUES(cl_name), occupation = VALUES(occupation), date_of_birth = VALUES(date_of_birth), source_of_funds = VALUES(source_of_funds), estimated_monthly_income = VALUES(estimated_monthly_income), gender = VALUES(gender), marital_status = VALUES(marital_status), current_rank = VALUES(current_rank), highest_rank = VALUES(highest_rank)");
     $pdo->beginTransaction();
     $inserted = 0;
     $updated = 0;
@@ -126,13 +125,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $errors = [];
     foreach (array_slice($rows, 1) as $rowNumber => $row) {
       $line = $rowNumber + 2;
-      $company = memberValue($row, $headers, $companyNames);
-      $rowCompanyId = memberCompanyId($pdo, $company);
       $memberId = memberValue($row, $headers, $memberIdNames);
+      $companyCode = strtoupper(substr($memberId, 0, 2)) === 'SG' ? 'SG' : 'MY';
+      $rowCompanyId = memberCompanyId($pdo, $companyCode);
       if (!$rowCompanyId || $memberId === '') { $failed++; $errors[] = "Row {$line}: Valid Company and Member ID are required."; continue; }
-      $check = $pdo->prepare('SELECT id FROM members WHERE company_id = :company_id AND member_code = :member_code');
-      $check->execute(['company_id' => $rowCompanyId, 'member_code' => $memberId]);
-      $isUpdate = (bool)$check->fetchColumn();
       try {
         $statement->execute([
           'company_id' => $rowCompanyId, 'batch_id' => $batchId, 'member_code' => $memberId,
@@ -150,7 +146,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           'gender' => memberValue($row, $headers, ['gender', 'sex']), 'marital_status' => memberValue($row, $headers, ['maritalstatus']),
           'current_rank' => memberValue($row, $headers, ['currentrank', 'rank']), 'highest_rank' => memberValue($row, $headers, ['highestrank']),
         ]);
-        $isUpdate ? $updated++ : $inserted++;
+        if ($statement->rowCount() === 1) $inserted++;
+        else $updated++;
       } catch (Throwable $error) { $failed++; $errors[] = "Row {$line}: " . $error->getMessage(); }
     }
     $pdo->commit();

@@ -665,8 +665,9 @@ def import_members(file_bytes, filename):
         raise ValueError("The Excel file is empty.")
 
     headers = {normalize_header(v): i for i, v in enumerate(rows[0])}
-    if "company" not in headers or "memberid" not in headers:
-        raise ValueError("Required columns missing: Company and Member ID.")
+    has_member_id = any(name in headers for name in ("memberid", "membercode", "memberno"))
+    if not has_member_id:
+      raise ValueError("Required columns missing: Member ID.")
 
     data_rows = rows[1:]
     print(f"[members] {filename}: {len(data_rows)} data rows", flush=True)
@@ -689,7 +690,9 @@ def import_members(file_bytes, filename):
                     company_cache[key] = found["id"] if found else None
                 return company_cache[key]
 
-            first_company = company_id(clean_text(get(data_rows[0], headers, ["Company"])))
+            first_member_code = clean_text(get(data_rows[0], headers, ["Member ID", "Member Code", "Member No"]))
+            first_company_code = "SG" if first_member_code and first_member_code.upper().startswith("SG") else "MY"
+            first_company = company_id(first_company_code)
             if not first_company:
                 raise ValueError("Company code was not found in the companies table.")
 
@@ -710,7 +713,7 @@ def import_members(file_bytes, filename):
                     gender, marital_status, current_rank, highest_rank
                 ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE
-                    import_batch_id=VALUES(import_batch_id), member_name=VALUES(member_name),
+                  company_id=VALUES(company_id), import_batch_id=VALUES(import_batch_id), member_name=VALUES(member_name),
                     nric=VALUES(nric), mobile_no=VALUES(mobile_no), email=VALUES(email),
                     joined_date=VALUES(joined_date), sponsor_code=VALUES(sponsor_code),
                     sponsor_name=VALUES(sponsor_name), status=VALUES(status), cl_code=VALUES(cl_code),
@@ -721,8 +724,9 @@ def import_members(file_bytes, filename):
             """
 
             for line, row in enumerate(data_rows, start=2):
-                code = clean_text(get(row, headers, ["Member ID", "Member Code"]))
-                current_company = company_id(clean_text(get(row, headers, ["Company"])))
+                code = clean_text(get(row, headers, ["Member ID", "Member Code", "Member No"]))
+                current_company_code = "SG" if code and code.upper().startswith("SG") else "MY"
+                current_company = company_id(current_company_code)
                 if not code or not current_company:
                     failed += 1
                     errors.append(f"Row {line}: valid Company and Member ID are required")
@@ -730,23 +734,23 @@ def import_members(file_bytes, filename):
                 try:
                     cursor.execute(sql, (
                         current_company, batch_id, code,
-                        clean_text(get(row, headers, ["Name as per IC", "Name"])),
-                        clean_text(get(row, headers, ["NRIC"])),
-                        clean_text(get(row, headers, ["Mobile No", "Mobile"])),
-                        clean_text(get(row, headers, ["Email"])),
-                        parse_date(get(row, headers, ["Joined Date"])),
+                        clean_text(get(row, headers, ["Name as per IC", "Name", "Full Name"])),
+                        clean_text(get(row, headers, ["NRIC", "IC", "IC No", "IC Number"])),
+                        clean_text(get(row, headers, ["Mobile No", "Mobile", "Phone No", "Contact No"])),
+                        clean_text(get(row, headers, ["Email", "Email Address"])),
+                        parse_date(get(row, headers, ["Joined Date", "Join Date", "Registration Date"])),
                         clean_text(get(row, headers, ["Sponsor ID", "Sponsor Code"])),
                         clean_text(get(row, headers, ["Sponsor Name"])),
-                        clean_text(get(row, headers, ["Status"])),
-                        clean_text(get(row, headers, ["CL Code"])),
+                        clean_text(get(row, headers, ["Status", "Member Status"])),
+                        clean_text(get(row, headers, ["CL Code", "CL ID"])),
                         clean_text(get(row, headers, ["CL Name"])),
                         clean_text(get(row, headers, ["Occupation"])),
-                        parse_date(get(row, headers, ["Date of Birth"]), with_time=False),
+                        parse_date(get(row, headers, ["Date of Birth", "DOB", "Birth Date"]), with_time=False),
                         clean_text(get(row, headers, ["Source of Funds"])),
-                        parse_amount(get(row, headers, ["Estimated Monthly Income"])),
+                        parse_amount(get(row, headers, ["Estimated Monthly Income", "Monthly Income"])),
                         clean_text(get(row, headers, ["Gender"])),
                         clean_text(get(row, headers, ["Marital Status"])),
-                        clean_text(get(row, headers, ["Current Rank"])),
+                        clean_text(get(row, headers, ["Current Rank", "Rank"])),
                         clean_text(get(row, headers, ["Highest Rank"])),
                     ))
                     # MySQL: rowcount 1 = insert baru, 2 = update, 0 = tiada perubahan

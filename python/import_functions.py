@@ -18,8 +18,10 @@ Install dulu (guna --break-system-packages kalau perlu):
 import csv
 import hashlib
 import io
+import logging
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import openpyxl
 
@@ -27,6 +29,14 @@ import openpyxl
 # Berapa row nak proses sebelum flush batch ke DB + commit.
 # Boleh tune ikut keperluan (500-2000 biasanya sweet spot).
 BATCH_SIZE = 1000
+
+_ERROR_LOG = Path(__file__).resolve().parent.parent / "error.log"
+_IMPORT_LOGGER = logging.getLogger("data_automation.import")
+if not _IMPORT_LOGGER.handlers:
+    _IMPORT_LOGGER.setLevel(logging.ERROR)
+    _log_handler = logging.FileHandler(_ERROR_LOG, encoding="utf-8")
+    _log_handler.setFormatter(logging.Formatter("[%(asctime)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    _IMPORT_LOGGER.addHandler(_log_handler)
 
 
 # ============================================================
@@ -199,6 +209,12 @@ class CompanyCache:
             self._cache[prefix] = get_company(order_id, self.conn)
         return self._cache[prefix]
 
+    def get_for_member(self, member_code):
+        prefix = "SGHQ" if (member_code or "").strip().upper().startswith("SG") else "MYHQ"
+        if prefix not in self._cache:
+            self._cache[prefix] = get_company(prefix, self.conn)
+        return self._cache[prefix]
+
 
 # ============================================================
 # LOAD FILE
@@ -296,8 +312,8 @@ def _detect_file_type(header_map):
     return is_order_history, is_tax_invoice
 
 
-def _prefetch_order_ids(conn, company_id, order_ids):
-    """Satu query IN (...) untuk resolve order_id -> order_db_id,
+def _prefetch_order_ids(conn, order_ids):
+    """Satu query IN (...) untuk resolve order_id -> order record,
     dipanggil sekali sebelum loop tax invoice (bukan per-row).
     MySQL ada had bilangan parameter dalam IN(), jadi kita chunk
     order_ids kepada kumpulan kecil sebelum query.
@@ -310,11 +326,11 @@ def _prefetch_order_ids(conn, company_id, order_ids):
             batch = order_ids[i:i + chunk]
             placeholders = ",".join(["%s"] * len(batch))
             cur.execute(
-                f"SELECT id, order_id FROM orders WHERE company_id=%s AND order_id IN ({placeholders})",
-                (company_id, *batch),
+                f"SELECT id, company_id, order_id FROM orders WHERE order_id IN ({placeholders})",
+                batch,
             )
             for r in cur.fetchall():
-                mapping[r["order_id"]] = r["id"]
+                mapping[r["order_id"]] = (r["id"], r["company_id"])
     return mapping
 
 
@@ -401,6 +417,10 @@ def process_file(file_bytes, original_name, conn, delimiter=","):
 
     except Exception as e:
         conn.rollback()
+        _IMPORT_LOGGER.exception(
+            "[import] file=%s batch_id=%s status=failed error=%s",
+            original_name, batch_id, e,
+        )
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE import_batches SET status='failed', error_message=%s WHERE id=%s",
@@ -424,7 +444,7 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
         member_code = str(get_row_value(row, header_map, ["memberid"]) or "").strip()
         if not order_id or not member_code:
             continue
-        comp = company_cache.get(order_id)
+        comp = company_cache.get_for_member(member_code)
         key = (comp["company_id"], member_code)
         member_params[key] = (
             comp["company_id"],
@@ -440,6 +460,7 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
                 INSERT INTO members (company_id, member_code, member_name, mobile_no)
                 VALUES (%s, %s, NULLIF(%s, ''), NULLIF(%s, ''))
                 ON DUPLICATE KEY UPDATE
+                    company_id = VALUES(company_id),
                     member_name = COALESCE(NULLIF(members.member_name, ''), VALUES(member_name)),
                     mobile_no = COALESCE(NULLIF(members.mobile_no, ''), VALUES(mobile_no))
                 """,
@@ -458,7 +479,7 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
                 failed += 1
                 continue
 
-            comp = company_cache.get(order_id)
+            order_comp = company_cache.get(order_id)
 
             dt = parse_date(get_row_value(
                 row, header_map, ["dateandtime", "orderdatetime", "datetime", "orderdate"]))
@@ -471,8 +492,10 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
                 failed += 1
                 continue
 
+            member_comp = company_cache.get_for_member(member_code)
+
             batch_params.append((
-                comp["company_id"], batch_id, order_id, dt,
+                member_comp["company_id"], batch_id, order_id, dt,
                 member_code,
                 get_row_value(row, header_map, ["membertype"]),
                 get_row_value(row, header_map, ["membername"]),
@@ -495,8 +518,8 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
                 get_row_value(row, header_map, ["deliverystatus"]),
                 get_row_value(row, header_map, ["paymentgateway"]),
                 get_row_value(row, header_map, ["paymentgatewayid"]),
-                comp["currency_code"],
-                comp["invoice_prefix"],
+                member_comp["currency_code"],
+                order_comp["invoice_prefix"],
             ))
             success += 1
 
@@ -521,9 +544,8 @@ def _process_tax_invoice(conn, rows, header_map, company_cache):
     success = 0
     failed = 0
 
-    # 1) Kumpul semua order_id unique dalam fail, ikut company
-    order_ids_by_company = {}  # company_id -> set(order_id)
-    order_id_to_company = {}
+    # 1) Kumpul semua order_id unique dalam fail.
+    order_ids = set()
     for row in rows[1:]:
         has_data = any(str(v).strip() != "" for v in row if v is not None)
         if not has_data:
@@ -531,20 +553,14 @@ def _process_tax_invoice(conn, rows, header_map, company_cache):
         order_id = str(get_row_value(row, header_map, ["orderid", "orderno"]) or "").strip()
         if not order_id:
             continue
-        comp = company_cache.get(order_id)
-        order_ids_by_company.setdefault(comp["company_id"], set()).add(order_id)
-        order_id_to_company[order_id] = comp["company_id"]
+        order_ids.add(order_id)
 
-    # 2) Pre-fetch order_db_id untuk semua order_id sekaligus (per company)
-    order_lookup = {}  # (company_id, order_id) -> order_db_id
-    for company_id, order_ids in order_ids_by_company.items():
-        mapping = _prefetch_order_ids(conn, company_id, order_ids)
-        for oid, db_id in mapping.items():
-            order_lookup[(company_id, oid)] = db_id
+    # 2) Pre-fetch order record untuk semua order_id tanpa meneka company.
+    order_lookup = _prefetch_order_ids(conn, order_ids)
 
     # 3) Pre-delete existing items untuk semua order yang bakal di-replace,
     #    guna satu DELETE ... WHERE order_id IN (...) chunked.
-    all_order_db_ids = list(order_lookup.values())
+    all_order_db_ids = [order_id_data[0] for order_id_data in order_lookup.values()]
     with conn.cursor() as cur:
         chunk = 2000
         for i in range(0, len(all_order_db_ids), chunk):
@@ -558,7 +574,7 @@ def _process_tax_invoice(conn, rows, header_map, company_cache):
     # 4) Loop row, batch insert item
     batch_params = []
     with conn.cursor() as cur:
-        for row in rows[1:]:
+        for line, row in enumerate(rows[1:], start=2):
             has_data = any(str(v).strip() != "" for v in row if v is not None)
             if not has_data:
                 continue
@@ -566,17 +582,26 @@ def _process_tax_invoice(conn, rows, header_map, company_cache):
             order_id = str(get_row_value(row, header_map, ["orderid", "orderno"]) or "").strip()
             if not order_id:
                 failed += 1
+                _IMPORT_LOGGER.error("[tax_invoice] row=%s reason=missing_order_id", line)
                 continue
 
-            company_id = order_id_to_company.get(order_id)
-            order_db_id = order_lookup.get((company_id, order_id))
-            if not order_db_id:
+            order_data = order_lookup.get(order_id)
+            if not order_data:
                 failed += 1
+                _IMPORT_LOGGER.error(
+                    "[tax_invoice] row=%s order_id=%s reason=order_not_found",
+                    line, order_id,
+                )
                 continue
+            order_db_id, company_id = order_data
 
             item_code = str(get_row_value(row, header_map, ["itemcode", "sku", "itemno"]) or "").strip()
             if not item_code:
                 failed += 1
+                _IMPORT_LOGGER.error(
+                    "[tax_invoice] row=%s order_id=%s company_id=%s reason=missing_item_code",
+                    line, order_id, company_id,
+                )
                 continue
 
             batch_params.append((

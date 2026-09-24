@@ -167,7 +167,9 @@ CREATE TABLE `members` (
     PRIMARY KEY (`id`),
 
     -- IMPORTANT:
-    -- member_code is unique per company
+    -- member_code is globally unique, regardless of company
+    UNIQUE KEY `uq_members_member_code`
+        (`member_code`),
     UNIQUE KEY `uq_members_company_code`
         (`company_id`, `member_code`),
     KEY `idx_members_member_code`
