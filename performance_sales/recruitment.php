@@ -432,7 +432,8 @@ function getRecruitmentMetrics(
 
 function renderRecruitmentTable(
     string $heading,
-    array $metrics
+    array $metrics,
+    string $repurchaseHeading
 ): void {
     ?>
     <section class="report-block">
@@ -446,7 +447,7 @@ function renderRecruitmentTable(
                         <th colspan="2">New Registration</th>
                         <th colspan="2">SPC Upgrade</th>
                         <th rowspan="2">Total</th>
-                        <th colspan="2">Purchase Agent</th>
+                        <th colspan="2"><?= htmlspecialchars($repurchaseHeading) ?></th>
                     </tr>
                     <tr>
                         <th>MY</th>
@@ -750,8 +751,8 @@ include __DIR__ . '/../includes/sidebar.php';
                 Registration <?= htmlspecialchars($monthlyHeading) ?>
             </h2>
             <div class="report-subtitle">Counts are based on confirmed Tax Invoice orders.</div>
-            <?php renderRecruitmentTable($dailyHeading, $dailyMetrics); ?>
-            <?php renderRecruitmentTable($monthlyHeading, $monthlyMetrics); ?>
+            <?php renderRecruitmentTable($dailyHeading, $dailyMetrics, 'New Agent Daily Repurchase'); ?>
+            <?php renderRecruitmentTable($monthlyHeading, $monthlyMetrics, 'New Agent Monthly Repurchase'); ?>
         </section>
     <?php endif; ?>
 </main>
