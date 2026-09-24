@@ -330,7 +330,6 @@ COMMENT='Stores Order History - one row = one order';
 -- ============================================================
 -- TABLE: order_items
 -- ============================================================
-
 DROP TABLE IF EXISTS `order_items`;
 CREATE TABLE `order_items` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -338,7 +337,7 @@ CREATE TABLE `order_items` (
     `commission_month` VARCHAR(10) DEFAULT NULL,
     `cdo` VARCHAR(50) DEFAULT NULL,
     `cdo_created_date` DATETIME DEFAULT NULL,
-    `produt_type` VARCHAR(20) DEFAULT NULL,
+    `product_type` VARCHAR(20) DEFAULT NULL,
     `item_code` VARCHAR(50) NOT NULL,
     `item_description` VARCHAR(255) DEFAULT NULL,
     `brand` VARCHAR(50) DEFAULT NULL,

@@ -763,7 +763,7 @@ $trendChange = dashboardChange(array_sum($d['trend']), $d['trend_prev_total']);
 $dayOfMonth = (int)date('j', strtotime($d['report_date']));
 $daysInMonth = (int)date('t', strtotime($d['report_date']));
 $proratedTarget = (float)$d['monthly_target'];
-$monthlyProgress = $d['monthly_target'] > 0 ? min(100, ($d['mtd'] / $d['monthly_target']) * 100) : 0;
+$monthlyProgress = $d['monthly_target_full'] > 0 ? min(100, ($d['mtd'] / $d['monthly_target_full']) * 100) : 0;
 $monthlyDifference = $d['mtd'] - $proratedTarget;
 $monthlyDifferencePercent = $proratedTarget > 0 ? ($monthlyDifference / $proratedTarget) * 100 : 0;
 $daysRemaining = max(0, $daysInMonth - $dayOfMonth);
@@ -922,12 +922,12 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
         <article class="dashboard-card">
             <div class="card-heading">
                 <h2>Monthly Performance (<?= htmlspecialchars(date('M Y', strtotime($d['report_date']))) ?>)</h2>
-                <span class="monthly-pill <?= $onTrack ? '' : 'behind' ?>">&#127919; <?= $onTrack ? 'On track to meet monthly target!' : 'Behind monthly target pace' ?></span>
+                <span class="monthly-pill <?= $onTrack ? '' : 'behind' ?>">&#127919; <?= $onTrack ? 'On track to meet monthly target!' : 'Behind monthly target' ?></span>
             </div>
             <div class="monthly-value"><?= dashboardMoney($d['mtd']) ?> <small>/ <?= $d['monthly_target_full'] > 0 ? dashboardMoney($d['monthly_target_full']) : 'No target set' ?></small></div>
             <div class="monthly-progress"><span style="width:<?= $monthlyProgress ?>%"></span></div>
             <div class="monthly-stats">
-                <div class="monthly-stat">Supposedly Current Target<strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>
+                <div class="monthly-stat">Estimated Target as of <?= htmlspecialchars(date('d M Y', strtotime($d['report_date']))) ?><strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>
                 <div class="monthly-stat <?= $monthlyDifference < 0 ? 'neg' : '' ?>">Difference<strong><?= $d['monthly_target'] > 0 ? ($monthlyDifference >= 0 ? '+' : '-') . dashboardMoney(abs($monthlyDifference)) . ' (' . ($monthlyDifferencePercent >= 0 ? '+' : '') . number_format($monthlyDifferencePercent, 1) . '%)' : '—' ?></strong></div>
                 <div class="monthly-stat">Days Remaining<strong><?= $daysRemaining ?> days</strong></div>
             </div>

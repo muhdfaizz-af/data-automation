@@ -25,6 +25,7 @@ session_write_close();
 
 // DB connection
 function getDBConnection(): ?PDO
+
 {
     try {
         return new PDO(
@@ -75,6 +76,7 @@ function convertSalesToMyr(string $companyCode, float $sales): float
     : $sales;
 }
 
+// Define SPC
 function isSpcMemberType(string $memberType): bool
 {
     return in_array(strtoupper(trim($memberType)), ['PRIVILEGE MEMBER', 'SPC'], true);
@@ -125,7 +127,7 @@ function getAgentBehaviourReport(
      * This query loads qualifying Distributor and SPC repurchase orders.
      *
      * Only repurchase subtotals contribute to sales. New Agent is determined
-     * from joining or a confirmed upgrade in the order's calendar month.
+     * from joining or a confirmed upgrade in the order's calendar month. 
      */
     $sql = "
         SELECT
@@ -202,6 +204,7 @@ function getAgentBehaviourReport(
           AND o.order_datetime < :to_exclusive
           AND o.order_status = :status
 
+        /* If any purchase means every Confirmed SPC order. */
           AND UPPER(TRIM(COALESCE(o.member_type, ''))) IN (
               UPPER(:member_type),
               'PRIVILEGE MEMBER',
@@ -551,7 +554,6 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .apply-button {min-width:180px;min-height:42px;padding:10px 20px;border:0;border-radius:9px;background:var(--red);box-shadow:0 4px 14px rgba(224,32,46,.22);color:var(--white);cursor:pointer;font-size:.8125rem;font-weight:800;}
 .apply-button:hover {background:var(--red-dark);}
 .apply-button:disabled {opacity:.65;cursor:wait;}
-.report-status {color:var(--gray-500);font-size:.8125rem;}
 .error-box {margin-bottom:20px;padding:13px 15px;border:1px solid #FECACA;border-radius:10px;background:var(--red-soft);color:#991B1B;font-size:.8125rem;font-weight:600;}
 
 /* ── TABLE STYLING ── */
@@ -569,6 +571,31 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .sales-table {min-width: 760px;}
 .sales-table th, .sales-table td:not(:first-child) {white-space: nowrap;}
 
+/*
+.contribution-chart {margin: 18px 0 24px; padding: 18px 20px 16px; border: 1px solid var(--gray-100); border-radius: var(--radius-lg); background: var(--white); box-shadow: var(--shadow-card);}
+.contribution-chart .card-title {margin-bottom: 2px; font-size: .875rem;}
+.contribution-chart .card-subtitle {margin-bottom: 0; font-size: .6875rem;}
+.contribution-chart-box {width: 100%; max-width: 850px; min-width: 0; margin: 14px auto 0;}
+.contribution-chart-box svg {display: block; width: 100%; min-width: 0; height: auto;}
+.contribution-chart-box svg text {font-family: inherit;}
+.contribution-chart-empty {padding: 40px 0; color: var(--gray-500); font-size: .75rem; text-align: center;}
+ */
+
+/* KPI CARD STYLING */
+.agent-kpi-grid {display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px;}
+.agent-kpi-card {min-width: 0; padding: 18px 20px; border: 1px solid var(--gray-100); border-radius: 16px; background: var(--white); box-shadow: var(--shadow-card);}
+.agent-kpi-header {display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px;}
+.agent-kpi-label {color: var(--gray-700); font-size: .75rem; font-weight: 700;}
+.agent-kpi-icon {display: inline-flex; flex: 0 0 38px; width: 38px; height: 38px; align-items: center; justify-content: center; border-radius: 10px; font-size: 18px;}
+.agent-kpi-icon-sales {background: #FCE8EB;}
+.agent-kpi-icon-agents {background: #F1EAFE;}
+.agent-kpi-icon-asd {background: #FFF3E3;}
+.agent-kpi-value {color: var(--ink); font-size: clamp(1.15rem, 1.6vw, 1.5rem); font-weight: 800; line-height: 1.3; font-variant-numeric: tabular-nums; overflow-wrap: anywhere;}
+.agent-kpi-note {margin-top: 6px; color: var(--gray-500); font-size: .6875rem; line-height: 1.5;}
+.agent-kpi-period {margin-bottom: 10px; color: var(--gray-700); font-size: .75rem;}
+@media (max-width: 1100px) {.agent-kpi-grid {grid-template-columns: repeat(2, minmax(0, 1fr));}}
+@media (max-width: 600px) {.agent-kpi-grid {grid-template-columns: 1fr;}}
+
 /* ── PERCENTAGE INDICATOR ── */
 .percentage-bar {display: inline-flex;width: 100%;max-width: 170px;align-items: center;justify-content: flex-end;gap: 9px;}
 .percentage-track {width: 90px;height: 7px;overflow: hidden;border-radius: 20px;background: var(--gray-100);}
@@ -578,6 +605,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 @media (max-width:900px) {.main,body.sidebar-collapsed .main {margin-left:0;padding:20px;}}
 @media (max-width:800px) {.filter-footer {flex-direction:column;align-items:stretch;}.apply-button {width:100%;}}
 @media (max-width:500px) {.date-grid {grid-template-columns:1fr;}}
+@media (max-width:500px) {.contribution-chart {padding: 14px 8px 12px;}}
 </style>
 </head>
 <body>
@@ -637,7 +665,6 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                 </div>
 
                 <div class="filter-footer">
-                    <span class="report-status" role="status" aria-live="polite"></span>
                     <button type="submit" class="apply-button">
                         Generate Reports
                     </button>
@@ -685,6 +712,185 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                         $contributions = calculateContributions($summary, array_keys($categoryLabels));
                     ?>
 
+                    <?php 
+                    /*<article class="contribution-chart">
+                        <h3 class="card-title">
+                            Sales Contribution % by Customer Type
+                        </h3>
+
+                        <p class="card-subtitle">
+                            Share of eligible sales for this report period.
+                        </p>
+
+                        <?php if ($summary['total'] <= 0): ?>
+                            <div class="contribution-chart-empty">
+                                No positive sales total for this report period.
+                            </div>
+                            <?php else: ?>
+                                <?php 
+                                    $chartWidth = 720; $chartLeft = 140; $chartRight = 76; $chartTop = 18; $chartRowHeight = 52; $chartBarHeight = 22;
+                                    $chartPlotWidth = $chartWidth - $chartLeft - $chartRight;
+                                    $chartBottom = $chartTop + count($categoryLabels) * $chartRowHeight;
+                                    $chartHeight = $chartBottom + 48;
+                                    $chartTitleId = 'contribution-title-' . $reportMode; 
+                                ?>
+
+                                <div class="contribution-chart-box">
+                                    <svg 
+                                        viewBox="0 0 <?= $chartWidth ?> <?= $chartHeight ?>" 
+                                        xmlns="http://www.w3.org/2000/svg" 
+                                        role="img" 
+                                        aria-labelledby="<?= htmlspecialchars($chartTitleId) ?>"
+                                    >
+
+                                    <title 
+                                        id="<?= htmlspecialchars($chartTitleId) ?>">
+                                            Sales contribution by customer type:
+                                        <?= htmlspecialchars($configuration['title']) ?>,
+                                        <?= htmlspecialchars($configuration['from']) ?> to 
+                                        <?= htmlspecialchars($configuration['to']) ?>
+                                    </title>
+
+                            <!-- Percentage gridlines and axis labels -->
+                            <?php for ($tick = 0; $tick <= 100; $tick += 25): ?>
+                                <?php $tickX = $chartLeft + ($tick / 100) * $chartPlotWidth; ?>
+                                    <line 
+                                        x1="<?= $tickX ?>"
+                                        y1="<?= $chartTop ?>"
+                                        x2="<?= $tickX ?>"
+                                        y2="<?= $chartBottom ?>"
+                                        stroke="#F0F0F3"
+                                        stroke-width="1"
+                                    />
+
+                                    <text 
+                                        x="<?= $tickX ?>"
+                                        y="<?= $chartBottom + 20 ?>"
+                                        text-anchor="middle"
+                                        font-size="10"
+                                        fill="#A0A0A8"
+                                    >
+                                    <?= $tick ?>%</text>
+                                <?php endfor; ?>
+
+                                <!-- One horizontal bar per customer type -->
+                                 <?php $chartRowIndex = 0; ?>
+                                 <?php foreach ($categoryLabels as $key => $label): ?>
+                                    <?php $chartPercentage = (float)$contributions[$key];
+                                          $chartCenterY = $chartTop + $chartRowIndex * $chartRowHeight + $chartRowHeight / 2;
+                                          $chartBarWidth = (max(0, min(100, $chartPercentage)) / 100) * $chartPlotWidth;
+                                          $chartValueX = $chartLeft + $chartBarWidth + 10;
+                                    ?>
+                                    <g>
+                                        <title>
+                                            <?= htmlspecialchars($label) ?>:
+                                            <?= number_format($chartPercentage, 2) ?>% 
+                                        </title>
+
+                                        <text 
+                                            x="<?= $chartLeft - 14 ?>"
+                                            y="<?= $chartCenterY ?>"
+                                            text-anchor="end"
+                                            dominant-baseline="middle"
+                                            font-size="11"
+                                            font-weight="700"
+                                            fill="#4A4A52"
+                                        >
+                                        <?= htmlspecialchars($label) ?></text>
+
+                                    <?php if ($chartBarWidth > 0) : ?>
+                                        <rect 
+                                            x="<?= $chartLeft ?>"
+                                            y="<?= $chartCenterY - $chartBarHeight / 2 ?>"
+                                            width="<?= $chartBarWidth ?>"
+                                            height="<?= $chartBarHeight ?>"
+                                            fill="#E0202E"
+                                            rx="3"
+                                        />
+                                    <?php endif; ?>
+                                        <text
+                                            x="<?= $chartValueX ?>"
+                                            y="<?= $chartCenterY ?>"
+                                            dominant-baseline="middle"
+                                            font-size="11"
+                                            font-weight="700"
+                                            fill="#4A4A52"
+                                        >
+                                        <?= number_format($chartPercentage, 2) ?>%</text>
+                                    </g>
+
+                                    <?php $chartRowIndex++; ?>
+                                    <?php endforeach; ?>
+
+                                    <line
+                                        x1="<?= $chartLeft ?>"
+                                        y1="<?= $chartBottom ?>"
+                                        x2="<?= $chartWidth - $chartRight ?>"
+                                        y2="<?= $chartBottom ?>"
+                                        stroke="#E2E2E8"
+                                        stroke-width="1"
+                                    />
+                                </svg>
+                            </div>
+                        <?php endif; ?>
+                    </article>
+                    */ ?>
+
+                    <?php
+                    $kpiData = $configuration['data'];
+                    $kpiAvailable = $kpiData !== null;
+                    $kpiPeriodLabel = $reportMode === 'monthly' ? 'Monthly Period' : 'Selected Period';
+
+                    $kpiPeriod = date('d M Y', strtotime($configuration['from']))
+                        . ' – '
+                        . date('d M Y', strtotime($configuration['to']));
+                    ?>
+
+                    <section aria-label="<?= htmlspecialchars($configuration['title']) ?> key performance indicators">
+                        <p class="agent-kpi-period"><strong><?= htmlspecialchars($kpiPeriodLabel) ?>:</strong> <?= htmlspecialchars($kpiPeriod) ?></p>
+
+                        <div class="agent-kpi-grid">
+                            <article class="agent-kpi-card">
+                                <div class="agent-kpi-header">
+                                    <h2 class="agent-kpi-label">Total Sales</h2>
+                                    <span class="agent-kpi-icon agent-kpi-icon-sales"aria-hidden="true">📈</span>
+                                </div>
+
+                                <div class="agent-kpi-value">
+                                    <?= $kpiAvailable ? 'RM ' . number_format($kpiData['summary']['total'], 2) : 'Unavailable' ?>
+                                </div>
+
+                                <p class="agent-kpi-note">Eligible sales across all customer types.</p>
+                            </article>
+
+                            <article class="agent-kpi-card">
+                                <div class="agent-kpi-header">
+                                    <h2 class="agent-kpi-label">Total Purchasing Agents</h2>
+                                    <span class="agent-kpi-icon agent-kpi-icon-agents" aria-hidden="true">👥</span>
+                                </div>
+
+                                <div class="agent-kpi-value">
+                                    <?= $kpiAvailable ? number_format($kpiData['agentCounts']['total']) : 'Unavailable' ?>
+                                </div>
+
+                                <p class="agent-kpi-note">Unique purchasers, including SPC members.</p>
+                            </article>
+
+                            <article class="agent-kpi-card">
+                                <div class="agent-kpi-header">
+                                    <h2 class="agent-kpi-label">Overall ASD</h2>
+                                    <span class="agent-kpi-icon agent-kpi-icon-asd" aria-hidden="true" >🎯</span>
+                                </div>
+
+                                <div class="agent-kpi-value">
+                                    <?= $kpiAvailable ? 'RM ' . number_format($kpiData['asd']['total'], 2) : 'Unavailable' ?>
+                                </div>
+
+                                <p class="agent-kpi-note">Total sales divided by unique purchasers.</p>
+                            </article>
+                        </div>
+                    </section>
+
                     <div class="table-wrap">
                         <table class="brand-table sales-table">
                             <thead>
@@ -705,32 +911,22 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                                     ?>
 
                                     <tr>
-                                        <td class="brand-name">
-                                            <?= htmlspecialchars($label) ?>
-                                        </td>
+                                        <td class="brand-name"><?= htmlspecialchars($label) ?></td>
 
-                                        <td class="brand-total">
-                                            <?= number_format($summary[$key], 2) ?>
-                                        </td>
+                                        <td class="brand-total"><?= number_format($summary[$key], 2) ?></td>
 
                                         <td>
                                             <div class="percentage-bar">
                                                 <div class="percentage-track" aria-hidden="true">
                                                     <div class="percentage-fill" style="width:<?= $barWidth ?>%"></div>
                                                 </div>
-                                                <span>
-                                                    <?= number_format($percentage, 2) ?>%
-                                                </span>
+                                                <span><?= number_format($percentage, 2) ?>%</span>
                                             </div>
                                         </td>
 
-                                        <td>
-                                            <?= number_format($agentCounts[$key]) ?>
-                                        </td>
+                                        <td><?= number_format($agentCounts[$key]) ?></td>
 
-                                        <td class="brand-total">
-                                            <?= number_format($asd[$key], 2) ?>
-                                        </td>
+                                        <td class="brand-total"><?= number_format($asd[$key], 2) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
 
@@ -761,5 +957,141 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
         <?php endforeach; ?>
     </main>
     </div>
+        <script>
+        (function () {
+            'use strict';
+
+            let activeRequest = null;
+
+            function bindAjaxForm(scope) {
+                const form = scope.querySelector('form.report-filter');
+
+                if(!form || form.dataset.ajaxBound === '1') return;
+
+                form.dataset.ajaxBound = '1';
+
+                form.addEventListener('submit', async function (event) {
+                    event.preventDefault();
+
+                    if (!form.reportValidity()) return;
+
+                    // Cancel the previous client request, if one is still pending.
+                    if (activeRequest) activeRequest.abort();
+
+                    const controller = new AbortController();
+                    activeRequest = controller;
+
+                    const currentMain = form.closest('main.main');
+                    const button = form.querySelector('button[type="submit"]');
+
+                    if (!currentMain) {
+                        activeRequest = null;
+                        return;
+                    }
+
+                    const originalText = button ? button.dataset.idleText || button.textContent : '';
+
+                    if (button) {
+                        button.dataset.idleText = originalText;
+
+                        button.disabled = true;
+                        button.textContent = 'Loading...';
+                    }
+
+
+                    currentMain.setAttribute('aria-busy', 'true');
+                    currentMain.querySelector('.ajax-error-box')?.remove();
+
+                    // Dates go into the fetch request, not the browser address bar.
+
+                    const url = new URL(form.action || window.location.href);
+                    url.search = new URLSearchParams(new FormData(form)).toString(); url.hash = '';
+
+                    try {
+                        const response = await fetch(url.toString(), {
+                            method: 'GET',
+                            headers: {
+                                Accept: 'text/html'
+                            },
+                            credentials: 'same-origin',
+                            cache: 'no-store',
+                            signal: controller.signal
+                        });
+
+                        // Handle an expired login session
+
+                        if (response.redirected) {
+                            if (activeRequest === controller)
+                            {
+                                window.location.assign(response.url);
+                            }
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            throw new Error('HTTP ' + response.status);
+                        }
+
+                        const html = await response.text();
+
+                        // Prevent an older response from replacing newer results.
+                        if (activeRequest !== controller) return;
+                        
+                        const nextDocument = new DOMParser().parseFromString(html, 'text/html');
+
+                        const nextMain = nextDocument.querySelector('main.main');
+
+                        if (!nextMain || !nextMain.querySelector('form.report-filter')) {
+                            throw new Error('Invalid report response.');
+                        }
+
+                        currentMain.replaceWith(nextMain);
+
+                        document.title = nextDocument.title || document.title;
+
+                        // The new form needs its own submit listener.
+                        bindAjaxForm(nextMain);
+
+
+                        nextMain.setAttribute('tabindex', '-1');
+
+                        nextMain.focus({ preventScroll: true});
+
+                        document.dispatchEvent(new CustomEvent('report:updated'));
+                    } catch (error) {
+                        if (
+                            error.name === 'AbortError' || activeRequest !== controller
+                        ) {
+                            return;
+                        }
+
+                        const errorBox = document.createElement('div');
+                        errorBox.className = 'error-box ajax-error-box';
+                        errorBox.setAttribute('role', 'alert');
+                        errorBox.textContent = 'Unable to update the reports. Previous results are still displayed. Please try again.';
+
+                        currentMain.prepend(errorBox);
+
+                    } finally {
+                        if (activeRequest === controller) {
+                            activeRequest = null;
+
+                            if (currentMain.isConnected)
+                            {
+                                currentMain.removeAttribute('aria-busy');
+                            }
+
+                            if (button && button.isConnected) 
+                            {
+                                button.disabled = false;
+                                button.textContent = originalText;
+                            }
+                        }
+                    }
+                });
+            }
+            bindAjaxForm(document);
+        })();
+</script>
 </body>
 </html>

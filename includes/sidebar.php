@@ -265,13 +265,6 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 
       parent.addEventListener('click', function () {
         const willOpen = !group.classList.contains('open');
-
-        groups.forEach(function (item) {
-          item.classList.remove('open');
-          const btn = item.querySelector('.nav-parent');
-          if (btn) btn.setAttribute('aria-expanded', 'false');
-        });
-
         group.classList.toggle('open', willOpen);
         parent.setAttribute('aria-expanded', String(willOpen));
       });
