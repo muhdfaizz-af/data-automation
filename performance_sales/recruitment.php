@@ -547,7 +547,7 @@ if(!isValidDate($reportDate)) {
     $errors[] = 'Please select a valid report date.';
 }
 
-// Daily range contains one day, monthly range contains the complete calendar month.
+// Daily range contains one day, monthly range contains the complete calendar month
 $dailyFrom = $reportDate;
 $dailyTo = $reportDate;
 
