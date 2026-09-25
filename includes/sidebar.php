@@ -17,6 +17,17 @@ $icoLogout='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 // ── Navigation Item Helper Function ──
 $navBasePath = $navBasePath ?? '';
 $activeNav = $activeNav ?? 'dashboard';
+$currentPage = basename($_SERVER['SCRIPT_NAME'] ?? '');
+$salesPerformancePages = [
+  'sales_comparison.php',
+  'hub_comparison.php',
+  'asd_comparison.php',
+  'sales_brand.php',
+  'overall_products.php',
+  'nafesa_products.php',
+  'recruitment.php',
+  'sales_channel.php',
+];
 
 function navItem($href, $icon, $label, $active = false, $basePath = '') {
     $c = $active ? ' active' : '';
@@ -88,7 +99,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   
   <div class="sidebar-section-label">Reports</div>
   <div class="nav-group open" data-nav-id="salesperformance">
-    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' ? 'active' : '' ?>" aria-expanded="true">
+    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' || in_array($currentPage, $salesPerformancePages, true) ? 'active' : '' ?>" aria-expanded="true">
       <span class="nav-parent-content">
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
@@ -96,19 +107,33 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <span class="nav-chev">▾</span>
     </button>
     <div class="nav-children">
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $activeNav === 'salesperformance', $navBasePath) ?>
-      <?= navItem('salesperformance/sales_estimation.php', $icoSales, 'Sales Estimation', false, $navBasePath) ?>
-      <?= navItem('salesperformance/asd_comparison.php', $icoSales, 'Active Agent & ASD', false, $navBasePath) ?>
-      <?= navItem('salesperformance/topupper_product.php', $icoSales, 'Top Upper Product', false, $navBasePath) ?>
-      <?= navItem('salesperformance/topbottom_product.php', $icoSales, 'Top Bottom Product', false, $navBasePath) ?>
-      <?= navItem('salesperformance/reqruitment.php', $icoSales, 'Reqruitment', false, $navBasePath) ?>
+      <?= navItem('performance_sales/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
+      <?= navItem('performance_sales/sales_channel.php', $icoSales, 'Sales Channel', $currentPage === 'sales_channel.php', $navBasePath) ?>
+      <?= navItem('performance_sales/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
+      <?= navItem('performance_sales/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
+      <?= navItem('performance_sales/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
+      <?= navItem('performance_sales/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
+      <?= navItem('performance_sales/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
+      <?= navItem('performance_sales/recruitment.php', $icoSales, 'Recruitment', $currentPage === 'recruitment.php', $navBasePath) ?>
     </div>
   </div>
-  <?= navItem('products.php', $icoBox, 'Products', $activeNav === 'products', $navBasePath) ?>
-  
+  <div class="nav-group" data-nav-id="agentperformance">
+    <button type="button" class="nav-parent <?= $activeNav === 'agentperformance' ? 'active' : '' ?>" aria-expanded="false">
+      <span class="nav-parent-content">
+        <span class="ni"><?= $icoMembers ?></span>
+        <span class="nav-label">Agent Performance</span>
+      </span>
+      <span class="nav-chev">▾</span>
+    </button>
+    <div class="nav-children">
+      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $activeNav === 'agentperformance', $navBasePath) ?>
+    </div>
+  </div>
   <div class="nav-divider"></div>
   <div class="sidebar-section-label">Tools</div>
-  <?= navItem('upload_reports/index.php', $icoUpload, 'Upload Reports', $activeNav === 'upload', $navBasePath) ?>
+  <?= navItem('upload_reports/', $icoUpload, 'Upload Reports', $activeNav === 'upload', $navBasePath) ?>
+  <?= navItem('upload_reports/upload_members.php', $icoMembers, 'Upload Members', $activeNav === 'upload_members', $navBasePath) ?>
+  <?= navItem('salestarget/', $icoUpload, 'Sales Target', $activeNav === 'salestarget', $navBasePath) ?>
   <?= navItem('upload_reports/manual_sales.php', $icoSales, 'Manual Sales', $activeNav === 'manual_sales', $navBasePath) ?>
   
   <div class="nav-divider"></div>
@@ -135,7 +160,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   
   <div class="sidebar-section-label">Reports</div>
   <div class="nav-group open" data-nav-id="salesperformance">
-    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' ? 'active' : '' ?>" aria-expanded="true">
+    <button type="button" class="nav-parent <?= $activeNav === 'salesperformance' || in_array($currentPage, $salesPerformancePages, true) ? 'active' : '' ?>" aria-expanded="true">
       <span class="nav-parent-content">
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
@@ -143,19 +168,34 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <span class="nav-chev">▾</span>
     </button>
     <div class="nav-children">
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Comparison', $activeNav === 'salesperformance', $navBasePath) ?>
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Sales Estimation', false, $navBasePath) ?>
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Monthly Summary', false, $navBasePath) ?>
-      <?= navItem('salesperformance/sales_comparison.php', $icoSales, 'Yearly Overview', false, $navBasePath) ?>
+      <?= navItem('performance_sales/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
+      <?= navItem('performance_sales/hub_comparison.php', $icoSales, 'Hub Comparison', $currentPage === 'hub_comparison.php', $navBasePath) ?>
+      <?= navItem('performance_sales/asd_comparison.php', $icoSales, 'Active Agent & ASD', $currentPage === 'asd_comparison.php', $navBasePath) ?>
+      <?= navItem('performance_sales/sales_brand.php', $icoSales, 'Sales by Brand', $currentPage === 'sales_brand.php', $navBasePath) ?>
+      <?= navItem('performance_sales/overall_products.php', $icoSales, 'Overall Products', $currentPage === 'overall_products.php', $navBasePath) ?>
+      <?= navItem('performance_sales/nafesa_products.php', $icoSales, 'Nafesa Products', $currentPage === 'nafesa_products.php', $navBasePath) ?>
+      <?= navItem('performance_sales/recruitment.php', $icoSales, 'Recruitment', $currentPage === 'recruitment.php', $navBasePath) ?>
+      <?= navItem('performance_sales/sales_channel.php', $icoSales, 'Sales Channel', $currentPage === 'sales_channel.php', $navBasePath) ?>
     </div>
   </div>
-  <?= navItem('product-bundles.php', $icoBundle, 'Product Bundles', $activeNav === 'bundles', $navBasePath) ?>
-  <?= navItem('sales.php', $icoSales, 'Sales Upload', $activeNav === 'sales', $navBasePath) ?>
-  <?= navItem('members.php', $icoMembers, 'Members Upload', $activeNav === 'members', $navBasePath) ?>
+  <div class="nav-group" data-nav-id="agentperformance">
+    <button type="button" class="nav-parent <?= $activeNav === 'agentperformance' ? 'active' : '' ?>" aria-expanded="false">
+      <span class="nav-parent-content">
+        <span class="ni"><?= $icoMembers ?></span>
+        <span class="nav-label">Agent Performance</span>
+      </span>
+      <span class="nav-chev">▾</span>
+    </button>
+    <div class="nav-children">
+      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $activeNav === 'agentperformance', $navBasePath) ?>
+    </div>
+  </div>
   
   <div class="nav-divider"></div>
   <div class="sidebar-section-label">Tools</div>
-  <?= navItem('upload_reports/index.php', $icoUpload, 'Upload Reports', $activeNav === 'upload', $navBasePath) ?>
+  <?= navItem('upload_reports/', $icoUpload, 'Upload Reports', $activeNav === 'upload', $navBasePath) ?>
+  <?= navItem('upload_reports/upload_members.php', $icoMembers, 'Upload Members', $activeNav === 'upload_members', $navBasePath) ?>
+  <?= navItem('salestarget/', $icoUpload, 'Sales Target', $activeNav === 'salestarget', $navBasePath) ?>
   <?= navItem('upload_reports/manual_sales.php', $icoSales, 'Manual Sales', $activeNav === 'manual_sales', $navBasePath) ?>
   
   <div class="nav-divider"></div>
@@ -163,6 +203,59 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 </aside>
 
 <script>
+  function openDrawer() {
+    const drawer = document.getElementById('sidebarDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    if (!drawer || !overlay) return;
+
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeDrawer() {
+    const drawer = document.getElementById('sidebarDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    if (!drawer || !overlay) return;
+
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function toggleSidebarOnDesktop() {
+    if (window.innerWidth >= 900) {
+      const collapsed = document.body.classList.toggle('sidebar-collapsed');
+
+      try {
+        if (collapsed) {
+          localStorage.setItem('adminSidebarCollapsed', '1');
+        } else {
+          localStorage.removeItem('adminSidebarCollapsed');
+        }
+      } catch (error) {
+        // Continue without saved sidebar state.
+      }
+    } else {
+      openDrawer();
+    }
+  }
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeDrawer();
+  });
+
+  try {
+    if (
+      window.innerWidth >= 900 &&
+      localStorage.getItem('adminSidebarCollapsed') === '1'
+    ) {
+      document.body.classList.add('sidebar-collapsed');
+    }
+  } catch (error) {
+    // Continue without saved sidebar state.
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     const groups = document.querySelectorAll('.nav-group');
 
@@ -172,13 +265,6 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 
       parent.addEventListener('click', function () {
         const willOpen = !group.classList.contains('open');
-
-        groups.forEach(function (item) {
-          item.classList.remove('open');
-          const btn = item.querySelector('.nav-parent');
-          if (btn) btn.setAttribute('aria-expanded', 'false');
-        });
-
         group.classList.toggle('open', willOpen);
         parent.setAttribute('aria-expanded', String(willOpen));
       });
@@ -238,10 +324,10 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 
       let shouldOpen;
       if (saved !== null) {
-        // ada preference user sebelum ni → guna itu
-        shouldOpen = saved === 'true';
+        // Keep the active page reachable even when an old saved state was closed.
+        shouldOpen = saved === 'true' || !!hasActiveChild;
       } else {
-        // takde preference lagi → buka hanya kalau page semasa dalam group ni
+        // Open the group automatically when the current page belongs to it.
         shouldOpen = !!hasActiveChild;
       }
 

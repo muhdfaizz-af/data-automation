@@ -1,0 +1,14 @@
+[2026-09-25 15:47:43] [INFO] Starting login-agent import run. from=2026-08-01 to=2026-08-01
+[2026-09-25 15:47:43] [INFO] Company ID resolved: 1 for code MY
+[2026-09-25 15:47:43] [INFO] Created import batch ID 12
+[2026-09-25 15:47:44] [INFO] Session login succeeded. Fetching report from admin source.
+[2026-09-25 15:47:46] [INFO] Fetched report content; rows detected: 2124
+[2026-09-25 15:47:48] [WARN] Skipped invalid login timestamp for member MY084965: 2026
+[2026-09-25 15:47:49] [WARN] Skipped invalid login timestamp for member SG052005: 2026
+[2026-09-25 15:47:49] [WARN] Skipped invalid login timestamp for member MY116499: 2026
+[2026-09-25 15:47:50] [WARN] Skipped invalid login timestamp for member MY087699: 2026
+[2026-09-25 15:47:52] [WARN] Skipped invalid login timestamp for member MY086050: 2026
+[2026-09-25 15:47:53] [WARN] Skipped invalid login timestamp for member MY027806: 2026
+[2026-09-25 15:47:53] [WARN] Skipped invalid login timestamp for member MY089843: 2026
+[2026-09-25 15:47:53] [WARN] Skipped invalid login timestamp for member MY091016: 2026
+[2026-09-25 15:47:56] [INFO] Import finished. inserted=13759 failed=8 total=13767 batch_id=12
