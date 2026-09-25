@@ -416,6 +416,20 @@ function dashboardMoney($amount) {
     return 'RM ' . number_format((float)$amount, 2);
 }
 
+function dashboardMoneyNoCents($amount) {
+    return 'RM ' . number_format((float)$amount, 0);
+}
+
+function dashboardSignedMoney($amount) {
+    $amount = (float)$amount;
+    return ($amount >= 0 ? '+' : '-') . 'RM ' . number_format(abs($amount), 2);
+}
+
+function dashboardSignedCount($amount) {
+    $amount = (int)$amount;
+    return ($amount >= 0 ? '+' : '-') . number_format(abs($amount));
+}
+
 function dashboardMoneyShort($amount) {
     $amount = (float)$amount;
     if (abs($amount) >= 1000000) return 'RM ' . number_format($amount / 1000000, 2) . 'M';
@@ -601,7 +615,13 @@ svg{display:block;}
 .mi-teal{background:rgba(0,180,180,.12);} .mi-purple{background:rgba(124,58,237,.1);}
 .mi-gold{background:rgba(245,166,35,.12);}
 .metric-label{font-size:0.75rem;font-weight:700;color:var(--gray-700);}
-.metric-value{font-size:1.1875rem;font-weight:800;color:var(--ink);margin:10px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.metric-value{font-size:1.1875rem;font-weight:800;color:var(--ink);margin:10px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.metric-compare{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;}
+.metric-diff-amt{font-size:0.75rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.metric-diff-pct{font-size:0.6875rem;font-weight:800;padding:1px 7px;border-radius:10px;white-space:nowrap;}
+.metric-diff-pct.mf-up{background:rgba(16,185,129,.12);}
+.metric-diff-pct.mf-down{background:rgba(224,32,46,.1);}
+.metric-ref{font-size:0.6875rem;font-weight:600;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .metric-foot{font-size:0.6875rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mf-up{color:var(--green);} .mf-down{color:var(--red);} .mf-neutral{color:var(--gray-500);font-weight:600;}
 
@@ -758,7 +778,20 @@ $ytdChange = dashboardChange($d['ytd'], $d['ytd_prev']);
 $agentChange = dashboardChange($d['active_agents'], $d['active_agents_prev']);
 $newAgentChange = dashboardChange($d['new_agent_mtd'], $d['new_agent_mtd_prev']);
 $asdChange = dashboardChange($d['asd'], $d['asd_prev']);
-$trendChange = dashboardChange(array_sum($d['trend']), $d['trend_prev_total']);
+
+// ── Difference amounts (for the clearer KPI comparison format) ──
+$totalDiff = $d['total'] - $d['previous_total'];
+$mtdDiff = $d['mtd'] - $d['mtd_prev'];
+$ytdDiff = $d['ytd'] - $d['ytd_prev'];
+$newAgentDiff = $d['new_agent_mtd'] - $d['new_agent_mtd_prev'];
+$asdDiff = $d['asd'] - $d['asd_prev'];
+
+// ── Sales Trend: current day vs average of the previous 6 days shown in the chart ──
+$trendValues = array_values($d['trend']);
+$trendCurrentDay = end($trendValues) ?: 0;
+$trendPrev6 = array_slice($trendValues, 0, max(0, count($trendValues) - 1));
+$trendPrev6Avg = count($trendPrev6) > 0 ? array_sum($trendPrev6) / count($trendPrev6) : 0;
+$trendChange = dashboardChange($trendCurrentDay, $trendPrev6Avg);
 
 $dayOfMonth = (int)date('j', strtotime($d['report_date']));
 $daysInMonth = (int)date('t', strtotime($d['report_date']));
@@ -824,27 +857,47 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">Total Sales (<?= htmlspecialchars($reportShort) ?>)</span><span class="metric-icon mi-red">&#128200;</span></div>
             <div class="metric-value"><?= dashboardMoney($d['total']) ?></div>
-            <div class="metric-foot <?= $previousChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $previousChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($previousChange), 1) ?>% vs <?= htmlspecialchars($prevDayLabel) ?></div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $totalDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedMoney($totalDiff) ?></span>
+                <span class="metric-diff-pct <?= $previousChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $previousChange >= 0 ? '+' : '-' ?><?= number_format(abs($previousChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevDayLabel) ?></div>
         </article>
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">MTD Sales</span><span class="metric-icon mi-green">&#128176;</span></div>
             <div class="metric-value"><?= dashboardMoney($d['mtd']) ?></div>
-            <div class="metric-foot <?= $mtdChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $mtdChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($mtdChange), 1) ?>% vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $mtdDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedMoney($mtdDiff) ?></span>
+                <span class="metric-diff-pct <?= $mtdChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $mtdChange >= 0 ? '+' : '-' ?><?= number_format(abs($mtdChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
         </article>
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">YTD Sales</span><span class="metric-icon mi-teal">&#128202;</span></div>
             <div class="metric-value"><?= dashboardMoney($d['ytd']) ?></div>
-            <div class="metric-foot <?= $ytdChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $ytdChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($ytdChange), 1) ?>% vs <?= htmlspecialchars($prevYearLabel) ?> (YTD)</div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $ytdDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedMoney($ytdDiff) ?></span>
+                <span class="metric-diff-pct <?= $ytdChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $ytdChange >= 0 ? '+' : '-' ?><?= number_format(abs($ytdChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevYearLabel) ?> (YTD)</div>
         </article>
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">New Agent (MTD)</span><span class="metric-icon mi-purple">&#128101;</span></div>
             <div class="metric-value"><?= number_format($d['new_agent_mtd']) ?></div>
-            <div class="metric-foot <?= $newAgentChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $newAgentChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($newAgentChange), 1) ?>% vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $newAgentDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedCount($newAgentDiff) ?></span>
+                <span class="metric-diff-pct <?= $newAgentChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $newAgentChange >= 0 ? '+' : '-' ?><?= number_format(abs($newAgentChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
         </article>
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">ASD / Avg Sales per Dealer</span><span class="metric-icon mi-gold">&#127919;</span></div>
             <div class="metric-value"><?= dashboardMoney($d['asd']) ?></div>
-            <div class="metric-foot <?= $asdChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $asdChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($asdChange), 1) ?>% vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $asdDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedMoney($asdDiff) ?></span>
+                <span class="metric-diff-pct <?= $asdChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $asdChange >= 0 ? '+' : '-' ?><?= number_format(abs($asdChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
         </article>
     </section>
 
@@ -897,7 +950,7 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
         <article class="dashboard-card">
             <div class="card-heading">
                 <h2>Sales Trend (Last 7 Days)</h2>
-                <span class="trend-pill <?= $trendChange >= 0 ? '' : 'down' ?>"><?= $trendChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($trendChange), 1) ?>% vs previous 7 days</span>
+                <span class="trend-pill <?= $trendChange >= 0 ? '' : 'down' ?>"><?= $trendChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($trendChange), 1) ?>% vs Last 6 Days Avg</span>
             </div>
             <div class="trend-chart-wrap">
                 <svg viewBox="0 0 <?= $chartW ?> <?= $chartH ?>" class="trend-chart-svg" preserveAspectRatio="none">
@@ -922,12 +975,12 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
         <article class="dashboard-card">
             <div class="card-heading">
                 <h2>Monthly Performance (<?= htmlspecialchars(date('M Y', strtotime($d['report_date']))) ?>)</h2>
-                <span class="monthly-pill <?= $onTrack ? '' : 'behind' ?>">&#127919; <?= $onTrack ? 'On track to meet monthly target!' : 'Behind monthly target' ?></span>
+                <span class="monthly-pill <?= $onTrack ? '' : 'behind' ?>">&#127919; <?= $onTrack ? 'Above Monthly Target' : 'Behind Monthly Target' ?></span>
             </div>
-            <div class="monthly-value"><?= dashboardMoney($d['mtd']) ?> <small>/ <?= $d['monthly_target_full'] > 0 ? dashboardMoney($d['monthly_target_full']) : 'No target set' ?></small></div>
+            <div class="monthly-value"><?= dashboardMoney($d['mtd']) ?> <small>/ <?= $d['monthly_target_full'] > 0 ? dashboardMoneyNoCents($d['monthly_target_full']) : 'No target set' ?></small></div>
             <div class="monthly-progress"><span style="width:<?= $monthlyProgress ?>%"></span></div>
             <div class="monthly-stats">
-                <div class="monthly-stat">Estimated Target as of <?= htmlspecialchars(date('d M Y', strtotime($d['report_date']))) ?><strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>
+                <div class="monthly-stat">Estimated Target (as at <?= htmlspecialchars(date('d M Y', strtotime($d['report_date']))) ?>)<strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>
                 <div class="monthly-stat <?= $monthlyDifference < 0 ? 'neg' : '' ?>">Difference<strong><?= $d['monthly_target'] > 0 ? ($monthlyDifference >= 0 ? '+' : '-') . dashboardMoney(abs($monthlyDifference)) . ' (' . ($monthlyDifferencePercent >= 0 ? '+' : '') . number_format($monthlyDifferencePercent, 1) . '%)' : '—' ?></strong></div>
                 <div class="monthly-stat">Days Remaining<strong><?= $daysRemaining ?> days</strong></div>
             </div>
