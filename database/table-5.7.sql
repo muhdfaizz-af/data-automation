@@ -2,6 +2,7 @@
 -- Daily Sales Report - MySQL Schema
 -- FULL VERSION
 -- MEMBERS + COMPOSITE MEMBER FOREIGN KEY
+-- + login_agents (log 1 row = 1 login event)
 -- ============================================================
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -575,7 +576,83 @@ CREATE TABLE `daily_report_runs` (
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci
 COMMENT='Stores generated Daily Sales Report results';
--- ===========================================================
+
+-- ============================================================
+-- TABLE: login_agents (BARU)
+-- Log setiap login agent - 1 row = 1 login event
+-- ============================================================
+DROP TABLE IF EXISTS `login_agents`;
+
+CREATE TABLE `login_agents` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+
+    `member_code` VARCHAR(50) NOT NULL
+        COMMENT 'Linked ke members.member_code',
+    `member_name` VARCHAR(150) DEFAULT NULL
+        COMMENT 'Snapshot nama masa insert (elak masalah kalau nama member tukar/hilang kemudian)',
+
+    `login_time` DATETIME NOT NULL
+        COMMENT '1 row = 1 login event',
+
+    `import_batch_id` BIGINT UNSIGNED DEFAULT NULL
+        COMMENT 'Reuse import_batches sedia ada, file_type = AGENT_LOGIN, untuk track/avoid duplicate pull',
+
+    `inserted_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        COMMENT 'Auto-capture bila row ni di-insert ke DB (bukan masa login sebenar - tu login_time)',
+
+    PRIMARY KEY (`id`),
+
+    -- Tiada UNIQUE pada (member_code, login_time) sengaja:
+    -- data source ada duplicate exact-timestamp login yang sah,
+    -- jadi tak boleh unique-kan combo tu.
+
+    KEY `idx_login_agents_member_code`
+        (`member_code`),
+    KEY `idx_login_agents_login_time`
+        (`login_time`),
+    KEY `idx_login_agents_member_time`
+        (`member_code`, `login_time`),
+    KEY `idx_login_agents_import_batch_id`
+        (`import_batch_id`),
+
+    CONSTRAINT `fk_login_agents_member`
+        FOREIGN KEY (`member_code`)
+        REFERENCES `members` (`member_code`)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT `fk_login_agents_import_batch`
+        FOREIGN KEY (`import_batch_id`)
+        REFERENCES `import_batches` (`id`)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL
+
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci
+COMMENT='Log setiap login agent - 1 row = 1 login time (diambil dari API hourly login report)';
+
+-- ============================================================
 -- ENABLE FOREIGN KEYS
 -- ============================================================
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ============================================================
+-- CONTOH QUERY BERGUNA (login_agents)
+-- ============================================================
+
+-- Total login count per member (real-time, tak payah simpan column count)
+-- SELECT member_code, member_name, COUNT(*) AS login_count
+-- FROM login_agents
+-- GROUP BY member_code, member_name;
+
+-- Login dalam range tarikh tertentu
+-- SELECT * FROM login_agents
+-- WHERE login_time BETWEEN '2025-03-01 00:00:00' AND '2025-03-31 23:59:59'
+-- ORDER BY login_time;
+
+-- Login per jam (untuk "Hourly User Login Count")
+-- SELECT DATE(login_time) AS login_date, HOUR(login_time) AS login_hour, COUNT(*) AS total
+-- FROM login_agents
+-- GROUP BY login_date, login_hour
+-- ORDER BY login_date, login_hour;
