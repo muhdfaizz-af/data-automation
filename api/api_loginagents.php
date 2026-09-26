@@ -17,6 +17,10 @@
  *   - Instead, we guard against the whole date range being imported twice
  *     (e.g. cron firing twice, or a manual run overlapping with cron) by
  *     checking import_batches before doing any work. See alreadyImported().
+ *
+ * NOTE: This version does NOT require the PHP cURL extension. HTTP requests
+ * are made using file_get_contents() + stream_context_create() instead.
+ * Cookies are tracked manually and persisted as JSON in $cookieFile.
  */
 
 require_once __DIR__ . '/config.php';
@@ -24,14 +28,15 @@ require_once __DIR__ . '/config.php';
 define('ADMIN_SOURCE_DEFAULT_FROM', date('Y-m-d', strtotime('yesterday')));
 define('ADMIN_SOURCE_DEFAULT_TO', date('Y-m-d', strtotime('yesterday')));
 */
-define('ADMIN_SOURCE_DEFAULT_FROM', '2026-08-01');
-define('ADMIN_SOURCE_DEFAULT_TO', '2026-08-01');
+define('ADMIN_SOURCE_DEFAULT_FROM', '2025-01-01');
+define('ADMIN_SOURCE_DEFAULT_TO', '2026-09-24');
 define('ADMIN_SOURCE_LOGIN_PATH', '/index.php/sysapp/Login/Login');
 define('ADMIN_SOURCE_REPORT_PATH', '/index.php/report/RepDailyBonusExport/print');
 define('ADMIN_SOURCE_COMPANY_CODE', 'MY');
 define('API_LOG_DIR', __DIR__ . '/logs');
-define('LOGIN_AGENT_COOKIE_FILE', sys_get_temp_dir() . '/login_agents_cookie.txt');
+define('LOGIN_AGENT_COOKIE_FILE', sys_get_temp_dir() . '/login_agents_cookie.json');
 define('AGENT_LOGIN_FILE_PREFIX', 'agentlogin_');
+define('AGENT_LOGIN_INSERT_BATCH_SIZE', 500);
 
 function writeApiLog(string $message, string $level = 'INFO'): void
 {
@@ -44,51 +49,137 @@ function writeApiLog(string $message, string $level = 'INFO'): void
     file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
 }
 
+/* -----------------------------------------------------------------------
+ * HTTP layer (cURL-free). Uses file_get_contents() + stream_context_create()
+ * and tracks cookies manually as a simple JSON name=>value store on disk.
+ * --------------------------------------------------------------------- */
+
+function loadCookiesFromFile(string $cookieFile): array
+{
+    if (!file_exists($cookieFile)) {
+        return [];
+    }
+    $raw = file_get_contents($cookieFile);
+    $cookies = json_decode((string) $raw, true);
+    return is_array($cookies) ? $cookies : [];
+}
+
+function saveCookiesToFile(string $cookieFile, array $cookies): void
+{
+    file_put_contents($cookieFile, json_encode($cookies), LOCK_EX);
+}
+
+function cookieHeaderString(array $cookies): string
+{
+    $parts = [];
+    foreach ($cookies as $name => $value) {
+        $parts[] = $name . '=' . $value;
+    }
+    return implode('; ', $parts);
+}
+
+function parseSetCookieHeaders(array $headers): array
+{
+    $cookies = [];
+    foreach ($headers as $header) {
+        if (stripos($header, 'Set-Cookie:') === 0) {
+            $cookiePart = trim(substr($header, strlen('Set-Cookie:')));
+            $nameValue = explode(';', $cookiePart, 2)[0];
+            $eqPos = strpos($nameValue, '=');
+            if ($eqPos !== false) {
+                $name = trim(substr($nameValue, 0, $eqPos));
+                $value = trim(substr($nameValue, $eqPos + 1));
+                if ($name !== '') {
+                    $cookies[$name] = $value;
+                }
+            }
+        }
+    }
+    return $cookies;
+}
+
 function httpRequest(string $method, string $url, string $cookieFile, array $options = []): array
 {
-    $ch = curl_init($url);
+    $cookies = loadCookiesFromFile($cookieFile);
 
-    $defaultOptions = [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_SSL_VERIFYHOST => 2,
-        CURLOPT_HEADER => false,
-        CURLOPT_TIMEOUT => 60,
-        CURLOPT_CONNECTTIMEOUT => 20,
-        CURLOPT_COOKIEJAR => $cookieFile,
-        CURLOPT_COOKIEFILE => $cookieFile,
+    $headerLines = [];
+    if (isset($options['headers']) && is_array($options['headers'])) {
+        foreach ($options['headers'] as $k => $v) {
+            $headerLines[] = $k . ': ' . $v;
+        }
+    }
+
+    if (!empty($cookies)) {
+        $headerLines[] = 'Cookie: ' . cookieHeaderString($cookies);
+    }
+
+    $body = null;
+    if ($method === 'POST' && isset($options['postFields'])) {
+        $body = $options['postFields'];
+        $hasContentType = false;
+        foreach ($headerLines as $line) {
+            if (stripos($line, 'Content-Type:') === 0) {
+                $hasContentType = true;
+                break;
+            }
+        }
+        if (!$hasContentType) {
+            $headerLines[] = 'Content-Type: application/x-www-form-urlencoded';
+        }
+    }
+
+    $contextOptions = [
+        'http' => [
+            'method' => $method,
+            'header' => implode("\r\n", $headerLines),
+            'timeout' => 60,
+            'follow_location' => 1,
+            'max_redirects' => 10,
+            'ignore_errors' => true, // still return body on 4xx/5xx
+        ],
+        'ssl' => [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+        ],
     ];
 
-    if ($method === 'POST') {
-        $defaultOptions[CURLOPT_POST] = true;
+    if ($body !== null) {
+        $contextOptions['http']['content'] = $body;
     }
 
-    if (isset($options['headers']) && is_array($options['headers'])) {
-        $headerList = [];
-        foreach ($options['headers'] as $k => $v) {
-            $headerList[] = $k . ': ' . $v;
-        }
-        $defaultOptions[CURLOPT_HTTPHEADER] = $headerList;
+    $context = stream_context_create($contextOptions);
+
+    $responseBody = @file_get_contents($url, false, $context);
+    $error = '';
+    $httpCode = 0;
+
+    if ($responseBody === false) {
+        $lastErr = error_get_last();
+        $error = $lastErr['message'] ?? 'Unknown stream error';
     }
 
-    if (isset($options['postFields'])) {
-        $defaultOptions[CURLOPT_POSTFIELDS] = $options['postFields'];
+    $responseHeaders = $http_response_header ?? [];
+
+    if (!empty($responseHeaders) && preg_match('/^HTTP\/\S+\s+(\d+)/', $responseHeaders[0], $m)) {
+        $httpCode = (int) $m[1];
     }
 
-    curl_setopt_array($ch, $defaultOptions);
-
-    $response = curl_exec($ch);
-    $error = curl_error($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $newCookies = parseSetCookieHeaders($responseHeaders);
+    if (!empty($newCookies)) {
+        $cookies = array_merge($cookies, $newCookies);
+        saveCookiesToFile($cookieFile, $cookies);
+    }
 
     return [
-        'http_code' => (int) $httpCode,
-        'body' => is_string($response) ? $response : '',
+        'http_code' => $httpCode,
+        'body' => is_string($responseBody) ? $responseBody : '',
         'error' => $error,
     ];
 }
+
+/* -----------------------------------------------------------------------
+ * Everything below is unchanged from the original cURL-based script.
+ * --------------------------------------------------------------------- */
 
 function parseCsrfToken(string $html): string
 {
@@ -478,6 +569,62 @@ function alreadyImported(PDO $pdo, int $companyId, string $fromDate, string $toD
     return $stmt->fetchColumn() !== false;
 }
 
+/**
+ * Preload all known member_code values into a lookup set (member_code => true).
+ *
+ * This replaces doing a SELECT per login-time row. For very large `members`
+ * tables this is still one single query + one pass to build the array,
+ * which is far cheaper than millions of round-trips.
+ */
+function loadMemberCodeSet(PDO $pdo): array
+{
+    $set = [];
+    $stmt = $pdo->query('SELECT member_code FROM members');
+    while (($code = $stmt->fetchColumn()) !== false) {
+        $set[(string) $code] = true;
+    }
+    $stmt->closeCursor();
+
+    return $set;
+}
+
+/**
+ * Flush a batch of prepared insert rows using one multi-row INSERT statement,
+ * wrapped in a transaction. Returns the number of rows inserted.
+ *
+ * $rows is an array of [member_code, member_name, login_time, import_batch_id].
+ */
+function flushInsertBatch(PDO $pdo, array $rows): int
+{
+    if (empty($rows)) {
+        return 0;
+    }
+
+    $placeholders = [];
+    $params = [];
+    foreach ($rows as $row) {
+        $placeholders[] = '(?, ?, ?, ?)';
+        $params[] = $row[0];
+        $params[] = $row[1];
+        $params[] = $row[2];
+        $params[] = $row[3];
+    }
+
+    $sql = 'INSERT INTO login_agents (member_code, member_name, login_time, import_batch_id) VALUES '
+        . implode(', ', $placeholders);
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $pdo->commit();
+        return count($rows);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
 function outputResult(array $result): void
 {
     if (PHP_SAPI === 'cli') {
@@ -546,17 +693,16 @@ function main(): void
     $reportRows = parseReportRows($reportBody);
     writeApiLog('Fetched report content; rows detected: ' . count($reportRows));
 
-    $memberCheckStmt = $pdo->prepare('SELECT member_code FROM members WHERE member_code = :member_code LIMIT 1');
-    $insertStmt = $pdo->prepare(
-        "INSERT INTO login_agents
-            (member_code, member_name, login_time, import_batch_id)
-         VALUES
-            (:member_code, :member_name, :login_time, :import_batch_id)"
-    );
+    // Preload valid member codes once instead of querying per login-time row.
+    $memberCodeSet = loadMemberCodeSet($pdo);
+    writeApiLog('Preloaded ' . count($memberCodeSet) . ' member codes for lookup.');
 
     $successCount = 0;
     $failedCount = 0;
     $skippedMissingMember = 0;
+
+    $pendingRows = [];
+    $batchSize = AGENT_LOGIN_INSERT_BATCH_SIZE;
 
     foreach ($reportRows as $row) {
         $memberCode = trim((string) ($row['member_code'] ?? ''));
@@ -571,26 +717,40 @@ function main(): void
                 continue;
             }
 
-            $memberCheckStmt->execute([':member_code' => $memberCode]);
-            if ($memberCheckStmt->fetchColumn() === false) {
+            if (!isset($memberCodeSet[$memberCode])) {
                 $skippedMissingMember++;
                 writeApiLog('Skipped member not found in members table: ' . $memberCode, 'WARN');
                 continue;
             }
 
-            try {
-                $insertStmt->execute([
-                    ':member_code' => $memberCode,
-                    ':member_name' => $memberName !== '' ? $memberName : null,
-                    ':login_time' => $loginTime,
-                    ':import_batch_id' => $importBatchId,
-                ]);
-                $successCount++;
-            } catch (Throwable $e) {
-                $failedCount++;
-                writeApiLog('Insert failed for member ' . $memberCode . ' @ ' . $loginTime . ': ' . $e->getMessage(), 'ERROR');
+            $pendingRows[] = [
+                $memberCode,
+                $memberName !== '' ? $memberName : null,
+                $loginTime,
+                $importBatchId,
+            ];
+
+            if (count($pendingRows) >= $batchSize) {
+                try {
+                    $successCount += flushInsertBatch($pdo, $pendingRows);
+                } catch (Throwable $e) {
+                    $failedCount += count($pendingRows);
+                    writeApiLog('Batch insert failed (' . count($pendingRows) . ' rows): ' . $e->getMessage(), 'ERROR');
+                }
+                $pendingRows = [];
             }
         }
+    }
+
+    // Flush any remaining rows that didn't fill a full batch.
+    if (!empty($pendingRows)) {
+        try {
+            $successCount += flushInsertBatch($pdo, $pendingRows);
+        } catch (Throwable $e) {
+            $failedCount += count($pendingRows);
+            writeApiLog('Final batch insert failed (' . count($pendingRows) . ' rows): ' . $e->getMessage(), 'ERROR');
+        }
+        $pendingRows = [];
     }
 
     $totalRows = $successCount + $failedCount + $skippedMissingMember;
