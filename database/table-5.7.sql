@@ -856,7 +856,7 @@ CREATE TABLE `login_agents` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 
     `member_code` VARCHAR(50) NOT NULL
-        COMMENT 'Linked ke members.member_code',
+        COMMENT 'Member code from the source report; no foreign key relationship',
     `member_name` VARCHAR(150) DEFAULT NULL
         COMMENT 'Snapshot nama masa insert (elak masalah kalau nama member tukar/hilang kemudian)',
 
@@ -883,12 +883,6 @@ CREATE TABLE `login_agents` (
         (`member_code`, `login_time`),
     KEY `idx_login_agents_import_batch_id`
         (`import_batch_id`),
-
-    CONSTRAINT `fk_login_agents_member`
-        FOREIGN KEY (`member_code`)
-        REFERENCES `members` (`member_code`)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
 
     CONSTRAINT `fk_login_agents_import_batch`
         FOREIGN KEY (`import_batch_id`)
