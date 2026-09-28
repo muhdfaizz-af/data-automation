@@ -587,6 +587,7 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .metric-change.neutral {color: var(--gray-500);}
 .table-wrap {overflow-x: auto;}
 
+<<<<<<< HEAD
 /* ── TABLE STYLING ── */
 .main .table-wrap {width: 100%; overflow-x: auto; border: 1px solid #E6E6EA; border-radius: 12px; background: #FFFFFF;}
 .main .comparison-table.country-breakdown-table {width: 100%; min-width: 850px; table-layout: auto; border-collapse: separate; border-spacing: 0;}
@@ -600,6 +601,14 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .main .comparison-table.country-breakdown-table tbody tr:last-child td {border-bottom: 0;}
 .main .comparison-table.country-breakdown-table tbody tr:first-child td {background: #F7F7F9; font-weight: 800;}
 
+=======
+/* ── COMPARISON TABLE ── */
+.comparison-table {width: 100%;border-collapse: collapse;}
+.comparison-table th,.comparison-table td {padding: 13px 15px;border-bottom: 1px solid var(--black-100);text-align: right;font-size: 0.8125rem;}
+.comparison-table th:first-child,.comparison-table td:first-child {text-align: left;}
+.comparison-table th {color: var(--black-500);font-size: 0.6875rem;letter-spacing: .35px;text-transform: uppercase;}
+.comparison-table td {font-weight: 700;}
+>>>>>>> origin/faizz_code
 .note {margin-top: 16px;color: var(--black-500);font-size: 0.75rem;line-height: 1.7;}
 .order-type-option:hover {border-color: var(--red);}
 .order-type-option input {width: 16px;height: 16px;accent-color: var(--red);}

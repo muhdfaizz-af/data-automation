@@ -763,6 +763,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 /* ── RANKING SECTION ── */
 .ranking-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
 .ranking-card {min-width:0;}
+<<<<<<< HEAD
 .table-wrap {overflow-x:auto;border:1px solid #E6E6EA;border-radius:12px;background:var(--white);}
 .ranking-table {width:100%;min-width:650px;border-collapse:separate;border-spacing:0;}
 .ranking-table th,.ranking-table td {padding:14px 16px;border-bottom:1px solid #ECECF0;text-align:left;vertical-align:middle;font-size:0.75rem;}
@@ -778,10 +779,45 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 .brand-badge {display:inline-flex;min-width:max-content;min-height:32px;padding:5px 10px;align-items:center;justify-content:center;border-radius:20px;background:var(--gray-100);font-size:0.6875rem;font-weight:800;line-height:1.15;white-space:nowrap;}
 .sales-value {color:var(--ink);font-weight:800;}
 .ranking-table .empty-row {padding:30px;color:var(--gray-500);text-align:center;}
+=======
+.table-wrap {width:100%;min-width:0;overflow-x:auto;}
+.ranking-table {width:100%;min-width:650px;table-layout:fixed;border-collapse:collapse;}
+.ranking-table th, .ranking-table td {padding:12px 8px;border-bottom:1px solid var(--black-100);text-align:left;vertical-align:top;font-size:0.6865rem;overflow-wrap:anywhere;}
+.ranking-table th {color:var(--black-500);font-size:0.6875rem;letter-spacing:.3px;text-transform:uppercase;}
+.ranking-table th:nth-child(1),.ranking-table td:nth-child(1) {width:10%;}
+.ranking-table th:nth-child(2),.ranking-table td:nth-child(2) {width:39%;}
+.ranking-table th:nth-child(3),.ranking-table td:nth-child(3) {width:17%;}
+.ranking-table th:nth-child(4),.ranking-table td:nth-child(4) {width:14%;}
+.ranking-table th:nth-child(5),.ranking-table td:nth-child(5) {width:21%;}
+.ranking-table th:nth-child(4),.ranking-table td:nth-child(4),
+.ranking-table th:nth-child(5),.ranking-table td:nth-child(5) {text-align:right;}
+.rank-number {display:inline-flex;width:25px;height:25px;align-items:center;justify-content:center;border-radius:50%;background:var(--gray-100);font-weight:800;}
+.product-code,.source-codes {margin-top:4px;color:var(--black-500);font-size:0.6875rem;line-height:1.4;}
+.brand-badge {display:inline-flex;min-width:76px;min-height:32px;padding:5px 10px;align-items:center;justify-content:center;border-radius:20px;background:var(--gray-100);font-size:0.6875rem;font-weight:800;line-height:1.15;text-align:center;}
+.sales-value {color:var(--black);font-weight:800;white-space:normal;}
+.empty-row {padding:30px !important;color:var(--gray-500);text-align:center !important;}
+>>>>>>> origin/faizz_code
 @media(max-width:1100px) {.ranking-grid {grid-template-columns:1fr;}}
 @media(max-width:900px) {.main,body.sidebar-collapsed .main {margin-left:0;padding:20px;}}
 @media(max-width:700px) {.filter-grid,.summary-grid {grid-template-columns:1fr;}}
 </style>
+<<<<<<< HEAD
+=======
+<link rel="stylesheet" href="../includes/report_tables.css">
+<style>
+.ranking-card .ranking-table{width:100%;min-width:0;table-layout:auto;}
+.ranking-card .ranking-table th,
+.ranking-card .ranking-table td{width:auto;padding-left:8px;padding-right:8px;}
+.ranking-card .ranking-table th{white-space:nowrap;overflow-wrap:normal;word-break:normal;}
+.ranking-card .ranking-table td{white-space:normal;overflow-wrap:anywhere;}
+.ranking-card .brand-badge{min-width:max-content;max-width:none;white-space:nowrap;overflow-wrap:normal;word-break:normal;}
+.ranking-card .ranking-table td:nth-child(3){white-space:nowrap;overflow-wrap:normal;word-break:normal;}
+@media(min-width:901px) and (max-width:1440px){
+    .ranking-card .ranking-table th{font-size:0.625rem;}
+    .ranking-card .ranking-table td{font-size:0.6875rem;}
+}
+</style>
+>>>>>>> origin/faizz_code
 </head>
 
 <body>

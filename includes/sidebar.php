@@ -117,7 +117,18 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('performance_sales/recruitment.php', $icoSales, 'Recruitment', $currentPage === 'recruitment.php', $navBasePath) ?>
     </div>
   </div>
-  <?= navItem('performance_agent/index.php', $icoSales, 'Agent Behaviour', $activeNav === 'performance_agent', $navBasePath) ?>
+  <div class="nav-group" data-nav-id="agentperformance">
+    <button type="button" class="nav-parent <?= $activeNav === 'agentperformance' ? 'active' : '' ?>" aria-expanded="false">
+      <span class="nav-parent-content">
+        <span class="ni"><?= $icoMembers ?></span>
+        <span class="nav-label">Agent Performance</span>
+      </span>
+      <span class="nav-chev">▾</span>
+    </button>
+    <div class="nav-children">
+      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $activeNav === 'agentperformance', $navBasePath) ?>
+    </div>
+  </div>
   <div class="nav-divider"></div>
   <div class="sidebar-section-label">Tools</div>
   <?= navItem('upload_reports/', $icoUpload, 'Upload Reports', $activeNav === 'upload', $navBasePath) ?>
@@ -167,7 +178,18 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <?= navItem('performance_sales/sales_channel.php', $icoSales, 'Sales Channel', $currentPage === 'sales_channel.php', $navBasePath) ?>
     </div>
   </div>
-  <?= navItem('performance_agent/index.php', $icoSales, 'Agent Behaviour', $activeNav === 'performance_agent', $navBasePath) ?>
+  <div class="nav-group" data-nav-id="agentperformance">
+    <button type="button" class="nav-parent <?= $activeNav === 'agentperformance' ? 'active' : '' ?>" aria-expanded="false">
+      <span class="nav-parent-content">
+        <span class="ni"><?= $icoMembers ?></span>
+        <span class="nav-label">Agent Performance</span>
+      </span>
+      <span class="nav-chev">▾</span>
+    </button>
+    <div class="nav-children">
+      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $activeNav === 'agentperformance', $navBasePath) ?>
+    </div>
+  </div>
   
   <div class="nav-divider"></div>
   <div class="sidebar-section-label">Tools</div>
@@ -243,13 +265,6 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 
       parent.addEventListener('click', function () {
         const willOpen = !group.classList.contains('open');
-
-        groups.forEach(function (item) {
-          item.classList.remove('open');
-          const btn = item.querySelector('.nav-parent');
-          if (btn) btn.setAttribute('aria-expanded', 'false');
-        });
-
         group.classList.toggle('open', willOpen);
         parent.setAttribute('aria-expanded', String(willOpen));
       });

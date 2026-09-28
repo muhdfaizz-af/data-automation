@@ -1026,12 +1026,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
-              <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="monthlyTotalValue">—</div>
-            </div>
-            <div class="stat-block stat-average">
               <div class="stat-label">Average Monthly Sales</div>
-              <div class="stat-value" id="monthlyAverageValue">—</div>
+              <div class="stat-value" id="monthlyTotalValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="monthly">
@@ -1142,12 +1138,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
-              <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="yearlyTotalValue">—</div>
-            </div>
-            <div class="stat-block stat-average">
               <div class="stat-label">Average Yearly Sales</div>
-              <div class="stat-value" id="yearlyAverageValue">—</div>
+              <div class="stat-value" id="yearlyTotalValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="yearly">
@@ -1345,6 +1337,35 @@ function buildPeriodLabel(key, label, rowKey){
 }
 
 // ════════════════════════════════════════════════════
+// KPI helpers for the Monthly / Yearly stat cards.
+// ════════════════════════════════════════════════════
+
+// Monthly: total number of days that actually fall inside the day-of-month
+// range (dayFrom..dayTo), clipped to how many days each month in the range
+// actually has (e.g. dayTo=31 but a given month only has 30 or 28 days).
+function countMonthlySelectedDays(keys, dayFrom, dayTo){
+    let total = 0;
+    (keys || []).forEach(function(key){
+        const parts = String(key).split('-');
+        const y = Number(parts[0]);
+        const m = Number(parts[1]);
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const effectiveTo = Math.min(dayTo, daysInMonth);
+        if (effectiveTo >= dayFrom) {
+            total += (effectiveTo - dayFrom + 1);
+        }
+    });
+    return total;
+}
+
+// Yearly: total number of months covered across all selected years, using
+// the same start-month/end-month window applied to every year.
+function countYearlySelectedMonths(numYears, monthFrom, monthTo){
+    const monthsPerYear = Math.max(0, (monthTo - monthFrom + 1));
+    return numYears * monthsPerYear;
+}
+
+// ════════════════════════════════════════════════════
 // BREAKDOWN TABLE — mirrors chartData[key], one row per label,
 // "Difference (RM)" compares each row to the row before it in the SAME range.
 // ════════════════════════════════════════════════════
@@ -1485,9 +1506,6 @@ function applySectionResult(key, json){
     chartData[key].values = json.values || [];
     chartData[key].keys   = json.keys || [];
 
-    document.getElementById(key + 'TotalValue').textContent   = formatRM(json.total);
-    document.getElementById(key + 'AverageValue').textContent = formatRM(json.average);
-
     const errDiv = document.getElementById(key + 'ErrorMsg');
     if (json.error) {
         errDiv.textContent = json.error;
@@ -1518,6 +1536,38 @@ function applySectionResult(key, json){
         if (json.month_to)   sectionMeta.yearly.monthTo   = Number(json.month_to);
         if (json.day_from)   sectionMeta.yearly.dayFrom   = Number(json.day_from);
         if (json.day_to)     sectionMeta.yearly.dayTo     = Number(json.day_to);
+    }
+
+    // ── Stat cards ──
+    // Daily: unchanged — "Total Sales" and "Average Daily Sales" as before.
+    if (key === 'daily') {
+        document.getElementById('dailyTotalValue').textContent   = formatRM(json.total);
+        document.getElementById('dailyAverageValue').textContent = formatRM(json.average);
+    }
+    // Monthly: "Average Monthly Sales" (total ÷ number of selected months) and
+    // "Average Daily Sales" (total ÷ total number of selected days across those months).
+    else if (key === 'monthly') {
+        document.getElementById('monthlyTotalValue').textContent = formatRM(json.average);
+
+        const dayFrom = Number(json.day_from) || sectionMeta.monthly.dayFrom;
+        const dayTo   = Number(json.day_to)   || sectionMeta.monthly.dayTo;
+        const totalSelectedDays = countMonthlySelectedDays(chartData.monthly.keys, dayFrom, dayTo);
+        const avgDaily = totalSelectedDays > 0 ? (json.total / totalSelectedDays) : 0;
+        const monthlyAverageEl = document.getElementById('monthlyAverageValue');
+        if (monthlyAverageEl) monthlyAverageEl.textContent = formatRM(avgDaily);
+    }
+    // Yearly: "Average Yearly Sales" (total ÷ number of selected years) and
+    // "Average Monthly Sales" (total ÷ total number of included months across those years).
+    else if (key === 'yearly') {
+        document.getElementById('yearlyTotalValue').textContent = formatRM(json.average);
+
+        const monthFrom = Number(json.month_from) || sectionMeta.yearly.monthFrom;
+        const monthTo   = Number(json.month_to)   || sectionMeta.yearly.monthTo;
+        const numYears  = chartData.yearly.keys.length || chartData.yearly.labels.length;
+        const totalSelectedMonths = countYearlySelectedMonths(numYears, monthFrom, monthTo);
+        const avgMonthly = totalSelectedMonths > 0 ? (json.total / totalSelectedMonths) : 0;
+        const yearlyAverageEl = document.getElementById('yearlyAverageValue');
+        if (yearlyAverageEl) yearlyAverageEl.textContent = formatRM(avgMonthly);
     }
 
     const typeSelect = document.querySelector('.chart-type-select[data-chart="' + key + '"]');
