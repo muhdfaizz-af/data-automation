@@ -444,11 +444,7 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
         member_code = str(get_row_value(row, header_map, ["memberid"]) or "").strip()
         if not order_id or not member_code:
             continue
-<<<<<<< HEAD
-        comp = company_cache.get(order_id)
-=======
         comp = company_cache.get_for_member(member_code)
->>>>>>> origin/faizz_code
         key = (comp["company_id"], member_code)
         member_params[key] = (
             comp["company_id"],
@@ -464,10 +460,7 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
                 INSERT INTO members (company_id, member_code, member_name, mobile_no)
                 VALUES (%s, %s, NULLIF(%s, ''), NULLIF(%s, ''))
                 ON DUPLICATE KEY UPDATE
-<<<<<<< HEAD
-=======
                     company_id = VALUES(company_id),
->>>>>>> origin/faizz_code
                     member_name = COALESCE(NULLIF(members.member_name, ''), VALUES(member_name)),
                     mobile_no = COALESCE(NULLIF(members.mobile_no, ''), VALUES(mobile_no))
                 """,
@@ -500,11 +493,7 @@ def _process_order_history(conn, rows, header_map, company_cache, batch_id):
                 continue
 
             batch_params.append((
-<<<<<<< HEAD
-                comp["company_id"], batch_id, order_id, dt,
-=======
                 order_comp["company_id"], batch_id, order_id, dt,
->>>>>>> origin/faizz_code
                 member_code,
                 get_row_value(row, header_map, ["membertype"]),
                 get_row_value(row, header_map, ["membername"]),

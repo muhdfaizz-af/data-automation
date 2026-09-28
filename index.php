@@ -615,9 +615,6 @@ svg{display:block;}
 .mi-teal{background:rgba(0,180,180,.12);} .mi-purple{background:rgba(124,58,237,.1);}
 .mi-gold{background:rgba(245,166,35,.12);}
 .metric-label{font-size:0.75rem;font-weight:700;color:var(--gray-700);}
-<<<<<<< HEAD
-.metric-value{font-size:1.1875rem;font-weight:800;color:var(--ink);margin:10px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-=======
 .metric-value{font-size:1.1875rem;font-weight:800;color:var(--ink);margin:10px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .metric-compare{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;}
 .metric-diff-amt{font-size:0.75rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -625,7 +622,6 @@ svg{display:block;}
 .metric-diff-pct.mf-up{background:rgba(16,185,129,.12);}
 .metric-diff-pct.mf-down{background:rgba(224,32,46,.1);}
 .metric-ref{font-size:0.6875rem;font-weight:600;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
->>>>>>> origin/faizz_code
 .metric-foot{font-size:0.6875rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mf-up{color:var(--green);} .mf-down{color:var(--red);} .mf-neutral{color:var(--gray-500);font-weight:600;}
 
@@ -800,11 +796,7 @@ $trendChange = dashboardChange($trendCurrentDay, $trendPrev6Avg);
 $dayOfMonth = (int)date('j', strtotime($d['report_date']));
 $daysInMonth = (int)date('t', strtotime($d['report_date']));
 $proratedTarget = (float)$d['monthly_target'];
-<<<<<<< HEAD
-$monthlyProgress = $d['monthly_target'] > 0 ? min(100, ($d['mtd'] / $d['monthly_target']) * 100) : 0;
-=======
 $monthlyProgress = $d['monthly_target_full'] > 0 ? min(100, ($d['mtd'] / $d['monthly_target_full']) * 100) : 0;
->>>>>>> origin/faizz_code
 $monthlyDifference = $d['mtd'] - $proratedTarget;
 $monthlyDifferencePercent = $proratedTarget > 0 ? ($monthlyDifference / $proratedTarget) * 100 : 0;
 $daysRemaining = max(0, $daysInMonth - $dayOfMonth);
@@ -985,17 +977,10 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
                 <h2>Monthly Performance (<?= htmlspecialchars(date('M Y', strtotime($d['report_date']))) ?>)</h2>
                 <span class="monthly-pill <?= $onTrack ? '' : 'behind' ?>">&#127919; <?= $onTrack ? 'Above Monthly Target' : 'Behind Monthly Target' ?></span>
             </div>
-<<<<<<< HEAD
-            <div class="monthly-value"><?= dashboardMoney($d['mtd']) ?> <small>/ <?= $d['monthly_target_full'] > 0 ? dashboardMoney($d['monthly_target_full']) : 'No target set' ?></small></div>
-            <div class="monthly-progress"><span style="width:<?= $monthlyProgress ?>%"></span></div>
-            <div class="monthly-stats">
-                <div class="monthly-stat">Supposedly Current Target<strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>
-=======
             <div class="monthly-value"><?= dashboardMoney($d['mtd']) ?> <small>/ <?= $d['monthly_target_full'] > 0 ? dashboardMoneyNoCents($d['monthly_target_full']) : 'No target set' ?></small></div>
             <div class="monthly-progress"><span style="width:<?= $monthlyProgress ?>%"></span></div>
             <div class="monthly-stats">
                 <div class="monthly-stat">Estimated Target (as at <?= htmlspecialchars(date('d M Y', strtotime($d['report_date']))) ?>)<strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>
->>>>>>> origin/faizz_code
                 <div class="monthly-stat <?= $monthlyDifference < 0 ? 'neg' : '' ?>">Difference<strong><?= $d['monthly_target'] > 0 ? ($monthlyDifference >= 0 ? '+' : '-') . dashboardMoney(abs($monthlyDifference)) . ' (' . ($monthlyDifferencePercent >= 0 ? '+' : '') . number_format($monthlyDifferencePercent, 1) . '%)' : '—' ?></strong></div>
                 <div class="monthly-stat">Days Remaining<strong><?= $daysRemaining ?> days</strong></div>
             </div>

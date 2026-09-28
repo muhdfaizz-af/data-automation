@@ -28,8 +28,6 @@ if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) 
 }
 $_SESSION['last_activity'] = time();
 
-<<<<<<< HEAD
-=======
 // Handle member uploads in this page.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   header('Content-Type: application/json');
@@ -163,7 +161,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   exit;
 }
 
->>>>>>> origin/faizz_code
 // Define active nav for sidebar
 $activeNav = 'upload_members';
 $navBasePath = '../';
@@ -463,11 +460,7 @@ uploadBtn.addEventListener('click', async () => {
     progressText.textContent = '⏳ Uploading and processing file...';
     progressFill.style.width = '30%';
 
-<<<<<<< HEAD
-    const response = await fetch('process_members.php', {
-=======
     const response = await fetch('upload_members.php', {
->>>>>>> origin/faizz_code
       method: 'POST',
       body: formData
     });
