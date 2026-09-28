@@ -29,7 +29,7 @@ define('ADMIN_SOURCE_DEFAULT_FROM', date('Y-m-d', strtotime('yesterday')));
 define('ADMIN_SOURCE_DEFAULT_TO', date('Y-m-d', strtotime('yesterday')));
 */
 define('ADMIN_SOURCE_DEFAULT_FROM', '2025-01-01');
-define('ADMIN_SOURCE_DEFAULT_TO', '2026-09-24');
+define('ADMIN_SOURCE_DEFAULT_TO', '2026-09-27');
 define('ADMIN_SOURCE_LOGIN_PATH', '/index.php/sysapp/Login/Login');
 define('ADMIN_SOURCE_REPORT_PATH', '/index.php/report/RepDailyBonusExport/print');
 define('ADMIN_SOURCE_COMPANY_CODE', 'MY');
@@ -557,7 +557,7 @@ function alreadyImported(PDO $pdo, int $companyId, string $fromDate, string $toD
         "SELECT id FROM import_batches
          WHERE company_id = :company_id
            AND file_type = 'AGENT_LOGIN'
-           AND status IN ('completed', 'completed_with_errors')
+           AND status = 'completed'
            AND original_filename LIKE :prefix
          LIMIT 1"
     );
@@ -567,25 +567,6 @@ function alreadyImported(PDO $pdo, int $companyId, string $fromDate, string $toD
     ]);
 
     return $stmt->fetchColumn() !== false;
-}
-
-/**
- * Preload all known member_code values into a lookup set (member_code => true).
- *
- * This replaces doing a SELECT per login-time row. For very large `members`
- * tables this is still one single query + one pass to build the array,
- * which is far cheaper than millions of round-trips.
- */
-function loadMemberCodeSet(PDO $pdo): array
-{
-    $set = [];
-    $stmt = $pdo->query('SELECT member_code FROM members');
-    while (($code = $stmt->fetchColumn()) !== false) {
-        $set[(string) $code] = true;
-    }
-    $stmt->closeCursor();
-
-    return $set;
 }
 
 /**
@@ -693,13 +674,8 @@ function main(): void
     $reportRows = parseReportRows($reportBody);
     writeApiLog('Fetched report content; rows detected: ' . count($reportRows));
 
-    // Preload valid member codes once instead of querying per login-time row.
-    $memberCodeSet = loadMemberCodeSet($pdo);
-    writeApiLog('Preloaded ' . count($memberCodeSet) . ' member codes for lookup.');
-
     $successCount = 0;
     $failedCount = 0;
-    $skippedMissingMember = 0;
 
     $pendingRows = [];
     $batchSize = AGENT_LOGIN_INSERT_BATCH_SIZE;
@@ -714,12 +690,6 @@ function main(): void
             if ($loginTime === null) {
                 $failedCount++;
                 writeApiLog('Skipped invalid login timestamp for member ' . $memberCode . ': ' . $loginTimeRaw, 'WARN');
-                continue;
-            }
-
-            if (!isset($memberCodeSet[$memberCode])) {
-                $skippedMissingMember++;
-                writeApiLog('Skipped member not found in members table: ' . $memberCode, 'WARN');
                 continue;
             }
 
@@ -753,7 +723,7 @@ function main(): void
         $pendingRows = [];
     }
 
-    $totalRows = $successCount + $failedCount + $skippedMissingMember;
+    $totalRows = $successCount + $failedCount;
 
     $updateBatchStmt = $pdo->prepare(
         "UPDATE import_batches
@@ -767,12 +737,12 @@ function main(): void
     $updateBatchStmt->execute([
         ':total' => $totalRows,
         ':success' => $successCount,
-        ':failed' => $failedCount + $skippedMissingMember,
-        ':status' => ($failedCount + $skippedMissingMember) > 0 ? 'completed_with_errors' : 'completed',
+        ':failed' => $failedCount,
+        ':status' => $failedCount > 0 ? 'completed_with_errors' : 'completed',
         ':id' => $importBatchId,
     ]);
 
-    writeApiLog('Import finished. inserted=' . $successCount . ' failed=' . ($failedCount + $skippedMissingMember) . ' total=' . $totalRows . ' batch_id=' . $importBatchId);
+    writeApiLog('Import finished. inserted=' . $successCount . ' failed=' . $failedCount . ' total=' . $totalRows . ' batch_id=' . $importBatchId);
 
     outputResult([
         'success' => true,
@@ -781,8 +751,8 @@ function main(): void
         'to' => $toDate,
         'report_rows_found' => count($reportRows),
         'inserted_rows' => $successCount,
-        'failed_rows' => $failedCount + $skippedMissingMember,
-        'skipped_missing_member' => $skippedMissingMember,
+        'failed_rows' => $failedCount,
+        'skipped_missing_member' => 0,
         'message' => 'Login report imported successfully.',
     ]);
 }

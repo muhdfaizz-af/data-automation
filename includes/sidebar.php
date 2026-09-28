@@ -126,7 +126,8 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <span class="nav-chev">▾</span>
     </button>
     <div class="nav-children">
-      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $activeNav === 'agentperformance', $navBasePath) ?>
+      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $currentPage === 'agent_behavior.php', $navBasePath) ?>
+      <?= navItem('performance_agent/login_performance.php', $icoImperson, 'Login Performance', $currentPage === 'login_performance.php', $navBasePath) ?>
     </div>
   </div>
   <div class="nav-divider"></div>
@@ -187,7 +188,8 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <span class="nav-chev">▾</span>
     </button>
     <div class="nav-children">
-      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $activeNav === 'agentperformance', $navBasePath) ?>
+      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $currentPage === 'agent_behavior.php', $navBasePath) ?>
+      <?= navItem('performance_agent/login_performance.php', $icoImperson, 'Login Performance', $currentPage === 'login_performance.php', $navBasePath) ?>
     </div>
   </div>
   
