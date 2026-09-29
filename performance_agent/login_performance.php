@@ -229,9 +229,9 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $toDate)) $toDate = $defaultTo;
 if ($toDate > $today) $toDate = $today;
 if ($fromDate > $toDate) $fromDate = $toDate;
 
-$region = $_GET['region'] ?? 'MY';
+$region = $_GET['region'] ?? 'ALL';
 $allowedRegions = ['ALL' => 'All Regions', 'MY' => 'Malaysia', 'SG' => 'Singapore'];
-if (!isset($allowedRegions[$region])) $region = 'MY';
+if (!isset($allowedRegions[$region])) $region = 'ALL';
 
 $pdo = getDBConnection();
 $dbActive = $pdo instanceof PDO;
@@ -342,14 +342,20 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
 
 /* ── Hourly bar chart (CSS bars) ── */
 .lp-chart-wrap{display:flex;gap:10px;}
+.lp-chart-wrap {display: flex;gap: var(--lp-axis-gap);}
 .lp-yaxis{display:flex;flex-direction:column;justify-content:space-between;font-size:0.625rem;color:var(--gray-500);font-weight:700;padding:4px 0 26px;text-align:right;height:230px;}
+.lp-yaxis {flex: 0 0 var(--lp-yaxis-width);width: var(--lp-yaxis-width);box-sizing: border-box;}
 .lp-bars{flex:1;display:grid;grid-template-columns:repeat(24,1fr);align-items:end;height:230px;border-left:1px solid var(--gray-100);border-bottom:1px solid var(--gray-100);position:relative;background-image:repeating-linear-gradient(to top,var(--gray-100) 0,var(--gray-100) 1px,transparent 1px,transparent 20%);}
 .lp-bar-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative;}
 .lp-bar-val{font-size:0.5625rem;font-weight:800;color:var(--ink);margin-bottom:3px;white-space:nowrap;}
 .lp-bar{width:60%;border-radius:3px 3px 0 0;background:linear-gradient(180deg,#ef3b47,var(--red));}
+.lp-bars {flex: 1;min-width: 0;grid-template-columns: repeat(24, minmax(0, 1fr));}
 .lp-bar.peak{background:linear-gradient(180deg,#ff5a63,var(--red-dark));}
 .lp-xaxis{display:grid;grid-template-columns:repeat(24,1fr);margin-left:calc(56px + 10px);margin-top:4px;}
 .lp-xaxis span{font-size:0.5625rem;color:var(--gray-500);font-weight:700;text-align:center;}
+.lp-xaxis {display: grid;grid-template-columns: repeat(24, minmax(0, 1fr));margin-left: calc(var(--lp-yaxis-width) + var(--lp-axis-gap) + 1px);margin-top: 4px;}
+.lp-xaxis span {min-width: 0;text-align: center;}
+.lp-grid {--lp-yaxis-width: 40px;--lp-axis-gap: 10px;}
 
 /* ── Top 5 hours ── */
 .lp-top-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
@@ -520,7 +526,7 @@ include __DIR__ . '/../includes/sidebar.php';
                         <tr>
                             <td><?= htmlspecialchars(loginPerfHourLabel($row['hour'])) ?></td>
                             <td><?= number_format($row['total']) ?></td>
-                            <td><?= number_format($row['avg_per_day'], 1) ?></td>
+                            <td><?= number_format($row['avg_per_day'], 0) ?></td>
                             <td><?= number_format($row['contribution'], 1) ?>%</td>
                         </tr>
                     <?php endforeach; ?>
@@ -676,7 +682,7 @@ include __DIR__ . '/../includes/sidebar.php';
                 tr.innerHTML =
                     '<td>' + hourLabel(r.hour) + '</td>' +
                     '<td>' + fmt(r.total) + '</td>' +
-                    '<td>' + fmt(r.avg_per_day, 1) + '</td>' +
+                    '<td>' + fmt(r.avg_per_day, 0) + '</td>' +
                     '<td>' + fmt(r.contribution, 1) + '%</td>';
                 tbody.appendChild(tr);
             });
