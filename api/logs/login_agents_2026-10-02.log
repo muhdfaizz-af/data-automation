@@ -1,0 +1,20 @@
+[2026-10-02 14:25:14] [INFO] Starting login-agent import. from=2026-10-01 to=2026-10-01
+[2026-10-02 14:25:15] [INFO] Session login succeeded. Days to import: 1
+[2026-10-02 14:25:16] [INFO] Downloaded 2026-10-01 report: 213431 bytes
+[2026-10-02 14:25:16] [INFO] Day 2026-10-01 done in 1.4s. rows=0 inserted=0 dup=0 failed=0 mem_peak=16MB
+[2026-10-02 14:32:15] [INFO] Starting login-agent import run. from=2025-01-01 to=2026-10-01
+[2026-10-02 14:32:15] [INFO] Created import batch ID 12
+[2026-10-02 14:32:15] [INFO] Session login succeeded. Downloading report 2025-01-01 to 2026-10-01
+[2026-10-02 14:32:23] [INFO] Downloaded report: 50.5 MB
+[2026-10-02 14:32:24] [INFO] Import finished in 9.4s. members=0 inserted=0 failed=0 batch_id=12 mem_peak=120MB
+[2026-10-02 14:36:50] [INFO] Starting login-agent import run. from=2025-01-01 to=2026-10-01
+[2026-10-02 14:36:50] [INFO] Created import batch ID 13
+[2026-10-02 14:36:51] [INFO] Session login succeeded. Downloading report 2025-01-01 to 2026-10-01
+[2026-10-02 14:36:59] [INFO] Downloaded report: 50.5 MB
+[2026-10-02 14:37:00] [WARN] Rolled back 0 partial rows of batch 13
+[2026-10-02 14:37:00] [ERROR] Fatal error: No member rows were parsed from the downloaded report. Check its format before retrying.
+[2026-10-02 14:38:17] [INFO] Starting login-agent import run. from=2025-01-01 to=2026-09-29
+[2026-10-02 14:38:17] [INFO] Company ID resolved: 1 for code MY
+[2026-10-02 14:38:17] [INFO] Created import batch ID 14
+[2026-10-02 14:38:19] [INFO] Session login succeeded. Fetching report from admin source.
+[2026-10-02 14:38:27] [INFO] Fetched report content; rows detected: 39575

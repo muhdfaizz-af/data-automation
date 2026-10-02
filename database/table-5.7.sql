@@ -167,25 +167,20 @@ CREATE TABLE `members` (
         ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
 
-    -- IMPORTANT:
-    -- member_code is globally unique, regardless of company
-    UNIQUE KEY `uq_members_member_code`
-        (`member_code`),
-    UNIQUE KEY `uq_members_company_code`
-        (`company_id`, `member_code`),
-    KEY `idx_members_member_code`
-        (`member_code`),
-    KEY `idx_members_sponsor_code`
-        (`sponsor_code`),
-    KEY `idx_members_cl_code`
-        (`cl_code`),
-    KEY `idx_members_status`
-        (`status`),
-    KEY `idx_members_email`
-        (`email`),
-    KEY `idx_members_import_batch_id`
-        (`import_batch_id`),
+    -- member_code unik secara global (juga digunakan oleh ON DUPLICATE KEY UPDATE)
+    UNIQUE KEY `uq_members_member_code` (`member_code`),
 
+    -- Index untuk foreign key
+    KEY `idx_members_company_id` (`company_id`),
+    KEY `idx_members_import_batch_id` (`import_batch_id`),
+
+    -- Index carian / hierarchy
+    KEY `idx_members_sponsor_code` (`sponsor_code`),
+    KEY `idx_members_cl_code` (`cl_code`),
+
+    -- Optional: buang kalau tak pernah guna dalam WHERE (import jadi lagi laju)
+    KEY `idx_members_status` (`status`),
+    KEY `idx_members_email` (`email`),
 
     CONSTRAINT `fk_members_company`
         FOREIGN KEY (`company_id`)
