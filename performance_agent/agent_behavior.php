@@ -382,8 +382,12 @@ function getAgentBehaviourReport(
 
         $summary[$category] += $sales;
         $summary['total'] += $sales;
-        $purchasingMembers[$category][$agentKey] = true;
-        $purchasingMembers['total'][$agentKey] = true;
+        $countKey = $category === 'new_agent'
+            ? strtoupper(trim((string)$memberCode))
+            : $agentKey;
+
+$purchasingMembers[$category][$countKey] = true;
+$purchasingMembers['total'][$agentKey] = true;
     }
 
     foreach ($summary as $key => $value) {
