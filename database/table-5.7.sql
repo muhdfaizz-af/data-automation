@@ -27,8 +27,11 @@ DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `admin_users` (`id`, `username`, `password`, `created_at`) VALUES
-(1, 'Faizz', '$2b$12$wFpcQ6EFWYeMxhusR06.3OT2Rf75XMAhpOnNvOCPX6GzfjvhivQwq', '2026-05-29 01:31:01');
-
+(1, 'Faizz', '$2b$12$wFpcQ6EFWYeMxhusR06.3OT2Rf75XMAhpOnNvOCPX6GzfjvhivQwq', '2026-05-28 17:31:01'),
+(2, 'Amir', '$2y$10$Br6c6wfOHJK4jpxy8ypCl.HKduAGHGa23FhpbMnsBionL0oNPyFBe', '2026-10-02 01:12:16'),
+(3, 'Denish', '$2y$10$6I.GJaAV1IThT1gT6qlxtudn7BNDGId.rLp5HwF1Qc7t0w5XMpKWG', '2026-10-02 01:12:25'),
+(4, 'Daeng', '$2y$10$DAkV/zJSRyUOiuJq11Y2xuJvD1mZkWEzdnAKYGVgoE9Eec4BY2Do2', '2026-10-02 01:12:34'),
+(5, 'Ika', '$2y$10$ulsc95pTSYZVmZ9NZ6m9juyMo13nYsms4OSu0akCZhLgYSeukdgpO', '2026-10-02 01:12:43');
 
 -- ============================================================
 -- TABLE: companies
