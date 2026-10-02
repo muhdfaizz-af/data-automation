@@ -1,2 +1,3 @@
 cd python
 python index.py
+python upload_members.py
