@@ -15,10 +15,19 @@
 session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/../error.log');
 
 require_once __DIR__ . '/../config/db.php';
 
 const IMPORT_CHUNK = 1000; // bilangan row per query
+const MEMBER_IMPORT_LOG_FILE = __DIR__ . '/../error.log';
+
+function memberImportLogError(string $context, $error): void {
+  $message = sprintf("[%s] [upload_members] %s: %s", date('Y-m-d H:i:s'), $context, $error instanceof Throwable ? $error->getMessage() : (string)$error);
+  if ($error instanceof Throwable) $message .= "\n" . $error->getTraceAsString();
+  error_log($message . "\n\n", 3, MEMBER_IMPORT_LOG_FILE);
+}
 
 $isLoggedIn = isset($_SESSION['admin_id']);
 $adminUsername = $_SESSION['admin_username'] ?? '';
@@ -259,6 +268,7 @@ function runImport(PDO $pdo, int $batchId, string $path, string $ext, string $de
             $pdo->commit();
             $ok += $n;
         } catch (Throwable $e) {
+          memberImportLogError('Batch insert failed; retrying rows individually', $e);
             if ($pdo->inTransaction()) $pdo->rollBack();
             // Fallback: cari row yang bermasalah satu-satu
             $pdo->beginTransaction();
@@ -267,6 +277,7 @@ function runImport(PDO $pdo, int $batchId, string $path, string $ext, string $de
                 try { $stmt->execute($params); $ok++; }
                 catch (Throwable $e2) {
                     $failed++;
+                  memberImportLogError("Database error on row {$lines[$k]}", $e2);
                     if (count($errors) < 100) $errors[] = "Row {$lines[$k]}: " . $e2->getMessage();
                 }
             }
@@ -282,6 +293,7 @@ function runImport(PDO $pdo, int $batchId, string $path, string $ext, string $de
         $p = parseMemberRow($row, $map, $companies, $batchId);
         if (is_string($p)) {
             $failed++;
+          memberImportLogError("Invalid data on row {$gen->key()}", $p);
             if (count($errors) < 100) $errors[] = 'Row ' . $gen->key() . ': ' . $p;
             continue;
         }
@@ -337,6 +349,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ignore_user_abort(true);
 
     if (!isset($_FILES['members']) || $_FILES['members']['error'] !== UPLOAD_ERR_OK) {
+      $uploadError = $_FILES['members']['error'] ?? 'missing file';
+      memberImportLogError('File upload failed', 'Upload error: ' . $uploadError);
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Please select a member list file (check upload_max_filesize / post_max_size if file is large).']);
         exit;
@@ -412,21 +426,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $f = progressPath($batchId);
             $p = is_file($f) ? json_decode((string)file_get_contents($f), true) : null;
             if ($p && ($p['status'] ?? '') === 'processing') {
+              $lastError = error_get_last();
+              if ($lastError && in_array($lastError['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
+                memberImportLogError('Fatal error during background import', $lastError['message'] . ' in ' . $lastError['file'] . ':' . $lastError['line']);
+              }
                 $p['status'] = 'failed';
                 $p['message'] = 'Import stopped unexpectedly (server error / memory / timeout).';
                 writeProgress($batchId, $p);
-                try { dbConnect()->prepare("UPDATE import_batches SET status = 'failed' WHERE id = :id")->execute(['id' => $batchId]); } catch (Throwable $e) {}
+                try { dbConnect()->prepare("UPDATE import_batches SET status = 'failed' WHERE id = :id")->execute(['id' => $batchId]); }
+                catch (Throwable $e) { memberImportLogError('Failed to update batch status after fatal error', $e); }
             }
             if ($stored && is_file($stored)) @unlink($stored);
         });
 
         runImport($pdo, $batchId, $stored, $ext, $delimiter, $companies, $progress);
     } catch (Throwable $error) {
+      memberImportLogError('Upload/import failed', $error);
         if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
         if ($batchId) {
             // Sudah balas browser -> simpan error dalam progress
             writeProgress($batchId, ['status' => 'failed', 'message' => $error->getMessage(), 'errors' => []]);
-            try { $pdo->prepare("UPDATE import_batches SET status = 'failed' WHERE id = :id")->execute(['id' => $batchId]); } catch (Throwable $e) {}
+            try { $pdo->prepare("UPDATE import_batches SET status = 'failed' WHERE id = :id")->execute(['id' => $batchId]); }
+            catch (Throwable $e) { memberImportLogError('Failed to update batch status after import error', $e); }
         } else {
             if ($stored && is_file($stored)) @unlink($stored);
             http_response_code(500);
