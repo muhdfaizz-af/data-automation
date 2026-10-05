@@ -149,13 +149,11 @@ function dashboardProductCategory($brand, $itemCode, $description, $productType)
     $itemCode = strtoupper(trim($itemCode));
     $description = strtoupper(trim($description));
     $productType = strtoupper(trim($productType));
+    if (str_starts_with($itemCode, 'BPCC-') || str_contains($description, 'JOY CUP')) return null;
     foreach (['PAPERBAG', 'PAPER BAG', 'BUNTING', 'BROCHURE', 'FLYER', 'VOUCHER', 'DISPLAY', 'MINI RAK', 'MINI RACK', 'TABLE CLOTH', 'APRON', 'PLASTIC CUP', 'TUMBLER', 'WOVEN BAG', 'MENU BOARD', ' BOARD '] as $term) {
         if (str_contains($description, $term)) return null;
     }
-    if ($itemCode === 'BPCC-001' || str_contains($description, 'JOY CUP 12 OZ DOME SET')) return 'JOY CUP 12 OZ DOME SET (100PCS)';
-    if ($itemCode === 'BPCC-002' || str_contains($description, 'JOY CUP 12 OZ SIPPY SET')) return 'JOY CUP 12 OZ SIPPY SET (100PCS)';
-    if ($itemCode === 'BPCC-003' || str_contains($description, 'JOY CUP 16 OZ DOME SET')) return 'JOY CUP 16 OZ DOME SET (100PCS)';
-    if (preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002|JOY-BUNDLE-1|Q-BCD-002)(?:-|$)/', $itemCode) || str_contains($description, 'BELGIAN CHOCOLATE DRINK')) return '(BCDB) BOX BELGIAN CHOCOLATE DRINK';
+    if (preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002|JOY-BUNDLE-1|Q-BCD-002|Q-DRINKS4|Q-DRINKS4-C)(?:-|$)/', $itemCode) || str_contains($description, 'BELGIAN CHOCOLATE DRINK')) return '(BCDB) BOX BELGIAN CHOCOLATE DRINK';
     if (in_array($itemCode, ['CA-6', 'CA-006'], true) || str_starts_with($itemCode, 'CAC-011') || str_starts_with($itemCode, 'STK-CA-6') || str_contains($description, 'UNICORN STRAWBERRY')) return 'UNICORN STRAWBERRY CHOCOLATE TUB';
     if (str_contains($description, 'CUTIE MINI CHOCO CRUNCH')) return 'CUTIE MINI CHOCO CRUNCH TUB';
     if (str_contains($description, 'BUTTERCREAM LATTE')) return 'BUTTERCREAM LATTE DRINK';
@@ -198,12 +196,10 @@ function getDashboardTopProducts(PDO $pdo, $from, $to, $rate) {
     $stmt->execute(['from' => $from . ' 00:00:00', 'to' => date('Y-m-d 00:00:00', strtotime($to . ' +1 day'))]);
     $rows = $stmt->fetchAll();
     $joyOrders = [];
-    $joyCupQuantities = [];
     foreach ($rows as $row) {
         $code = strtoupper(trim((string)$row['item_code']));
         $orderId = (int)$row['order_id'];
         if ($code === 'JOY-BUNDLE-1') $joyOrders[$orderId] = true;
-        if (in_array($code, ['BPC-001', 'BPC-002'], true)) $joyCupQuantities[$orderId][$code] = ($joyCupQuantities[$orderId][$code] ?? 0) + (int)$row['quantity'];
     }
     $products = [];
     foreach ($rows as $row) {
@@ -220,8 +216,6 @@ function getDashboardTopProducts(PDO $pdo, $from, $to, $rate) {
             if (!isset($products[$allocatedCategory])) $products[$allocatedCategory] = ['product' => $allocatedCategory, 'quantity' => 0, 'total' => 0.0];
             $products[$allocatedCategory]['total'] += $sales * $share;
             if ($share === 1.0 && dashboardQuantityRow($allocatedCategory, $code, $row['product_type'] ?? '', $row['item_description'] ?? '')) $products[$allocatedCategory]['quantity'] += (int)$row['quantity'];
-            $cupSource = ['BPCC-001' => 'BPC-001', 'BPCC-002' => 'BPC-001', 'BPCC-003' => 'BPC-002'][$code] ?? null;
-            if ($share === 1.0 && $cupSource !== null && isset($joyCupQuantities[(int)$row['order_id']][$cupSource])) $products[$allocatedCategory]['quantity'] += $joyCupQuantities[(int)$row['order_id']][$cupSource];
         }
     }
     $products = array_values(array_filter($products, static fn($product) => $product['total'] > 0));
@@ -339,10 +333,11 @@ function getDashboardData($pdo, $requestedDate = null) {
     try {
         // Keep the headline total aligned with Overall Products (Tax Invoice formula).
         // Match Sales Comparison: confirmed system orders plus manual sales.
-        $data['total'] = $sumOrders($reportDate, $reportDate);
+        $data['total'] = getOverallProductSales($pdo, $reportDate, $reportDate, $rate);
         $data['mtd'] = $sumOrders($monthStart, $reportDate);
         $data['ytd'] = $sumOrders($yearStart, $reportDate);
-        $data['previous_total'] = $sumOrders(date('Y-m-d', strtotime($reportDate . ' -1 day')), date('Y-m-d', strtotime($reportDate . ' -1 day')));
+        $previousDate = date('Y-m-d', strtotime($reportDate . ' -1 day'));
+        $data['previous_total'] = getOverallProductSales($pdo, $previousDate, $previousDate, $rate);
 
         // ── Previous-period comparisons ──
         $prevMonthStart = date('Y-m-01', strtotime($reportDate . ' -1 month'));

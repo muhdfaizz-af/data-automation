@@ -582,9 +582,9 @@ body.sidebar-collapsed .main {margin-left: var(--sidebar-w-collapsed);}
 .metric-period {font-size: 0.6875rem;font-weight: 700;color: var(--black-500);}
 .metric-value {max-width: 100%;font-size: 20;font-weight: 700;line-height: 1.25;overflow-wrap: anywhere;}
 .metric-change {margin-top: 14px;padding-top: 12px;border-top: 1px solid var(--gray-100);font-size: 0.75rem;font-weight: 800;}
-.metric-change.positive {color: var(--green);}
-.metric-change.negative {color: var(--red);}
-.metric-change.neutral {color: var(--gray-500);}
+.metric-change.positive, .country-breakdown-table td.positive {color: #15803D;}
+.metric-change.negative, .country-breakdown-table td.negative {color: #DC2626;}
+.metric-change.neutral, .country-breakdown-table td.neutral {color: #6B7280;}
 .table-wrap {overflow-x: auto;}
 
 /* ── COMPARISON TABLE ── */
