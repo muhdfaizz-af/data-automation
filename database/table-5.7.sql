@@ -520,23 +520,20 @@ CREATE TABLE `login_agents` (
         COMMENT '1 row = 1 login event',
 
     `import_batch_id` BIGINT UNSIGNED DEFAULT NULL
-        COMMENT 'Reuse import_batches sedia ada, file_type = AGENT_LOGIN, untuk track/avoid duplicate pull',
+        COMMENT 'Reuse import_batches sedia ada, file_type = AGENT_LOGIN, untuk track batch import',
 
     `inserted_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         COMMENT 'Auto-capture bila row ni di-insert ke DB (bukan masa login sebenar - tu login_time)',
 
     PRIMARY KEY (`id`),
 
-    -- Tiada UNIQUE pada (member_code, login_time) sengaja:
-    -- data source ada duplicate exact-timestamp login yang sah,
-    -- jadi tak boleh unique-kan combo tu.
+    -- Member sama + masa sama hanya boleh masuk SEKALI.
+    -- Member berbeza pada masa sama tetap dibenarkan.
+    UNIQUE KEY `uq_login_agents_member_time`
+        (`member_code`, `login_time`),
 
-    KEY `idx_login_agents_member_code`
-        (`member_code`),
     KEY `idx_login_agents_login_time`
         (`login_time`),
-    KEY `idx_login_agents_member_time`
-        (`member_code`, `login_time`),
     KEY `idx_login_agents_import_batch_id`
         (`import_batch_id`),
 
@@ -549,7 +546,7 @@ CREATE TABLE `login_agents` (
 ) ENGINE=InnoDB
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci
-COMMENT='Log setiap login agent - 1 row = 1 login time (diambil dari API hourly login report)';
+COMMENT='Log setiap login agent - 1 row = 1 login time (unik ikut member_code + login_time)';
 
 -- ============================================================
 -- ENABLE FOREIGN KEYS

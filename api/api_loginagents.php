@@ -11,12 +11,11 @@
  * protected URL, parses login timestamps, and inserts them into login_agents.
  *
  * Duplicate protection:
- *   - login_agents has NO unique key on (member_code, login_time) by design,
- *     since the source can legitimately report two different members logging
- *     in at the exact same timestamp.
- *   - Instead, we guard against the whole date range being imported twice
- *     (e.g. cron firing twice, or a manual run overlapping with cron) by
- *     checking import_batches before doing any work. See alreadyImported().
+ *   - login_agents has a UNIQUE KEY on (member_code, login_time).
+ *   - Same member + same timestamp is inserted ONCE only; repeats are skipped
+ *     (INSERT ... ON DUPLICATE KEY UPDATE id = id).
+ *   - Different members at the same timestamp are still allowed.
+ *   - Because of this, re-running any date range is safe.
  *
  * NOTE: This version does NOT require the PHP cURL extension. HTTP requests
  * are made using file_get_contents() + stream_context_create() instead.
@@ -29,7 +28,7 @@ define('ADMIN_SOURCE_DEFAULT_FROM', date('Y-m-d', strtotime('yesterday')));
 define('ADMIN_SOURCE_DEFAULT_TO', date('Y-m-d', strtotime('yesterday')));
 */
 define('ADMIN_SOURCE_DEFAULT_FROM', '2025-01-01');
-define('ADMIN_SOURCE_DEFAULT_TO', '2026-09-29');
+define('ADMIN_SOURCE_DEFAULT_TO', '2025-12-31');
 define('ADMIN_SOURCE_LOGIN_PATH', '/index.php/sysapp/Login/Login');
 define('ADMIN_SOURCE_REPORT_PATH', '/index.php/report/RepDailyBonusExport/print');
 define('ADMIN_SOURCE_COMPANY_CODE', 'MY');
@@ -178,7 +177,7 @@ function httpRequest(string $method, string $url, string $cookieFile, array $opt
 }
 
 /* -----------------------------------------------------------------------
- * Everything below is unchanged from the original cURL-based script.
+ * Login + report parsing
  * --------------------------------------------------------------------- */
 
 function parseCsrfToken(string $html): string
@@ -491,6 +490,10 @@ function parseReportRows(string $raw): array
     return $rows;
 }
 
+/* -----------------------------------------------------------------------
+ * Database
+ * --------------------------------------------------------------------- */
+
 function buildPdo(): PDO
 {
     $dsn = sprintf(
@@ -540,66 +543,40 @@ function validLoginTime(string $value): ?string
 }
 
 /**
- * Guard against importing the same (company, date range) more than once.
+ * Insert a batch of rows using one multi-row INSERT, inside a transaction.
  *
- * login_agents has no unique key on (member_code, login_time) by design
- * (source can legitimately report two different members logging in at the
- * exact same timestamp), so duplicate protection happens here instead: we
- * check import_batches for a prior successful run covering this exact
- * from/to range, identified via the original_filename prefix written by
- * this script (see main()).
- */
-function alreadyImported(PDO $pdo, int $companyId, string $fromDate, string $toDate): bool
-{
-    $prefix = AGENT_LOGIN_FILE_PREFIX . $fromDate . '_' . $toDate . '_';
-
-    $stmt = $pdo->prepare(
-        "SELECT id FROM import_batches
-         WHERE company_id = :company_id
-           AND file_type = 'AGENT_LOGIN'
-           AND status = 'completed'
-           AND original_filename LIKE :prefix
-         LIMIT 1"
-    );
-    $stmt->execute([
-        ':company_id' => $companyId,
-        ':prefix' => $prefix . '%',
-    ]);
-
-    return $stmt->fetchColumn() !== false;
-}
-
-/**
- * Flush a batch of prepared insert rows using one multi-row INSERT statement,
- * wrapped in a transaction. Returns the number of rows inserted.
+ * Rows whose (member_code, login_time) already exist are skipped silently
+ * thanks to the UNIQUE KEY uq_login_agents_member_time and
+ * ON DUPLICATE KEY UPDATE id = id (a no-op update, so rowCount() = 0 for them).
  *
  * $rows is an array of [member_code, member_name, login_time, import_batch_id].
+ *
+ * @return array{0:int,1:int} [inserted, skipped_duplicates]
  */
-function flushInsertBatch(PDO $pdo, array $rows): int
+function flushInsertBatch(PDO $pdo, array $rows): array
 {
     if (empty($rows)) {
-        return 0;
+        return [0, 0];
     }
 
     $placeholders = [];
     $params = [];
     foreach ($rows as $row) {
         $placeholders[] = '(?, ?, ?, ?)';
-        $params[] = $row[0];
-        $params[] = $row[1];
-        $params[] = $row[2];
-        $params[] = $row[3];
+        array_push($params, $row[0], $row[1], $row[2], $row[3]);
     }
 
     $sql = 'INSERT INTO login_agents (member_code, member_name, login_time, import_batch_id) VALUES '
-        . implode(', ', $placeholders);
+        . implode(', ', $placeholders)
+        . ' ON DUPLICATE KEY UPDATE id = id';
 
     $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
+        $inserted = $stmt->rowCount(); // skipped duplicates count as 0
         $pdo->commit();
-        return count($rows);
+        return [$inserted, count($rows) - $inserted];
     } catch (Throwable $e) {
         $pdo->rollBack();
         throw $e;
@@ -616,6 +593,10 @@ function outputResult(array $result): void
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 }
+
+/* -----------------------------------------------------------------------
+ * Main
+ * --------------------------------------------------------------------- */
 
 function main(): void
 {
@@ -636,22 +617,6 @@ function main(): void
     }
 
     writeApiLog('Company ID resolved: ' . $companyId . ' for code ' . ADMIN_SOURCE_COMPANY_CODE);
-
-    // Idempotency guard: skip entirely if this exact date range was already
-    // imported successfully before (e.g. cron fired twice, or manual run
-    // overlapped with cron).
-    if (alreadyImported($pdo, (int) $companyId, $fromDate, $toDate)) {
-        $message = "Date range {$fromDate} to {$toDate} already imported for company " . ADMIN_SOURCE_COMPANY_CODE . '; skipping to avoid duplicate import.';
-        writeApiLog($message, 'INFO');
-        outputResult([
-            'success' => true,
-            'skipped' => true,
-            'from' => $fromDate,
-            'to' => $toDate,
-            'message' => $message,
-        ]);
-        return;
-    }
 
     $batchStmt = $pdo->prepare(
         "INSERT INTO import_batches
@@ -676,22 +641,45 @@ function main(): void
 
     $successCount = 0;
     $failedCount = 0;
-
+    $duplicateCount = 0;
+    $seen = [];          // in-memory dedupe within this report
     $pendingRows = [];
     $batchSize = AGENT_LOGIN_INSERT_BATCH_SIZE;
+
+    $flush = function () use ($pdo, &$pendingRows, &$successCount, &$failedCount, &$duplicateCount) {
+        if (empty($pendingRows)) {
+            return;
+        }
+        try {
+            [$ins, $dup] = flushInsertBatch($pdo, $pendingRows);
+            $successCount += $ins;
+            $duplicateCount += $dup;
+        } catch (Throwable $e) {
+            $failedCount += count($pendingRows);
+            writeApiLog('Batch insert failed (' . count($pendingRows) . ' rows): ' . $e->getMessage(), 'ERROR');
+        }
+        $pendingRows = [];
+    };
 
     foreach ($reportRows as $row) {
         $memberCode = trim((string) ($row['member_code'] ?? ''));
         $memberName = trim((string) ($row['member_name'] ?? ''));
-        $loginTimes = $row['login_times'] ?? [];
 
-        foreach ($loginTimes as $loginTimeRaw) {
+        foreach (($row['login_times'] ?? []) as $loginTimeRaw) {
             $loginTime = validLoginTime((string) $loginTimeRaw);
             if ($loginTime === null) {
                 $failedCount++;
                 writeApiLog('Skipped invalid login timestamp for member ' . $memberCode . ': ' . $loginTimeRaw, 'WARN');
                 continue;
             }
+
+            // Same member + same timestamp already seen in this report -> skip
+            $key = $memberCode . '|' . $loginTime;
+            if (isset($seen[$key])) {
+                $duplicateCount++;
+                continue;
+            }
+            $seen[$key] = true;
 
             $pendingRows[] = [
                 $memberCode,
@@ -701,29 +689,15 @@ function main(): void
             ];
 
             if (count($pendingRows) >= $batchSize) {
-                try {
-                    $successCount += flushInsertBatch($pdo, $pendingRows);
-                } catch (Throwable $e) {
-                    $failedCount += count($pendingRows);
-                    writeApiLog('Batch insert failed (' . count($pendingRows) . ' rows): ' . $e->getMessage(), 'ERROR');
-                }
-                $pendingRows = [];
+                $flush();
             }
         }
     }
 
     // Flush any remaining rows that didn't fill a full batch.
-    if (!empty($pendingRows)) {
-        try {
-            $successCount += flushInsertBatch($pdo, $pendingRows);
-        } catch (Throwable $e) {
-            $failedCount += count($pendingRows);
-            writeApiLog('Final batch insert failed (' . count($pendingRows) . ' rows): ' . $e->getMessage(), 'ERROR');
-        }
-        $pendingRows = [];
-    }
+    $flush();
 
-    $totalRows = $successCount + $failedCount;
+    $totalRows = $successCount + $failedCount + $duplicateCount;
 
     $updateBatchStmt = $pdo->prepare(
         "UPDATE import_batches
@@ -742,7 +716,13 @@ function main(): void
         ':id' => $importBatchId,
     ]);
 
-    writeApiLog('Import finished. inserted=' . $successCount . ' failed=' . $failedCount . ' total=' . $totalRows . ' batch_id=' . $importBatchId);
+    writeApiLog(
+        'Import finished. inserted=' . $successCount
+        . ' duplicates_skipped=' . $duplicateCount
+        . ' failed=' . $failedCount
+        . ' total=' . $totalRows
+        . ' batch_id=' . $importBatchId
+    );
 
     outputResult([
         'success' => true,
@@ -751,8 +731,8 @@ function main(): void
         'to' => $toDate,
         'report_rows_found' => count($reportRows),
         'inserted_rows' => $successCount,
+        'duplicate_skipped' => $duplicateCount,
         'failed_rows' => $failedCount,
-        'skipped_missing_member' => 0,
         'message' => 'Login report imported successfully.',
     ]);
 }
