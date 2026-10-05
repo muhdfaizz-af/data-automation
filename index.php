@@ -170,7 +170,11 @@ function dashboardProductCategory($brand, $itemCode, $description, $productType)
     if (str_starts_with($itemCode, 'ZEKY-BH') || str_starts_with($itemCode, 'STK-ZEKY-BH') || str_contains($description, 'ZEKY BRAIN HERO')) return 'ZEKY BRAIN HERO';
     if ($brand === 'STK' && preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) return 'SCARF';
     if ($brand === 'NAFESA') return preg_match('/^(?:NCH|NTU|NST|NIN)/', $itemCode) || str_contains($description, 'INNER') ? 'INNER' : 'SCARF';
+<<<<<<< HEAD
     if ($brand === 'CHOCO ALBAB') return in_array($productType, ['NORMAL', 'COMPOSITE'], true) ? dashboardProductName($description) : null;
+=======
+    if ($brand === 'CHOCO ALBAB') return $productType === 'NORMAL' ? dashboardProductName($description) : null;
+>>>>>>> c8ef31a (Initial commit)
     return null;
 }
 
