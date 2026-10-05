@@ -28,6 +28,7 @@ define('STARTER_KITS', [
     'STK-ZEKY' => 'Zeky',
     'STK-CA'   => 'Choco Albab',
     'STK-NF'   => 'Nafesa',
+    'STK-JOYP-1001' => 'JOYPRENEUR PACK',
 ]);
 
 define('REGISTRATION_ORDER_TYPES', [
@@ -213,6 +214,9 @@ function getRecruitmentMetrics(
 
               OR UPPER(TRIM(oi.item_code)) = 'STK-NF'
               OR UPPER(TRIM(oi.item_code)) LIKE 'STK-NF-%'
+
+              OR UPPER(TRIM(oi.item_code)) = 'STK-JOYP-1001'
+              OR UPPER(TRIM(oi.item_code)) LIKE 'STK-JOYP-1001-%'
           )
     ";
 
