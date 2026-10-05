@@ -108,7 +108,8 @@ $monthlyFrom = (new DateTimeImmutable($toDate))
 function getAgentBehaviourReport(
     PDO $pdo,
     string $from,
-    string $to
+    string $to,
+    bool $includeDetails = false
 ): array {
     $params = [
         'from_date' => $from . ' 00:00:00',
@@ -246,6 +247,7 @@ function getAgentBehaviourReport(
             'agentCounts' => $emptyMetrics,
             'asd' => $emptyMetrics,
             'firstPurchaseAgents' => [],
+            'details' => [],
         ];
     }
 
@@ -319,6 +321,7 @@ function getAgentBehaviourReport(
     ];
 
     $firstPurchaseAgents = [];
+    $details = [];
 
     foreach ($selectedRows as $row) {
         $memberCode = $row['member_code'];
@@ -331,6 +334,14 @@ function getAgentBehaviourReport(
             $summary['spc'] += $sales;
             $summary['total'] += $sales;
 
+            if ($includeDetails) {
+                $details[] = agentBehaviourDetail(
+                    $row, 'spc', $agentKey,
+                    !isset($purchasingMembers['spc'][$agentKey]),
+                    'Repurchase order recorded as Privilege Member or SPC; SPC takes priority.',
+                    null
+                );
+            }
             $purchasingMembers['spc'][$agentKey] = true;
             $purchasingMembers['total'][$agentKey] = true;
 
@@ -347,6 +358,7 @@ function getAgentBehaviourReport(
 
         $sales = (float)$row['sales_myr'];
         $category = 'existing_agent';
+        $reason = 'Distributor repurchase outside the joining/upgrade month and first purchase day.';
 
         $joinDate = !empty($row['joined_date'])
             ? new DateTimeImmutable($row['joined_date'])
@@ -359,6 +371,14 @@ function getAgentBehaviourReport(
             || (bool)$row['upgraded_in_month']
         ) {
             $category = 'new_agent';
+            $reasons = [];
+            if ($joinDate !== null && $joinDate->format('Y-m') === $orderDate->format('Y-m')) {
+                $reasons[] = 'Member joining date is in the order month';
+            }
+            if ((bool)$row['upgraded_in_month']) {
+                $reasons[] = 'Confirmed SPC upgrade in the same company and order month';
+            }
+            $reason = implode('; ', $reasons) . '.';
         } elseif (
             in_array($orderType, PURCHASE_ORDER_TYPES, true) &&
             $firstPurchaseDate !== null &&
@@ -366,6 +386,7 @@ function getAgentBehaviourReport(
                 $orderDate->format('Y-m-d')
         ) {
             $category = 'first_purchase';
+            $reason = 'Not New Agent; order is on the first confirmed Distributor repurchase day for this company.';
 
             $firstPurchaseAgents[$agentKey] = [
                 'member_code' => $memberCode,
@@ -386,8 +407,15 @@ function getAgentBehaviourReport(
             ? strtoupper(trim((string)$memberCode))
             : $agentKey;
 
-$purchasingMembers[$category][$countKey] = true;
-$purchasingMembers['total'][$agentKey] = true;
+        if ($includeDetails) {
+            $details[] = agentBehaviourDetail(
+                $row, $category, $countKey,
+                !isset($purchasingMembers[$category][$countKey]),
+                $reason, $firstPurchaseDate
+            );
+        }
+        $purchasingMembers[$category][$countKey] = true;
+        $purchasingMembers['total'][$agentKey] = true;
     }
 
     foreach ($summary as $key => $value) {
@@ -418,7 +446,171 @@ $purchasingMembers['total'][$agentKey] = true;
         'agentCounts' => $agentCounts,
         'asd' => $asd,
         'firstPurchaseAgents' => array_values($firstPurchaseAgents),
+        'details' => $details,
     ];
+}
+
+
+// Excel Export Function
+function agentBehaviourDetail(
+    array $row,
+    string $category,
+    string $countKey,
+    bool $counted,
+    string $reason,
+    ?DateTimeImmutable $firstPurchase
+): array {
+    return [
+        'category' => $category,
+        'company' => $row['company_code'],
+        'member_code' => $row['member_code'],
+        'member_name' => $row['member_name'] ?? '',
+        'member_type' => $row['member_type'],
+        'order_id' => $row['order_id'],
+        'order_datetime' => $row['order_datetime'],
+        'order_type' => $row['order_type'],
+        'joined_date' => $row['joined_date'] ?? '',
+        'first_purchase_date' => $firstPurchase ? $firstPurchase->format('Y-m-d H:i:s') : '',
+        'upgraded_in_month' => $row['upgraded_in_month'] ? 'Yes' : 'No',
+        'reason' => $reason,
+        'sales_myr' => (float)$row['sales_myr'],
+        'count_key' => $countKey,
+        'counted_agent' => $counted ? 1 : 0,
+    ];
+}
+
+// Group by exactly the same key used for each category's on-screen headcount.
+function groupAgentBehaviourExport(array $details): array
+{
+    $groups = [];
+    foreach ($details as $detail) {
+        $category = $detail['category'];
+        $key = $detail['count_key'];
+        if (!isset($groups[$category][$key])) {
+            $groups[$category][$key] = [
+                'member_code' => $category === 'new_agent'
+                    ? strtoupper(trim($detail['member_code'])) : $detail['member_code'],
+                'member_name' => '', 'companies' => [], 'member_types' => [],
+                'order_count' => 0, 'sales_myr' => 0.0,
+                'first_order' => $detail['order_datetime'],
+                'last_order' => $detail['order_datetime'],
+                'joining_dates' => [], 'first_purchase_dates' => [],
+                'upgraded' => false, 'reasons' => [],
+            ];
+        }
+        $agent = &$groups[$category][$key];
+        if (trim((string)$detail['member_name']) !== '') {
+            $agent['member_name'] = $detail['member_name'];
+        }
+        $agent['companies'][$detail['company']] = true;
+        $agent['member_types'][$detail['member_type']] = true;
+        $agent['order_count']++;
+        $agent['sales_myr'] += $detail['sales_myr'];
+        $agent['first_order'] = min($agent['first_order'], $detail['order_datetime']);
+        $agent['last_order'] = max($agent['last_order'], $detail['order_datetime']);
+        if ($detail['joined_date'] !== '') {
+            $agent['joining_dates'][$detail['company'] . ': ' . $detail['joined_date']] = true;
+        }
+        if ($detail['first_purchase_date'] !== '') {
+            $agent['first_purchase_dates'][$detail['company'] . ': ' . $detail['first_purchase_date']] = true;
+        }
+        $agent['upgraded'] = $agent['upgraded'] || $detail['upgraded_in_month'] === 'Yes';
+        $agent['reasons'][$detail['reason']] = true;
+        unset($agent);
+    }
+    foreach ($groups as &$agents) {
+        uasort($agents, static fn(array $a, array $b): int =>
+            strnatcasecmp($a['member_code'], $b['member_code']));
+    }
+    unset($agents);
+    return $groups;
+}
+
+function buildAgentBehaviourWorkbook(array $report, array $configuration): \PhpOffice\PhpSpreadsheet\Spreadsheet
+{
+    $book = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $book->getProperties()->setTitle('Agent Behaviour Classification');
+    $labels = [
+        'existing_agent' => 'Existing Agent',
+        'new_agent' => 'New Agent',
+        'first_purchase' => 'First Purchase',
+        'spc' => 'SPC',
+    ];
+    
+    $writeRow = static function ($sheet, int $rowNumber, array $values): void {
+        foreach (array_values($values) as $index => $value) {
+            $sheet->setCellValueExplicit(
+                [$index + 1, $rowNumber], $value,
+                is_int($value) || is_float($value)
+                    ? \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC
+                    : \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+            );
+        }
+    };
+    $styleHeader = static function ($sheet, string $range): void {
+        $sheet->getStyle($range)->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => '1F2937']],
+            'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'E5E7EB']],
+        ]);
+    };
+    $summary = $book->getActiveSheet();
+    $summary->setTitle('Summary');
+    $writeRow($summary, 1, [$configuration['title']]);
+    $writeRow($summary, 2, ['From', $configuration['from'], 'To', $configuration['to']]);
+    $writeRow($summary, 4, ['Category', 'No. of Agents', 'Sales (MYR)', 'ASD (MYR)']);
+    $rowNumber = 5;
+    foreach ($labels + ['total' => 'Total'] as $key => $label) {
+        $writeRow($summary, $rowNumber++, [
+            $label, (int)$report['agentCounts'][$key],
+            (float)$report['summary'][$key], (float)$report['asd'][$key],
+        ]);
+    }
+    
+    $summary->getStyle('A12:D20')->getAlignment()->setWrapText(true);
+    $summary->getStyle('C5:D9')->getNumberFormat()->setFormatCode('#,##0.00');
+    foreach (['A' => 28, 'B' => 22, 'C' => 22, 'D' => 22] as $col => $width) {
+        $summary->getColumnDimension($col)->setWidth($width);
+    }
+    $styleHeader($summary, 'A4:D4');
+    $summary->freezePane('B5');
+    $headers = [
+        'No.', 'Member Code', 'Member Name', 'Company / Companies', 'Member Type',
+        'Qualifying Orders', 'Total Sales (MYR)', 'First Order in Period',
+        'Last Order in Period', 'Upgraded in Order Month',
+    ];
+    $agentGroups = groupAgentBehaviourExport($report['details']);
+    foreach ($labels as $key => $label) {
+        $sheet = $book->createSheet();
+        $sheet->setTitle($label);
+        $writeRow($sheet, 1, $headers);
+        $rowNumber = 2;
+        foreach ($agentGroups[$key] ?? [] as $agent) {
+            $writeRow($sheet, $rowNumber, [
+                $rowNumber - 1, $agent['member_code'], $agent['member_name'],
+                implode(', ', array_keys($agent['companies'])),
+                implode(', ', array_keys($agent['member_types'])),
+                $agent['order_count'], $agent['sales_myr'],
+                $agent['first_order'], $agent['last_order'],
+                $agent['upgraded'] ? 'Yes' : 'No',
+            ]);
+            $rowNumber++;
+        }
+        $lastRow = max(1, $rowNumber - 1);
+        $sheet->setAutoFilter('A1:J' . $lastRow);
+        $sheet->freezePane('D2');
+        $styleHeader($sheet, 'A1:J1');
+        foreach (range('A', 'J') as $col) $sheet->getColumnDimension($col)->setWidth(24);
+        $sheet->getColumnDimension('A')->setWidth(8);
+        $sheet->getColumnDimension('C')->setWidth(32);
+        $sheet->getStyle('A1:J1')->getAlignment()->setWrapText(true);
+        $sheet->getRowDimension(1)->setRowHeight(44);
+        if ($lastRow >= 2) {
+            $sheet->getStyle('J2:J' . $lastRow)->getAlignment()->setWrapText(true);
+            $sheet->getStyle('G2:G' . $lastRow)->getNumberFormat()->setFormatCode('#,##0.00');
+        }
+    }
+    $book->setActiveSheetIndex(0);
+    return $book;
 }
 
 // Run report and handle failures
@@ -441,6 +633,47 @@ $reports = [
 ];
 
 $pdo = getDBConnection();
+
+// Export uses the selected report dates and the existing authenticated session.
+if (isset($_GET['export'])) {
+    $mode = $_GET['export'];
+    if (!is_string($mode) || !isset($reports[$mode])) {
+        http_response_code(400);
+        header('Content-Type: text/plain; charset=UTF-8');
+        exit('Invalid export period.');
+    }
+    $downloadPath = false;
+    $book = null;
+    try {
+        if (!$pdo) throw new RuntimeException('Database unavailable.');
+        set_time_limit(300);
+        require_once __DIR__ . '/../vendor/autoload.php';
+        $configuration = $reports[$mode];
+        $data = getAgentBehaviourReport($pdo, $configuration['from'], $configuration['to'], true);
+        $book = buildAgentBehaviourWorkbook($data, $configuration);
+        // Complete the workbook before sending download headers so failures return a clean error.
+        $downloadPath = tempnam(sys_get_temp_dir(), 'agent-xlsx-');
+        if ($downloadPath === false) throw new RuntimeException('Cannot create export file.');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($downloadPath);
+        $filename = 'agent-behaviour-' . $mode . '-' . $configuration['from'] . '-to-' . $configuration['to'] . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: private, no-store, max-age=0');
+        header('Content-Length: ' . filesize($downloadPath));
+        readfile($downloadPath);
+    } catch (Throwable $exception) {
+        error_log('Agent Behaviour export failed: ' . $exception->getMessage());
+        if (!headers_sent()) {
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=UTF-8');
+        }
+        echo 'Unable to export Agent Behaviour. Please try again or contact your administrator.';
+    } finally {
+        if ($book !== null) $book->disconnectWorksheets();
+        if ($downloadPath !== false && is_file($downloadPath)) unlink($downloadPath);
+    }
+    exit;
+}
 
 if (!$pdo) {
     $errors[] = 'Unable to connect to the database.';
@@ -545,6 +778,9 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
 
 /* ── REPORT FILTER AND DATE PERIOD BOX STYLING ── */
 .report-filter {margin-top:20px;}
+.export-actions {display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0;}
+.export-actions span {font-size:0.75rem;color:var(--gray-500);}
+.export-button {display:inline-flex;align-items:center;justify-content:center;text-decoration:none;}
 .period-box {padding:18px;border:1px solid var(--gray-100);border-radius:var(--radius-md);background:var(--gray-100);}
 .period-title {margin-bottom:14px;font-size:.875rem;font-weight:800;}
 .date-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
@@ -703,6 +939,16 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                     <br>
                     New Agent: joined or upgraded in the same month as the order.
                 </p>
+
+                <?php if ($configuration['data'] !== null): ?>
+                    <div class="export-actions">
+                        <a class="apply-button export-button" href="?<?= htmlspecialchars(http_build_query([
+                            'from_date' => $fromDate,
+                            'to_date' => $toDate,
+                            'export' => $reportMode,
+                        ]), ENT_QUOTES, 'UTF-8') ?>">Export Excel - Agent Details</a>
+                    </div>
+                <?php endif; ?>
 
                 <?php if ($configuration['data'] === null): ?>
                     <p class="card-subtitle">
