@@ -331,6 +331,7 @@ CREATE TABLE `order_items` (
     `cdo` VARCHAR(50) DEFAULT NULL,
     `cdo_created_date` DATETIME DEFAULT NULL,
     `product_type` VARCHAR(20) DEFAULT NULL,
+    `price_code` VARCHAR(50) DEFAULT NULL,
     `item_code` VARCHAR(50) NOT NULL,
     `item_description` VARCHAR(255) DEFAULT NULL,
     `brand` VARCHAR(50) DEFAULT NULL,
