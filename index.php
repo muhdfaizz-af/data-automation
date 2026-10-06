@@ -168,11 +168,7 @@ function dashboardProductCategory($brand, $itemCode, $description, $productType)
     if (str_starts_with($itemCode, 'ZEKY-BH') || str_starts_with($itemCode, 'STK-ZEKY-BH') || str_contains($description, 'ZEKY BRAIN HERO')) return 'ZEKY BRAIN HERO';
     if ($brand === 'STK' && preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) return 'SCARF';
     if ($brand === 'NAFESA') return preg_match('/^(?:NCH|NTU|NST|NIN)/', $itemCode) || str_contains($description, 'INNER') ? 'INNER' : 'SCARF';
-<<<<<<< HEAD
-    if ($brand === 'CHOCO ALBAB') return in_array($productType, ['NORMAL', 'COMPOSITE'], true) ? dashboardProductName($description) : null;
-=======
     if ($brand === 'CHOCO ALBAB') return $productType === 'NORMAL' ? dashboardProductName($description) : null;
->>>>>>> c8ef31a (Initial commit)
     return null;
 }
 
@@ -331,13 +327,12 @@ function getDashboardData($pdo, $requestedDate = null) {
     };
 
     try {
-        // Keep the headline total aligned with Overall Products (Tax Invoice formula).
         // Match Sales Comparison: confirmed system orders plus manual sales.
-        $data['total'] = getOverallProductSales($pdo, $reportDate, $reportDate, $rate);
+        $data['total'] = $sumOrders($reportDate, $reportDate);
         $data['mtd'] = $sumOrders($monthStart, $reportDate);
         $data['ytd'] = $sumOrders($yearStart, $reportDate);
         $previousDate = date('Y-m-d', strtotime($reportDate . ' -1 day'));
-        $data['previous_total'] = getOverallProductSales($pdo, $previousDate, $previousDate, $rate);
+        $data['previous_total'] = $sumOrders($previousDate, $previousDate);
 
         // ── Previous-period comparisons ──
         $prevMonthStart = date('Y-m-01', strtotime($reportDate . ' -1 month'));
@@ -700,6 +695,158 @@ svg{display:block;}
 }
 @media(max-width:700px){.metric-grid{grid-template-columns:repeat(2,1fr);}.dash-hero{align-items:flex-start;padding:20px;}.main .page-header{display:none;}.metric-value{font-size:1rem;}.brand-list{grid-template-columns:minmax(0,66px) minmax(0,1fr) max-content;}}
 @media(max-width:600px){.metric-grid{grid-template-columns:1fr 1fr;} .main{padding:16px 14px 40px;} .dash-hero{padding:20px 22px;} .dash-hero-content h1{font-size:1.25rem;}}
+
+/* ══════════ UI REFINEMENT (soft modern layer) ══════════ */
+:root{
+  --shadow-card:0 1px 2px rgba(20,20,30,.04),0 4px 14px -6px rgba(20,20,30,.08);
+  --shadow-hover:0 2px 4px rgba(20,20,30,.04),0 14px 28px -12px rgba(20,20,30,.16);
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+body{
+  background:
+    radial-gradient(900px 400px at 100% -10%,rgba(0,180,180,.06),transparent 60%),
+    radial-gradient(800px 380px at -10% 0%,rgba(224,32,46,.05),transparent 60%),
+    var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+.metric-value,.monthly-value,.donut-center strong,.legend-val,.brand-total,
+.product-table td,.metric-diff-amt,.metric-diff-pct{font-variant-numeric:tabular-nums;}
+
+/* Entrance animation (halus, 1x sahaja) */
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes growX{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.dash-hero,.metric-card,.dashboard-card{animation:fadeUp .45s var(--ease) both;}
+.metric-card:nth-child(2){animation-delay:.04s}
+.metric-card:nth-child(3){animation-delay:.08s}
+.metric-card:nth-child(4){animation-delay:.12s}
+.metric-card:nth-child(5){animation-delay:.16s}
+.dashboard-grid .dashboard-card:nth-child(2){animation-delay:.08s}
+.dashboard-grid .dashboard-card:nth-child(3){animation-delay:.16s}
+.bottom-grid .dashboard-card:nth-child(2){animation-delay:.08s}
+
+/* Hero */
+.dash-hero{
+  border-radius:20px;padding:26px 30px;
+  box-shadow:0 12px 32px -14px rgba(142,22,32,.45);
+}
+.dash-hero::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(500px 200px at 15% 0%,rgba(255,255,255,.14),transparent 70%);
+}
+.dash-hero-content h1{letter-spacing:-.3px;}
+.hero-box{
+  background:rgba(255,255,255,.94);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.6);
+  box-shadow:0 4px 14px -6px rgba(0,0,0,.2);
+  transition:transform .2s var(--ease),box-shadow .2s var(--ease);
+}
+.hero-box:hover{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(0,0,0,.28);}
+.hero-status-dot{animation:pulseDot 2s ease-in-out infinite;}
+@keyframes pulseDot{0%,100%{box-shadow:0 0 0 3px rgba(16,185,129,.18)}50%{box-shadow:0 0 0 6px rgba(16,185,129,.06)}}
+.hero-cta{box-shadow:0 8px 18px -8px rgba(0,138,138,.6);}
+
+/* Metric cards */
+.metric-card{
+  position:relative;overflow:hidden;border-radius:16px;
+  border:1px solid rgba(20,20,30,.05);
+  transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .2s;
+}
+.metric-card::before{
+  content:'';position:absolute;left:0;top:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--red),var(--teal));
+  opacity:0;transition:opacity .2s;
+}
+.metric-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover);border-color:rgba(20,20,30,.08);}
+.metric-card:hover::before{opacity:1;}
+.metric-label{color:var(--gray-500);font-weight:700;letter-spacing:.1px;}
+.metric-icon{width:40px;height:40px;border-radius:12px;transition:transform .2s var(--ease);}
+.metric-card:hover .metric-icon{transform:scale(1.08) rotate(-4deg);}
+.metric-value{letter-spacing:-.4px;font-size:1.25rem;}
+.metric-diff-pct{padding:2px 8px;}
+.metric-diff-pct.mf-up{background:rgba(16,185,129,.12);color:#059669;}
+.metric-diff-pct.mf-down{background:rgba(224,32,46,.1);color:var(--red);}
+
+/* Cards */
+.dashboard-card{
+  border-radius:16px;padding:20px;
+  border:1px solid rgba(20,20,30,.05);
+  transition:box-shadow .2s var(--ease),border-color .2s;
+}
+.dashboard-card:hover{box-shadow:var(--shadow-hover);border-color:rgba(20,20,30,.08);}
+.card-heading{margin-bottom:16px;}
+.card-heading h2{
+  display:flex;align-items:center;gap:8px;letter-spacing:-.1px;
+}
+.card-heading h2::before{
+  content:'';width:4px;height:14px;border-radius:4px;
+  background:linear-gradient(180deg,var(--red),var(--teal));
+}
+
+/* Toggle pills */
+.toggle-group{background:var(--gray-100);padding:3px;border:1px solid rgba(20,20,30,.04);}
+.toggle-btn{transition:background .2s var(--ease),color .2s,box-shadow .2s;}
+.toggle-btn:hover:not(.active){color:var(--ink);}
+.toggle-btn.active{box-shadow:0 3px 8px -2px rgba(224,32,46,.45);}
+
+/* Donut + legend */
+.donut-svg circle{transition:stroke-width .2s var(--ease);}
+.donut-svg circle:hover{stroke-width:21;}
+.legend-row{padding:6px 8px;margin:-6px -8px;border-radius:8px;transition:background .15s;}
+.legend-row:hover{background:var(--gray-100);}
+.legend-dot{box-shadow:0 0 0 3px rgba(20,20,30,.05);}
+
+/* Brand bars */
+.brand-bar{height:24px;background:#eef2f6;}
+.brand-fill{
+  transform-origin:left center;
+  animation:growX .7s var(--ease) both;
+  background-image:linear-gradient(90deg,rgba(255,255,255,.0),rgba(255,255,255,.18));
+  background-blend-mode:overlay;
+}
+.brand-row:hover .brand-fill{filter:brightness(1.06);}
+
+/* Product table */
+.product-table{border-collapse:separate;border-spacing:0;}
+.product-table th{
+  background:#f3f6f9;color:var(--gray-700);
+  text-transform:uppercase;font-size:.625rem;letter-spacing:.5px;
+}
+.product-table th:first-child{border-radius:8px 0 0 8px;}
+.product-table th:last-child{border-radius:0 8px 8px 0;}
+.product-table td{padding:10px 8px;transition:background .15s;}
+.product-table td:first-child{max-width:none;color:var(--gray-500);font-weight:800;width:34px;}
+.product-table td:nth-child(2){max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;color:var(--ink);}
+.product-table tbody tr:hover td{background:#f8fafc;}
+.product-table tbody tr:last-child td{border-bottom:none;}
+.product-table tbody tr:first-child td:first-child{color:var(--gold);}
+
+/* Trend + monthly */
+.trend-pill,.monthly-pill{border:1px solid rgba(16,185,129,.18);}
+.trend-pill.down{border-color:rgba(224,32,46,.18);}
+.monthly-pill.behind{border-color:rgba(194,65,12,.18);}
+.trend-chart-svg polyline{stroke-linejoin:round;stroke-linecap:round;}
+.trend-chart-svg circle{transition:r .15s;}
+.trend-chart-svg circle:hover{r:5;}
+.monthly-progress{height:10px;background:#eaeff3;box-shadow:inset 0 1px 2px rgba(20,20,30,.06);}
+.monthly-progress span{
+  position:relative;transform-origin:left center;animation:growX .9s var(--ease) both;
+}
+.monthly-progress span::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+  animation:shine 2.8s ease-in-out infinite;
+}
+@keyframes shine{0%{transform:translateX(-100%)}60%,100%{transform:translateX(100%)}}
+.monthly-stat{padding:10px 12px;background:var(--gray-100);border-radius:10px;}
+
+/* Accessibility */
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:6px;}
+.hero-box input[type=date]:focus-visible{outline:none;}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;}
+}
+@media(max-width:700px){.dash-hero{border-radius:16px;}.monthly-stat{padding:8px 10px;}}
 </style>
 </head>
 <body>
@@ -820,6 +967,7 @@ $polyline = implode(' ', array_map(fn($p) => round($p[0],1) . ',' . round($p[1],
 $areaPath = 'M' . round($points[0][0],1) . ',' . round($padT+$plotH,1) . ' ';
 foreach ($points as $p) { $areaPath .= 'L' . round($p[0],1) . ',' . round($p[1],1) . ' '; }
 $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$plotH,1) . ' Z';
+
 ?>
 <main class="main">
     <div class="page-header"><h1>Dashboard</h1></div>
@@ -983,6 +1131,7 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
                 <div class="monthly-stat <?= $monthlyDifference < 0 ? 'neg' : '' ?>">Difference<strong><?= $d['monthly_target'] > 0 ? ($monthlyDifference >= 0 ? '+' : '-') . dashboardMoney(abs($monthlyDifference)) . ' (' . ($monthlyDifferencePercent >= 0 ? '+' : '') . number_format($monthlyDifferencePercent, 1) . '%)' : '—' ?></strong></div>
                 <div class="monthly-stat">Days Remaining<strong><?= $daysRemaining ?> days</strong></div>
             </div>
+
         </article>
     </section>
 </main>
