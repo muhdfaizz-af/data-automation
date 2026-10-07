@@ -1,2 +1,8 @@
 [2026-09-21 14:49:05] [sales_target] Failed to save targets {"admin_id":1,"target_count":31,"error":"SQLSTATE[HY000]: General error: 1366 Incorrect integer value: '' for column 'created_by' at row 1"}
 [2026-09-21 14:54:37] [sales_target] Failed to save targets {"admin_id":1,"target_count":31,"error":"Logged-in admin user was not found in admin_users. Please log in again."}
+[2026-09-28 10:24:27] [login_performance] Report query failed: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'data_automation.login_agents' doesn't exist
+#0 C:\laragon\www\data-automation\performance_agent\login_performance.php(140): PDO->prepare('SELECT x.d AS d...')
+#1 C:\laragon\www\data-automation\performance_agent\login_performance.php(180): getLoginPerfHourlyAndTop(Object(PDO), '2026-09-06', '2026-09-27', 'MY', '2026-09-27', 5)
+#2 C:\laragon\www\data-automation\performance_agent\login_performance.php(246): getLoginPerfData(Object(PDO), '2026-09-06', '2026-09-27', 'MY')
+#3 {main}
+

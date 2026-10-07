@@ -31,3 +31,9 @@
 [2026-09-28 09:31:35] [INFO] Starting login-agent import run. from=2025-01-01 to=2026-09-27
 [2026-09-28 09:31:35] [INFO] Company ID resolved: 1 for code MY
 [2026-09-28 09:31:35] [INFO] Date range 2025-01-01 to 2026-09-27 already imported for company MY; skipping to avoid duplicate import.
+[2026-09-28 10:27:31] [INFO] Starting login-agent import run. from=2025-01-01 to=2026-09-27
+[2026-09-28 10:27:31] [INFO] Company ID resolved: 1 for code MY
+[2026-09-28 10:27:31] [INFO] Created import batch ID 8
+[2026-09-28 10:27:33] [INFO] Session login succeeded. Fetching report from admin source.
+[2026-09-28 10:29:58] [INFO] Fetched report content; rows detected: 39547
+[2026-09-28 10:32:03] [INFO] Import finished. inserted=2526824 failed=0 total=2526824 batch_id=8

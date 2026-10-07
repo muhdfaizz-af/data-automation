@@ -27,6 +27,187 @@ ini_set('display_errors', '0');
 
 require_once __DIR__ . '/../config/db.php';
 
+// Convert a database DECIMAL amount to integer sen.
+function packPriceToSen(string $amount): int
+{
+    if (!preg_match('/^\d{1,8}(?:\.\d{1,2})?$/', $amount)) {
+        throw new RuntimeException('Invalid configured product price.');
+    }
+
+    [$ringgit, $sen] = array_pad(explode('.', $amount, 2), 2, '0');
+
+    return ((int) $ringgit * 100)
+        + (int) str_pad($sen, 2, '0');
+}
+
+// Format integer sen without floating-point calculations.
+function formatPackMoney(int $sen): string
+{
+    return number_format(intdiv($sen, 100), 0, '.', ',')
+        . '.'
+        . str_pad((string) ($sen % 100), 2, '0', STR_PAD_LEFT);
+}
+
+/**
+ * Calculate totals for Variety Pack and Multipack sales.
+ *
+ * Each sales row must contain:
+ *   category, price_code, quantity
+ *
+ * For quantityType = 'units', it must also contain product_sku.
+ *
+ * quantityType:
+ *   'packs' = expand each row into the pack's products.
+ *   'units' = quantity already represents individual product units.
+ */
+function calculatePackProductTotals(
+    PDO $db,
+    array $salesRows,
+    string $quantityType
+): array {
+    if (!in_array($quantityType, ['packs', 'units'], true)) {
+        throw new InvalidArgumentException(
+            'Quantity type must be packs or units.'
+        );
+    }
+
+    $categoryNames = [
+        'variety pack' => 'Variety Pack',
+        'multipack' => 'Multipack',
+    ];
+
+    $pricingRows = $db->query(
+        'SELECT category, price_code, product_sku,
+                units_per_pack, allocated_unit_price
+         FROM product_pack_pricing'
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    $pricing = [];
+
+    foreach ($pricingRows as $row) {
+        $categoryKey = strtolower(trim($row['category']));
+        $category = $categoryNames[$categoryKey] ?? null;
+
+        if ($category === null) {
+            throw new RuntimeException(
+                'Unknown category in the pricing table.'
+            );
+        }
+
+        $priceCode = strtoupper(trim($row['price_code']));
+        $sku = strtoupper(trim($row['product_sku']));
+        $lookupKey = $category . '|' . $priceCode;
+        $unitsPerPack = (int) $row['units_per_pack'];
+
+        if ($unitsPerPack < 1) {
+            throw new RuntimeException(
+                "Invalid pack quantity for {$priceCode}/{$sku}."
+            );
+        }
+
+        if (isset($pricing[$lookupKey][$sku])) {
+            throw new RuntimeException(
+                "Duplicate pricing for {$category}/{$priceCode}/{$sku}."
+            );
+        }
+
+        $pricing[$lookupKey][$sku] = [
+            'units_per_pack' => $unitsPerPack,
+            'unit_price_sen' => packPriceToSen(
+                (string) $row['allocated_unit_price']
+            ),
+        ];
+    }
+
+    $totals = [];
+
+    foreach ($salesRows as $index => $sale) {
+        $rowNumber = $index + 1;
+
+        $categoryKey = strtolower(
+            trim((string) ($sale['category'] ?? ''))
+        );
+
+        $category = $categoryNames[$categoryKey] ?? null;
+        $priceCode = strtoupper(
+            trim((string) ($sale['price_code'] ?? ''))
+        );
+
+        $quantity = filter_var(
+            $sale['quantity'] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
+
+        if ($category === null || $priceCode === '' || $quantity === false) {
+            throw new RuntimeException(
+                "Sales row {$rowNumber}: invalid category, price code, or quantity."
+            );
+        }
+
+        $lookupKey = $category . '|' . $priceCode;
+
+        if (!isset($pricing[$lookupKey])) {
+            throw new RuntimeException(
+                "Sales row {$rowNumber}: missing pricing for "
+                . "{$category}/{$priceCode}."
+            );
+        }
+
+        $items = $pricing[$lookupKey];
+
+        if ($quantityType === 'units') {
+            $sku = strtoupper(
+                trim((string) ($sale['product_sku'] ?? ''))
+            );
+
+            if ($sku === '' || !isset($items[$sku])) {
+                throw new RuntimeException(
+                    "Sales row {$rowNumber}: missing product pricing "
+                    . "for {$category}/{$priceCode}/{$sku}."
+                );
+            }
+
+            $items = [$sku => $items[$sku]];
+        }
+
+        foreach ($items as $sku => $item) {
+            $multiplier = $quantityType === 'packs'
+                ? $item['units_per_pack']
+                : 1;
+
+            $productQuantity = $quantity * $multiplier;
+            $revenueSen = $productQuantity * $item['unit_price_sen'];
+
+            if (!is_int($productQuantity) || !is_int($revenueSen)) {
+                throw new OverflowException('Sales amount exceeds supported limits.');
+            }
+
+            if (!isset($totals[$sku])) {
+                $totals[$sku] = [
+                    'product_sku' => $sku,
+                    'total_quantity' => 0,
+                    'total_revenue_sen' => 0,
+                ];
+            }
+
+            $newQuantity = $totals[$sku]['total_quantity'] + $productQuantity;
+            $newRevenue = $totals[$sku]['total_revenue_sen'] + $revenueSen;
+
+            if (!is_int($newQuantity) || !is_int($newRevenue)) {
+                throw new OverflowException('Report total exceeds supported limits.');
+            }
+
+            $totals[$sku]['total_quantity'] = $newQuantity;
+            $totals[$sku]['total_revenue_sen'] = $newRevenue;
+        }
+    }
+
+    ksort($totals);
+
+    return array_values($totals);
+}
+
 define('SGD_TO_MYR_RATE', 3.27);
 define('RANKING_LIMIT', 10);
 define('BCD_UNIT_PRICE_MYR', 37.00);
@@ -456,6 +637,11 @@ function getOverallProducts(
         oi.product_type,
         oi.item_code,
         oi.item_description,
+        GROUP_CONCAT(
+            DISTINCT COALESCE(NULLIF(TRIM(oi.price_code), ''), 'UNKNOWN')
+            ORDER BY COALESCE(NULLIF(TRIM(oi.price_code), ''), 'UNKNOWN')
+            SEPARATOR ','
+        ) AS price_codes,
         c.company_code,
 
         SUM(COALESCE(oi.qty, 0)) AS row_quantity,
@@ -615,6 +801,7 @@ function getOverallProducts(
                     'total_quantity' => 0,
                     'total_sales' => 0.00,
                     'source_codes' => [],
+                    'price_codes' => [],
                 ];
             }
 
@@ -661,10 +848,21 @@ function getOverallProducts(
                     $normalizedSourceCode
                 ] = true;
             }
+
+            foreach (explode(',', (string)($row['price_codes'] ?? 'UNKNOWN')) as $code) {
+                $code = trim($code);
+
+                if ($code !== '') {
+                    $categories[$category]['price_codes'][$code] = true;
+                }
+            }
         }
     }
 
     $result = [];
+
+    $category['price_codes'] = array_keys($category['price_codes']);
+    sort($category['price_codes']);
 
     foreach ($categories as $category) {
         if ($category['total_sales'] <= 0) {

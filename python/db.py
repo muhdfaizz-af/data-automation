@@ -15,7 +15,7 @@ import pymysql.cursors
 # ============================================================
 DB_HOST = "localhost"
 DB_PORT = 3306
-DB_NAME = "data_automation"       # <-- tukar ikut db.php punya DB_NAME
+DB_NAME = "data_automation_uat"       # <-- tukar ikut db.php punya DB_NAME
 DB_USER = "root"              # <-- tukar ikut db.php punya DB_USER
 DB_PASS = ""                  # <-- tukar ikut db.php punya DB_PASS
 DB_CHARSET = "utf8mb4"
@@ -36,4 +36,7 @@ def get_connection():
         charset=DB_CHARSET,
         cursorclass=pymysql.cursors.DictCursor,
         autocommit=False,
+        connect_timeout=10,
+        read_timeout=120,
+        write_timeout=120,
     )

@@ -1321,7 +1321,10 @@ function buildPeriodLabel(key, label, rowKey){
         const y = Number(parts[0]);
         const m = Number(parts[1]);
         const monthName = MONTH_NAMES[m - 1] || '';
-        return meta.dayFrom + ' - ' + meta.dayTo + ' ' + monthName + ' ' + y;
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const effectiveDayFrom = Math.min(meta.dayFrom, daysInMonth);
+        const effectiveDayTo = Math.min(meta.dayTo, daysInMonth);
+        return effectiveDayFrom + ' - ' + effectiveDayTo + ' ' + monthName + ' ' + y;
     }
     if (key === 'yearly') {
         const meta = sectionMeta.yearly;

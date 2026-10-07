@@ -27,8 +27,11 @@ DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `admin_users` (`id`, `username`, `password`, `created_at`) VALUES
-(1, 'Faizz', '$2b$12$wFpcQ6EFWYeMxhusR06.3OT2Rf75XMAhpOnNvOCPX6GzfjvhivQwq', '2026-05-29 01:31:01');
-
+(1, 'Faizz', '$2b$12$wFpcQ6EFWYeMxhusR06.3OT2Rf75XMAhpOnNvOCPX6GzfjvhivQwq', '2026-05-28 17:31:01'),
+(2, 'Amir', '$2y$10$Br6c6wfOHJK4jpxy8ypCl.HKduAGHGa23FhpbMnsBionL0oNPyFBe', '2026-10-02 01:12:16'),
+(3, 'Denish', '$2y$10$6I.GJaAV1IThT1gT6qlxtudn7BNDGId.rLp5HwF1Qc7t0w5XMpKWG', '2026-10-02 01:12:25'),
+(4, 'Daeng', '$2y$10$DAkV/zJSRyUOiuJq11Y2xuJvD1mZkWEzdnAKYGVgoE9Eec4BY2Do2', '2026-10-02 01:12:34'),
+(5, 'Ika', '$2y$10$ulsc95pTSYZVmZ9NZ6m9juyMo13nYsms4OSu0akCZhLgYSeukdgpO', '2026-10-02 01:12:43');
 
 -- ============================================================
 -- TABLE: companies
@@ -167,25 +170,20 @@ CREATE TABLE `members` (
         ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
 
-    -- IMPORTANT:
-    -- member_code is globally unique, regardless of company
-    UNIQUE KEY `uq_members_member_code`
-        (`member_code`),
-    UNIQUE KEY `uq_members_company_code`
-        (`company_id`, `member_code`),
-    KEY `idx_members_member_code`
-        (`member_code`),
-    KEY `idx_members_sponsor_code`
-        (`sponsor_code`),
-    KEY `idx_members_cl_code`
-        (`cl_code`),
-    KEY `idx_members_status`
-        (`status`),
-    KEY `idx_members_email`
-        (`email`),
-    KEY `idx_members_import_batch_id`
-        (`import_batch_id`),
+    -- member_code unik secara global (juga digunakan oleh ON DUPLICATE KEY UPDATE)
+    UNIQUE KEY `uq_members_member_code` (`member_code`),
 
+    -- Index untuk foreign key
+    KEY `idx_members_company_id` (`company_id`),
+    KEY `idx_members_import_batch_id` (`import_batch_id`),
+
+    -- Index carian / hierarchy
+    KEY `idx_members_sponsor_code` (`sponsor_code`),
+    KEY `idx_members_cl_code` (`cl_code`),
+
+    -- Optional: buang kalau tak pernah guna dalam WHERE (import jadi lagi laju)
+    KEY `idx_members_status` (`status`),
+    KEY `idx_members_email` (`email`),
 
     CONSTRAINT `fk_members_company`
         FOREIGN KEY (`company_id`)
@@ -325,275 +323,6 @@ COMMENT='Stores Order History - one row = one order';
 -- ============================================================
 -- TABLE: order_items
 -- ============================================================
-
-INSERT IGNORE INTO `companies`
-(
-    `company_code`,
-    `company_name`,
-    `currency_code`,
-    `invoice_prefix`
-)
-VALUES
-(
-    'MY',
-    'Malaysia',
-    'MYR',
-    'MYHQ,MYBT'
-),
-(
-    'SG',
-    'Singapore',
-    'SGD',
-    'SGHQ'
-);
-
-
--- ============================================================
--- TABLE: import_batches
--- ============================================================
-
-DROP TABLE IF EXISTS `import_batches`;
-
-CREATE TABLE `import_batches` (
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `company_id` BIGINT UNSIGNED NOT NULL,
-    `file_type` VARCHAR(30) NOT NULL DEFAULT 'ORDER_HISTORY'
-        COMMENT 'ORDER_HISTORY, TAX_INVOICE, MEMBERS',
-    `original_filename` VARCHAR(255) NOT NULL,
-    `file_hash` VARCHAR(64) DEFAULT NULL,
-    `period_from` DATE DEFAULT NULL,
-    `period_to` DATE DEFAULT NULL,
-    `total_rows` INT NOT NULL DEFAULT 0,
-    `successful_rows` INT NOT NULL DEFAULT 0,
-    `failed_rows` INT NOT NULL DEFAULT 0,
-    `status` VARCHAR(30) NOT NULL DEFAULT 'pending'
-        COMMENT 'pending, processing, completed, completed_with_errors, failed',
-    `error_message` TEXT DEFAULT NULL,
-    `imported_at` DATETIME DEFAULT NULL,
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_import_batches_file_hash`
-        (`file_hash`),
-    KEY `idx_import_batches_company_id`
-        (`company_id`),
-    KEY `idx_import_batches_status`
-        (`status`),
-    KEY `idx_import_batches_period`
-        (`period_from`, `period_to`),
-    CONSTRAINT `fk_import_batches_company`
-        FOREIGN KEY (`company_id`)
-        REFERENCES `companies` (`id`)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT
-) ENGINE=InnoDB
-DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci
-COMMENT='Records every Order History / Tax Invoice / Members file uploaded';
-
--- ============================================================
--- TABLE: members
--- ============================================================
-
-DROP TABLE IF EXISTS `members`;
-CREATE TABLE `members` (
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `company_id` BIGINT UNSIGNED NOT NULL,
-    `import_batch_id` BIGINT UNSIGNED DEFAULT NULL,
-    `member_code` VARCHAR(50) NOT NULL
-        COMMENT 'Excel: Member ID - used to link with orders',
-    `member_name` VARCHAR(150) DEFAULT NULL
-        COMMENT 'Excel: Name as per IC',
-    `nric` VARCHAR(50) DEFAULT NULL,
-    `mobile_no` VARCHAR(30) DEFAULT NULL,
-    `email` VARCHAR(150) DEFAULT NULL,
-    `joined_date` DATETIME DEFAULT NULL,
-    `sponsor_code` VARCHAR(50) DEFAULT NULL
-        COMMENT 'Excel: Sponsor ID - soft link',
-    `sponsor_name` VARCHAR(150) DEFAULT NULL,
-    `status` VARCHAR(30) DEFAULT NULL
-        COMMENT 'Active, Terminated, ...',
-    `cl_code` VARCHAR(50) DEFAULT NULL,
-    `cl_name` VARCHAR(150) DEFAULT NULL,
-    `occupation` VARCHAR(100) DEFAULT NULL,
-    `date_of_birth` DATE DEFAULT NULL,
-    `source_of_funds` VARCHAR(100) DEFAULT NULL,
-    `estimated_monthly_income` DECIMAL(15,2) DEFAULT NULL,
-    `gender` VARCHAR(20) DEFAULT NULL,
-    `marital_status` VARCHAR(30) DEFAULT NULL,
-    `current_rank` VARCHAR(50) DEFAULT NULL,
-    `highest_rank` VARCHAR(50) DEFAULT NULL,
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-
-    -- IMPORTANT:
-    -- member_code is unique per company
-    UNIQUE KEY `uq_members_company_code`
-        (`company_id`, `member_code`),
-    KEY `idx_members_member_code`
-        (`member_code`),
-    KEY `idx_members_sponsor_code`
-        (`sponsor_code`),
-    KEY `idx_members_cl_code`
-        (`cl_code`),
-    KEY `idx_members_status`
-        (`status`),
-    KEY `idx_members_email`
-        (`email`),
-    KEY `idx_members_import_batch_id`
-        (`import_batch_id`),
-
-
-    CONSTRAINT `fk_members_company`
-        FOREIGN KEY (`company_id`)
-        REFERENCES `companies` (`id`)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
-
-    CONSTRAINT `fk_members_import_batch`
-        FOREIGN KEY (`import_batch_id`)
-        REFERENCES `import_batches` (`id`)
-        ON UPDATE CASCADE
-        ON DELETE SET NULL
-
-) ENGINE=InnoDB
-DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci
-COMMENT='Member master list - imported from Excel';
-
--- ============================================================
--- TABLE: orders
--- ============================================================
-
-DROP TABLE IF EXISTS `orders`;
-CREATE TABLE `orders` (
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `company_id` BIGINT UNSIGNED NOT NULL,
-    `import_batch_id` BIGINT UNSIGNED DEFAULT NULL,
-    `order_id` VARCHAR(80) NOT NULL,
-    `order_datetime` DATETIME NOT NULL,
-    `member_code` VARCHAR(50) DEFAULT NULL
-        COMMENT 'Linked to members using company_id + member_code',
-    `member_type` VARCHAR(50) DEFAULT NULL,
-    `member_name` VARCHAR(150) DEFAULT NULL
-        COMMENT 'Snapshot at time of order',
-    `remark` TEXT DEFAULT NULL,
-    `delivery_method` VARCHAR(100) DEFAULT NULL,
-    `mobile_no` VARCHAR(30) DEFAULT NULL,
-    `order_type` VARCHAR(100) DEFAULT NULL,
-    -- ========================================================
-    -- AMOUNTS
-    -- ========================================================
-    `sub_total` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `shipping_fee` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `voucher_discount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `discount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `convenience_fee` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `order_total` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `gst` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    -- ========================================================
-    -- POINTS
-    -- ========================================================
-    `total_bv` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `total_pv` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `total_tp` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    -- ========================================================
-    -- PAYMENT / STATUS
-    -- ========================================================
-    `payment_mode` VARCHAR(100) DEFAULT NULL,
-    `order_status` VARCHAR(50) DEFAULT NULL,
-    `delivery_status` VARCHAR(50) DEFAULT NULL,
-    `payment_gateway` VARCHAR(100) DEFAULT NULL,
-    `payment_gateway_id` VARCHAR(150) DEFAULT NULL,
-    -- ========================================================
-    -- COMPANY / CURRENCY
-    -- ========================================================
-    `currency_code` CHAR(3) NOT NULL,
-    `invoice_prefix` VARCHAR(20) DEFAULT NULL
-        COMMENT 'MYHQ, MYBT, SGHQ',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_orders_company_order`
-        (`company_id`, `order_id`),
-
-    KEY `idx_orders_order_id`
-        (`order_id`),
-    KEY `idx_orders_order_datetime`
-        (`order_datetime`),
-    KEY `idx_orders_datetime_status`
-        (`order_datetime`, `order_status`),
-    KEY `idx_orders_company_datetime`
-        (`company_id`, `order_datetime`),
-    KEY `idx_orders_order_status`
-        (`order_status`),
-    KEY `idx_orders_order_type`
-        (`order_type`),
-    KEY `idx_orders_member_code`
-        (`member_code`),
-    -- Composite index for member relationship
-    KEY `idx_orders_company_member`
-        (`company_id`, `member_code`),
-    KEY `idx_orders_import_batch_id`
-        (`import_batch_id`),
-    KEY `idx_orders_invoice_prefix`
-        (`invoice_prefix`),
-    -- Covering index for Daily Sales Report / Hub sales query
-    KEY `idx_orders_hub_cover`
-    (
-        `company_id`,
-        `order_datetime`,
-        `order_status`,
-        `sub_total`
-    ),
-
-    -- ========================================================
-    -- COMPANY FK
-    -- ========================================================
-    CONSTRAINT `fk_orders_company`
-        FOREIGN KEY (`company_id`)
-        REFERENCES `companies` (`id`)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
-    -- ========================================================
-    -- IMPORT BATCH FK
-    -- ========================================================
-    CONSTRAINT `fk_orders_import_batch`
-        FOREIGN KEY (`import_batch_id`)
-        REFERENCES `import_batches` (`id`)
-        ON UPDATE CASCADE
-        ON DELETE SET NULL,
-    -- ========================================================
-    -- MEMBER FK
-    --
-    -- orders.company_id
-    -- orders.member_code
-    --
-    --        ↓
-    --
-    -- members.company_id
-    -- members.member_code
-    -- ========================================================
-    CONSTRAINT `fk_orders_member`
-        FOREIGN KEY (`company_id`, `member_code`)
-        REFERENCES `members` (`company_id`, `member_code`)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT
-
-) ENGINE=InnoDB
-DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci
-COMMENT='Stores Order History - one row = one order';
-
-
--- ============================================================
--- TABLE: order_items
--- ============================================================
-
 DROP TABLE IF EXISTS `order_items`;
 CREATE TABLE `order_items` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -773,79 +502,6 @@ DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci
 COMMENT='Admin-set daily sales target';
 
--- ===========================================================
--- TABLE: exchange_rates
--- ============================================================
-DROP TABLE IF EXISTS `exchange_rates`;
-CREATE TABLE `exchange_rates` (
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `from_currency` CHAR(3) NOT NULL,
-    `to_currency` CHAR(3) NOT NULL,
-    `rate` DECIMAL(12,6) NOT NULL,
-    `effective_from` DATE NOT NULL,
-    `effective_to` DATE DEFAULT NULL,
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_exchange_rates_pair_from`
-    (
-        `from_currency`,
-        `to_currency`,
-        `effective_from`
-    ),
-    KEY `idx_exchange_rates_pair_range`
-    (
-        `from_currency`,
-        `to_currency`,
-        `effective_from`,
-        `effective_to`
-    )
-) ENGINE=InnoDB
-DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci
-COMMENT='Stores exchange rates such as SGD to MYR';
-
--- ============================================================
--- TABLE: daily_report_runs
--- ============================================================
-DROP TABLE IF EXISTS `daily_report_runs`;
-CREATE TABLE `daily_report_runs` (
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `working_date` DATE NOT NULL,
-    `period_start` DATETIME NOT NULL,
-    `period_end` DATETIME NOT NULL,
-    -- ========================================================
-    -- SALES CALCULATION
-    -- ========================================================
-    `my_subtotal` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `sg_subtotal_sgd` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `exchange_rate_used` DECIMAL(12,6) NOT NULL DEFAULT 1.000000,
-    `sg_subtotal_myr` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `solucis_sales` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `manual_sales_total` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `daily_total_sales` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    -- ========================================================
-    -- STATUS
-    -- ========================================================
-    `status` VARCHAR(20) NOT NULL DEFAULT 'processing',
-    `generated_at` DATETIME DEFAULT NULL,
-    `error_message` TEXT DEFAULT NULL,
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    KEY `idx_daily_report_runs_working_date`
-        (`working_date`),
-    KEY `idx_daily_report_runs_period`
-        (`period_start`, `period_end`),
-    KEY `idx_daily_report_runs_status`
-        (`status`)
-) ENGINE=InnoDB
-DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci
-COMMENT='Stores generated Daily Sales Report results';
-
 -- ============================================================
 -- TABLE: login_agents (BARU)
 -- Log setiap login agent - 1 row = 1 login event
@@ -864,23 +520,20 @@ CREATE TABLE `login_agents` (
         COMMENT '1 row = 1 login event',
 
     `import_batch_id` BIGINT UNSIGNED DEFAULT NULL
-        COMMENT 'Reuse import_batches sedia ada, file_type = AGENT_LOGIN, untuk track/avoid duplicate pull',
+        COMMENT 'Reuse import_batches sedia ada, file_type = AGENT_LOGIN, untuk track batch import',
 
     `inserted_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         COMMENT 'Auto-capture bila row ni di-insert ke DB (bukan masa login sebenar - tu login_time)',
 
     PRIMARY KEY (`id`),
 
-    -- Tiada UNIQUE pada (member_code, login_time) sengaja:
-    -- data source ada duplicate exact-timestamp login yang sah,
-    -- jadi tak boleh unique-kan combo tu.
+    -- Member sama + masa sama hanya boleh masuk SEKALI.
+    -- Member berbeza pada masa sama tetap dibenarkan.
+    UNIQUE KEY `uq_login_agents_member_time`
+        (`member_code`, `login_time`),
 
-    KEY `idx_login_agents_member_code`
-        (`member_code`),
     KEY `idx_login_agents_login_time`
         (`login_time`),
-    KEY `idx_login_agents_member_time`
-        (`member_code`, `login_time`),
     KEY `idx_login_agents_import_batch_id`
         (`import_batch_id`),
 
@@ -893,7 +546,83 @@ CREATE TABLE `login_agents` (
 ) ENGINE=InnoDB
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci
-COMMENT='Log setiap login agent - 1 row = 1 login time (diambil dari API hourly login report)';
+COMMENT='Log setiap login agent - 1 row = 1 login time (unik ikut member_code + login_time)';
+
+-- ============================================================
+-- TABLE: price_code
+-- ============================================================
+-- One row per product; prices come from the Excel Unit Price columns.
+-- WMDP, SBHDP and EMDP use MYR. SGDP uses SGD. NULL means unavailable.
+CREATE TABLE IF NOT EXISTS `price_code` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `product_sku` VARCHAR(50) NOT NULL,
+    `product_name` VARCHAR(255) DEFAULT NULL,
+    `brand` VARCHAR(50) DEFAULT NULL,
+    `wmdp` DECIMAL(12,2) DEFAULT NULL COMMENT 'Unit price in MYR',
+    `sbhdp` DECIMAL(12,2) DEFAULT NULL COMMENT 'Unit price in MYR',
+    `emdp` DECIMAL(12,2) DEFAULT NULL COMMENT 'Unit price in MYR',
+    `sgdp` DECIMAL(12,2) DEFAULT NULL COMMENT 'Unit price in SGD',
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_price_code_product_sku` (`product_sku`)
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- TABLE: composite_items
+-- ============================================================
+-- Promo catalogue: Multipack (Q-DRINKS4) and Variety Pack (Q-DRINKS4-C).
+CREATE TABLE IF NOT EXISTS `composite_items` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `product_type` VARCHAR(20) DEFAULT NULL,
+    `item_code` VARCHAR(50) NOT NULL,
+    `item_description` VARCHAR(255) DEFAULT NULL,
+    `loose_items` JSON DEFAULT NULL COMMENT 'Component list: item_code and quantity per pack',
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_composite_items_item_code` (`item_code`),
+    KEY `idx_composite_items_product_type` (`product_type`)
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci
+COMMENT='Composite product catalogue matching order_items product fields';
+
+-- Keep this catalogue limited to the two configured promos.
+DELETE FROM `composite_items`
+WHERE UPPER(TRIM(`item_code`)) NOT IN ('Q-DRINKS4', 'Q-DRINKS4-C');
+
+-- Refresh only the configured promos from order_items; preserve loose_items.
+-- The highest source ID supplies the latest imported description for each code.
+INSERT INTO `composite_items`
+    (`product_type`, `item_code`, `item_description`)
+SELECT
+    source.`product_type`,
+    UPPER(TRIM(source.`item_code`)),
+    source.`item_description`
+FROM `order_items` AS source
+INNER JOIN (
+    SELECT MAX(`id`) AS latest_id
+    FROM `order_items`
+    WHERE LOWER(TRIM(`product_type`)) = 'composite'
+      AND UPPER(TRIM(`item_code`)) IN ('Q-DRINKS4', 'Q-DRINKS4-C')
+    GROUP BY UPPER(TRIM(`item_code`))
+) AS latest ON latest.latest_id = source.`id`
+WHERE LOWER(TRIM(source.`product_type`)) = 'composite'
+ON DUPLICATE KEY UPDATE
+    `product_type` = VALUES(`product_type`),
+    `item_description` = VALUES(`item_description`);
+
+-- Confirmed promo contents. Preserve any existing manually configured mapping.
+INSERT INTO `composite_items` (`product_type`, `item_code`, `item_description`, `loose_items`)
+VALUES
+    ('composite', 'Q-DRINKS4', 'MULTI PACK PROMO DRINKS', '[{"item_code":"BMD-001","quantity":1},{"item_code":"BCD-002","quantity":1},{"item_code":"BRC-001","quantity":1},{"item_code":"BCL-001","quantity":1}]'),
+    ('composite', 'Q-DRINKS4-C', 'VARIETY PACK PROMO DRINKS', '[{"item_code":"BMD-001","quantity":2},{"item_code":"BCD-002","quantity":4},{"item_code":"BRC-001","quantity":4},{"item_code":"BCL-001","quantity":4}]')
+ON DUPLICATE KEY UPDATE `loose_items` = COALESCE(`loose_items`, VALUES(`loose_items`));
 
 -- ============================================================
 -- ENABLE FOREIGN KEYS
