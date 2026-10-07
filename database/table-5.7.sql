@@ -549,6 +549,36 @@ DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci
 COMMENT='Log setiap login agent - 1 row = 1 login time (unik ikut member_code + login_time)';
 
+
+CREATE TABLE `price_code` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT,
+  `product_sku` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `product_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `brand` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `wmdp` decimal(12,2) DEFAULT NULL COMMENT 'Unit price in MYR',
+  `sbhdp` decimal(12,2) DEFAULT NULL COMMENT 'Unit price in MYR',
+  `emdp` decimal(12,2) DEFAULT NULL COMMENT 'Unit price in MYR',
+  `sgdp` decimal(12,2) DEFAULT NULL COMMENT 'Unit price in SGD',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_price_code_product_sku` (`product_sku`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE `composite_items` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT,
+  `product_type` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `item_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `item_description` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `loose_items` json DEFAULT NULL COMMENT 'Component list: item_code and quantity per pack',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_composite_items_item_code` (`item_code`),
+  KEY `idx_composite_items_product_type` (`product_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Composite product catalogue matching order_items product fields';
+
 -- ============================================================
 -- ENABLE FOREIGN KEYS
 -- ============================================================

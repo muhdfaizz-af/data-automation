@@ -136,6 +136,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   <?= navItem('upload_reports/upload_members.php', $icoMembers, 'Upload Members', $activeNav === 'upload_members', $navBasePath) ?>
   <?= navItem('salestarget/', $icoUpload, 'Sales Target', $activeNav === 'salestarget', $navBasePath) ?>
   <?= navItem('upload_reports/manual_sales.php', $icoSales, 'Manual Sales', $activeNav === 'manual_sales', $navBasePath) ?>
+  <?= navItem('upload_reports/promo_setup.php', $icoSales, 'Promo Setup', $activeNav === 'promo_setup', $navBasePath) ?>
   
   <div class="nav-divider"></div>
   <a href="<?= $navBasePath ?>logout.php" class="nav-item nav-logout" title="Logout"><span class="ni"><?= $icoLogout ?></span><span class="nav-label">Logout</span></a>
@@ -188,8 +189,8 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
       <span class="nav-chev">▾</span>
     </button>
     <div class="nav-children">
-      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $currentPage === 'agent_behavior.php', $navBasePath) ?>
-      <?= navItem('performance_agent/login_performance.php', $icoImperson, 'Login Performance', $currentPage === 'login_performance.php', $navBasePath) ?>
+      <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $activeNav === 'agentperformance', $navBasePath) ?>
+      <?= navItem('performance_agent/agent_activity.php', $icoMembers, 'Agent Login Activity', $activeNav === 'agentperformance', $navBasePath) ?>
     </div>
   </div>
   
@@ -199,6 +200,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   <?= navItem('upload_reports/upload_members.php', $icoMembers, 'Upload Members', $activeNav === 'upload_members', $navBasePath) ?>
   <?= navItem('salestarget/', $icoUpload, 'Sales Target', $activeNav === 'salestarget', $navBasePath) ?>
   <?= navItem('upload_reports/manual_sales.php', $icoSales, 'Manual Sales', $activeNav === 'manual_sales', $navBasePath) ?>
+  <?= navItem('upload_reports/promo_setup.php', $icoSales, 'Promo Setup', $activeNav === 'promo_setup', $navBasePath) ?>
   
   <div class="nav-divider"></div>
   <a href="<?= $navBasePath ?>logout.php" class="nav-item nav-logout"><span class="ni"><?= $icoLogout ?></span><span class="nav-label">Logout</span></a>
