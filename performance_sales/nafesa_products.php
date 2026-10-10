@@ -76,7 +76,7 @@ define('SCARF_EXCLUDED_KEYWORDS', [
     'PLASTIC CUP',
     'TUMBLER',
     'WOVEN BAG',
-    'MENU BOARD',
+    'TOTE',
     'BOARD',
 ]);
 

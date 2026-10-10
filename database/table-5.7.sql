@@ -2,6 +2,7 @@
 -- Daily Sales Report - MySQL Schema
 -- FULL VERSION
 -- MEMBERS + COMPOSITE MEMBER FOREIGN KEY
+-- + login_agents (log 1 row = 1 login event)
 -- ============================================================
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -26,8 +27,11 @@ DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `admin_users` (`id`, `username`, `password`, `created_at`) VALUES
-(1, 'Faizz', '$2b$12$wFpcQ6EFWYeMxhusR06.3OT2Rf75XMAhpOnNvOCPX6GzfjvhivQwq', '2026-05-29 01:31:01');
-
+(1, 'Faizz', '$2b$12$wFpcQ6EFWYeMxhusR06.3OT2Rf75XMAhpOnNvOCPX6GzfjvhivQwq', '2026-05-28 17:31:01'),
+(2, 'Amir', '$2y$10$Br6c6wfOHJK4jpxy8ypCl.HKduAGHGa23FhpbMnsBionL0oNPyFBe', '2026-10-02 01:12:16'),
+(3, 'Denish', '$2y$10$6I.GJaAV1IThT1gT6qlxtudn7BNDGId.rLp5HwF1Qc7t0w5XMpKWG', '2026-10-02 01:12:25'),
+(4, 'Daeng', '$2y$10$DAkV/zJSRyUOiuJq11Y2xuJvD1mZkWEzdnAKYGVgoE9Eec4BY2Do2', '2026-10-02 01:12:34'),
+(5, 'Ika', '$2y$10$ulsc95pTSYZVmZ9NZ6m9juyMo13nYsms4OSu0akCZhLgYSeukdgpO', '2026-10-02 01:12:43');
 
 -- ============================================================
 -- TABLE: companies
@@ -166,23 +170,20 @@ CREATE TABLE `members` (
         ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
 
-    -- IMPORTANT:
-    -- member_code is unique per company
-    UNIQUE KEY `uq_members_company_code`
-        (`company_id`, `member_code`),
-    KEY `idx_members_member_code`
-        (`member_code`),
-    KEY `idx_members_sponsor_code`
-        (`sponsor_code`),
-    KEY `idx_members_cl_code`
-        (`cl_code`),
-    KEY `idx_members_status`
-        (`status`),
-    KEY `idx_members_email`
-        (`email`),
-    KEY `idx_members_import_batch_id`
-        (`import_batch_id`),
+    -- member_code unik secara global (juga digunakan oleh ON DUPLICATE KEY UPDATE)
+    UNIQUE KEY `uq_members_member_code` (`member_code`),
 
+    -- Index untuk foreign key
+    KEY `idx_members_company_id` (`company_id`),
+    KEY `idx_members_import_batch_id` (`import_batch_id`),
+
+    -- Index carian / hierarchy
+    KEY `idx_members_sponsor_code` (`sponsor_code`),
+    KEY `idx_members_cl_code` (`cl_code`),
+
+    -- Optional: buang kalau tak pernah guna dalam WHERE (import jadi lagi laju)
+    KEY `idx_members_status` (`status`),
+    KEY `idx_members_email` (`email`),
 
     CONSTRAINT `fk_members_company`
         FOREIGN KEY (`company_id`)
@@ -305,19 +306,11 @@ CREATE TABLE `orders` (
         ON UPDATE CASCADE
         ON DELETE SET NULL,
     -- ========================================================
-    -- MEMBER FK
-    --
-    -- orders.company_id
-    -- orders.member_code
-    --
-    --        ↓
-    --
-    -- members.company_id
-    -- members.member_code
+    -- MEMBER FK: Member ID is globally unique; order company is independent
     -- ========================================================
     CONSTRAINT `fk_orders_member`
-        FOREIGN KEY (`company_id`, `member_code`)
-        REFERENCES `members` (`company_id`, `member_code`)
+        FOREIGN KEY (`member_code`)
+        REFERENCES `members` (`member_code`)
         ON UPDATE CASCADE
         ON DELETE RESTRICT
 
@@ -330,7 +323,6 @@ COMMENT='Stores Order History - one row = one order';
 -- ============================================================
 -- TABLE: order_items
 -- ============================================================
-
 DROP TABLE IF EXISTS `order_items`;
 CREATE TABLE `order_items` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -338,7 +330,8 @@ CREATE TABLE `order_items` (
     `commission_month` VARCHAR(10) DEFAULT NULL,
     `cdo` VARCHAR(50) DEFAULT NULL,
     `cdo_created_date` DATETIME DEFAULT NULL,
-    `produt_type` VARCHAR(20) DEFAULT NULL,
+    `product_type` VARCHAR(20) DEFAULT NULL,
+    `price_code` VARCHAR(50) DEFAULT NULL,
     `item_code` VARCHAR(50) NOT NULL,
     `item_description` VARCHAR(255) DEFAULT NULL,
     `brand` VARCHAR(50) DEFAULT NULL,
@@ -510,79 +503,103 @@ DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci
 COMMENT='Admin-set daily sales target';
 
--- ===========================================================
--- TABLE: exchange_rates
 -- ============================================================
-DROP TABLE IF EXISTS `exchange_rates`;
-CREATE TABLE `exchange_rates` (
+-- TABLE: login_agents (BARU)
+-- Log setiap login agent - 1 row = 1 login event
+-- ============================================================
+DROP TABLE IF EXISTS `login_agents`;
+
+CREATE TABLE `login_agents` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `from_currency` CHAR(3) NOT NULL,
-    `to_currency` CHAR(3) NOT NULL,
-    `rate` DECIMAL(12,6) NOT NULL,
-    `effective_from` DATE NOT NULL,
-    `effective_to` DATE DEFAULT NULL,
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP,
+
+    `member_code` VARCHAR(50) NOT NULL
+        COMMENT 'Member code from the source report; no foreign key relationship',
+    `member_name` VARCHAR(150) DEFAULT NULL
+        COMMENT 'Snapshot nama masa insert (elak masalah kalau nama member tukar/hilang kemudian)',
+
+    `login_time` DATETIME NOT NULL
+        COMMENT '1 row = 1 login event',
+
+    `import_batch_id` BIGINT UNSIGNED DEFAULT NULL
+        COMMENT 'Reuse import_batches sedia ada, file_type = AGENT_LOGIN, untuk track batch import',
+
+    `inserted_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        COMMENT 'Auto-capture bila row ni di-insert ke DB (bukan masa login sebenar - tu login_time)',
+
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_exchange_rates_pair_from`
-    (
-        `from_currency`,
-        `to_currency`,
-        `effective_from`
-    ),
-    KEY `idx_exchange_rates_pair_range`
-    (
-        `from_currency`,
-        `to_currency`,
-        `effective_from`,
-        `effective_to`
-    )
+
+    -- Member sama + masa sama hanya boleh masuk SEKALI.
+    -- Member berbeza pada masa sama tetap dibenarkan.
+    UNIQUE KEY `uq_login_agents_member_time`
+        (`member_code`, `login_time`),
+
+    KEY `idx_login_agents_login_time`
+        (`login_time`),
+    KEY `idx_login_agents_import_batch_id`
+        (`import_batch_id`),
+
+    CONSTRAINT `fk_login_agents_import_batch`
+        FOREIGN KEY (`import_batch_id`)
+        REFERENCES `import_batches` (`id`)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL
+
 ) ENGINE=InnoDB
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci
-COMMENT='Stores exchange rates such as SGD to MYR';
+COMMENT='Log setiap login agent - 1 row = 1 login time (unik ikut member_code + login_time)';
+
+
+CREATE TABLE `price_code` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT,
+  `product_sku` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `product_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `brand` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `wmdp` decimal(12,2) DEFAULT NULL COMMENT 'Unit price in MYR',
+  `sbhdp` decimal(12,2) DEFAULT NULL COMMENT 'Unit price in MYR',
+  `emdp` decimal(12,2) DEFAULT NULL COMMENT 'Unit price in MYR',
+  `sgdp` decimal(12,2) DEFAULT NULL COMMENT 'Unit price in SGD',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_price_code_product_sku` (`product_sku`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE `composite_items` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT,
+  `product_type` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `item_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `item_description` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `loose_items` json DEFAULT NULL COMMENT 'Component list: item_code and quantity per pack',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_composite_items_item_code` (`item_code`),
+  KEY `idx_composite_items_product_type` (`product_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Composite product catalogue matching order_items product fields';
 
 -- ============================================================
--- TABLE: daily_report_runs
--- ============================================================
-DROP TABLE IF EXISTS `daily_report_runs`;
-CREATE TABLE `daily_report_runs` (
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `working_date` DATE NOT NULL,
-    `period_start` DATETIME NOT NULL,
-    `period_end` DATETIME NOT NULL,
-    -- ========================================================
-    -- SALES CALCULATION
-    -- ========================================================
-    `my_subtotal` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `sg_subtotal_sgd` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `exchange_rate_used` DECIMAL(12,6) NOT NULL DEFAULT 1.000000,
-    `sg_subtotal_myr` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `solucis_sales` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `manual_sales_total` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    `daily_total_sales` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    -- ========================================================
-    -- STATUS
-    -- ========================================================
-    `status` VARCHAR(20) NOT NULL DEFAULT 'processing',
-    `generated_at` DATETIME DEFAULT NULL,
-    `error_message` TEXT DEFAULT NULL,
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    KEY `idx_daily_report_runs_working_date`
-        (`working_date`),
-    KEY `idx_daily_report_runs_period`
-        (`period_start`, `period_end`),
-    KEY `idx_daily_report_runs_status`
-        (`status`)
-) ENGINE=InnoDB
-DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci
-COMMENT='Stores generated Daily Sales Report results';
--- ===========================================================
 -- ENABLE FOREIGN KEYS
 -- ============================================================
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ============================================================
+-- CONTOH QUERY BERGUNA (login_agents)
+-- ============================================================
+
+-- Total login count per member (real-time, tak payah simpan column count)
+-- SELECT member_code, member_name, COUNT(*) AS login_count
+-- FROM login_agents
+-- GROUP BY member_code, member_name;
+
+-- Login dalam range tarikh tertentu
+-- SELECT * FROM login_agents
+-- WHERE login_time BETWEEN '2025-03-01 00:00:00' AND '2025-03-31 23:59:59'
+-- ORDER BY login_time;
+
+-- Login per jam (untuk "Hourly User Login Count")
+-- SELECT DATE(login_time) AS login_date, HOUR(login_time) AS login_hour, COUNT(*) AS total
+-- FROM login_agents
+-- GROUP BY login_date, login_hour
+-- ORDER BY login_date, login_hour;

@@ -82,8 +82,77 @@ function downloadManualSalesTemplate(): void
     $sheet->getColumnDimension($column)->setAutoSize(true);
   }
 
+  if (ob_get_length()) {
+    ob_end_clean();
+  }
+
   header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   header('Content-Disposition: attachment; filename="manual_sales_template.xlsx"');
+  header('Cache-Control: max-age=0');
+  (new PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');
+  exit;
+}
+
+function exportManualSales(PDO $pdo): void
+{
+  require_once __DIR__ . '/../vendor/autoload.php';
+
+  $stmt = $pdo->query('
+    SELECT ms.sales_date, c.company_code, sc.channel_code, ms.amount, ms.brand, ms.remarks
+    FROM manual_sales ms
+    JOIN companies c ON ms.company_id = c.id
+    JOIN sales_channels sc ON ms.sales_channel_id = sc.id
+    ORDER BY ms.sales_date DESC, ms.created_at DESC
+  ');
+  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+  $spreadsheet = new PhpOffice\PhpSpreadsheet\Spreadsheet();
+  $sheet = $spreadsheet->getActiveSheet();
+  $sheet->setTitle('Manual Sales');
+
+  // Header sama macam template import
+  $sheet->fromArray([
+    ['company_code', 'sales_channel_code', 'sales_date', 'amount', 'brand', 'remarks'],
+  ]);
+
+  // Data rows
+  $dataRows = [];
+  foreach ($rows as $row) {
+    $dataRows[] = [
+      $row['company_code'],
+      $row['channel_code'],
+      $row['sales_date'],
+      (float)$row['amount'],
+      $row['brand'],
+      $row['remarks'] ?? '',
+    ];
+  }
+
+  if ($dataRows) {
+    $sheet->fromArray($dataRows, null, 'A2');
+  }
+
+  // Styling
+  $sheet->getStyle('A1:F1')->getFont()->setBold(true);
+  $sheet->freezePane('A2');
+  foreach (range('A', 'F') as $column) {
+    $sheet->getColumnDimension($column)->setAutoSize(true);
+  }
+
+  // Format amount column (D) as number
+  $lastRow = max(2, count($dataRows) + 1);
+  $sheet->getStyle('D2:D' . $lastRow)
+    ->getNumberFormat()
+    ->setFormatCode('#,##0.00');
+
+  $filename = 'manual_sales_export_' . date('Ymd_His') . '.xlsx';
+
+  if (ob_get_length()) {
+    ob_end_clean();
+  }
+
+  header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  header('Content-Disposition: attachment; filename="' . $filename . '"');
   header('Cache-Control: max-age=0');
   (new PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');
   exit;
@@ -94,7 +163,7 @@ if (isset($_GET['download_template'])) {
 }
 
 // ============================================================
-// HANDLE FORM SUBMISSION
+// DATABASE CONNECTION
 // ============================================================
 try {
     $pdo = new PDO(
@@ -107,6 +176,30 @@ try {
     $error = 'Database connection failed: ' . $e->getMessage();
 }
 
+// ============================================================
+// EXPORT HANDLER (kena selepas DB connection)
+// ============================================================
+if (isset($_GET['export_excel'])) {
+  try {
+    if (!$pdo) {
+      throw new Exception('Database connection failed.');
+    }
+    exportManualSales($pdo);
+  } catch (Throwable $e) {
+    header('Location: ' . $_SERVER['PHP_SELF'] . '?export_error=' . urlencode($e->getMessage()));
+    exit;
+  }
+}
+
+// Show export error kalau ada
+if (isset($_GET['export_error'])) {
+  $message = 'Export failed: ' . $_GET['export_error'];
+  $messageType = 'error';
+}
+
+// ============================================================
+// HANDLE FORM SUBMISSION
+// ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $companyId = (int)($_POST['company_id'] ?? 0);
     $channelId = (int)($_POST['sales_channel_id'] ?? 0);
@@ -547,6 +640,10 @@ table tr:hover{background:var(--gray-50);}
         <a class="btn btn-secondary" href="?download_template=1">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></svg>
           Download Template
+        </a>
+        <a class="btn btn-success" href="?export_excel=1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 21h14a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2"/></svg>
+          Export Excel
         </a>
       </div>
     </form>

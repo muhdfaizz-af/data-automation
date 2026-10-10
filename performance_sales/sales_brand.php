@@ -390,6 +390,88 @@ function getSalesByBrand(
     ];
 }
 
+// Combine repurchase + registration into one brand summary.
+function combineReports(array $repurchase, array $registration): array
+{
+    $dates = $repurchase['dates']; // same date range for both
+
+    $brands = ['Choco Albab', 'Nafesa', 'Zeky', 'Event Ticket'];
+
+    $combinedSales = [];
+    foreach ($brands as $brand) {
+        $combinedSales[$brand] = array_fill_keys($dates, 0.00);
+    }
+
+    // Merge repurchase rows
+    foreach ($repurchase['rows'] as $row) {
+        foreach ($row['daily'] as $date => $amount) {
+            if (isset($combinedSales[$row['brand']][$date])) {
+                $combinedSales[$row['brand']][$date] = round(
+                    $combinedSales[$row['brand']][$date] + $amount,
+                    2
+                );
+            }
+        }
+    }
+
+    // Merge registration rows
+    foreach ($registration['rows'] as $row) {
+        foreach ($row['daily'] as $date => $amount) {
+            if (isset($combinedSales[$row['brand']][$date])) {
+                $combinedSales[$row['brand']][$date] = round(
+                    $combinedSales[$row['brand']][$date] + $amount,
+                    2
+                );
+            }
+        }
+    }
+
+    $dailyTotals = array_fill_keys($dates, 0.00);
+    foreach ($combinedSales as $dailySales) {
+        foreach ($dailySales as $date => $amount) {
+            $dailyTotals[$date] = round($dailyTotals[$date] + $amount, 2);
+        }
+    }
+    $totalSales = round(array_sum($dailyTotals), 2);
+
+    $rows = [];
+    foreach ($combinedSales as $brand => $dailySales) {
+        $brandSales = round(array_sum($dailySales), 2);
+
+        if (
+            $brand === 'Event Ticket' &&
+            $brandSales <= 0 &&
+            !SHOW_ZERO_EVENT_TICKET
+        ) {
+            continue;
+        }
+
+        $percentage = $totalSales > 0
+            ? round(($brandSales / $totalSales) * 100, 2)
+            : 0.00;
+
+        $rows[] = [
+            'brand'      => $brand,
+            'daily'      => $dailySales,
+            'total'      => $brandSales,
+            'percentage' => $percentage,
+        ];
+    }
+
+    usort(
+        $rows,
+        static fn(array $a, array $b): int =>
+            $b['total'] <=> $a['total']
+    );
+
+    return [
+        'rows'         => $rows,
+        'dates'        => $dates,
+        'daily_totals' => $dailyTotals,
+        'total_sales'  => $totalSales,
+    ];
+}
+
 // ---- Shared request parsing (both AJAX and normal page load use this) ----
 
 $today = new DateTimeImmutable('today');
@@ -444,6 +526,7 @@ if ($isAjax) {
             $companyFilter,
             REGISTRATION_ORDER_TYPES
         );
+        $combinedReport = combineReports($repurchaseReport, $registrationReport);
     } catch (Throwable $e) {
         error_log('Sales by Brand report failed: ' . $e->getMessage());
         http_response_code(500);
@@ -461,6 +544,12 @@ if ($isAjax) {
         'company'      => $companyFilter,
         'period_label' => $periodLabel,
         'sgd_rate'     => SGD_TO_MYR_RATE,
+        'combined' => [
+            'rows'         => $combinedReport['rows'],
+            'dates'        => $combinedReport['dates'],
+            'daily_totals' => $combinedReport['daily_totals'],
+            'total_sales'  => $combinedReport['total_sales'],
+        ],
         'repurchase' => [
             'rows'         => $repurchaseReport['rows'],
             'dates'        => $repurchaseReport['dates'],
@@ -690,6 +779,22 @@ include __DIR__ . '/../includes/sidebar.php';
             </article>
         </section>
 
+        <!-- NEW: Total Sales by Brand (combined Repurchase + Registration) -->
+        <section class="card">
+            <div class="card-title">Total Sales by Brand</div>
+            <div class="card-subtitle">
+                Combined repurchase and registration sales, separated by brand.
+            </div>
+            <div class="table-wrap">
+                <table class="brand-table" id="combinedBrandTable">
+                    <thead id="combinedBrandTableHead"></thead>
+                    <tbody id="combinedBrandTableBody">
+                        <tr class="report-loading"><td>Loading report…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
         <section class="card">
             <div class="card-title">Repurchase Sales by Brand</div>
             <div class="card-subtitle">
@@ -742,6 +847,8 @@ const tableHead = document.getElementById('brandTableHead');
 const tableBody = document.getElementById('brandTableBody');
 const registrationTableHead = document.getElementById('registrationBrandTableHead');
 const registrationTableBody = document.getElementById('registrationBrandTableBody');
+const combinedTableHead = document.getElementById('combinedBrandTableHead');
+const combinedTableBody = document.getElementById('combinedBrandTableBody');
 const rateNote = document.getElementById('rateNote');
 const barChartEl = document.getElementById('brandBarChart');
 const compositionChartEl = document.getElementById('brandCompositionChart');
@@ -817,8 +924,6 @@ function renderBrandTable(data, headElement, bodyElement) {
 
 // ── CHART HELPERS ──
 
-// Merge the two reports into one row per brand:
-// normal = repurchase total, registration = starter kit total.
 function buildBrandSummary(data) {
     const map = new Map();
 
@@ -841,7 +946,6 @@ function buildBrandSummary(data) {
         .sort((a, b) => b.total - a.total);
 }
 
-// Keep a small headroom above the highest bar without adding a full empty interval.
 function niceMax(value) {
     if (value <= 0) return 100;
     return value * 1.08;
@@ -868,7 +972,6 @@ function renderBrandBarChart(rows) {
 
     let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">`;
 
-    // Gridlines + y-axis labels
     for (let i = 0; i <= 4; i++) {
         const value = (max / 4) * i;
         const yy = y(value);
@@ -963,6 +1066,12 @@ function renderReport(data) {
 
     renderCharts(data);
 
+    // Combined total by brand
+    renderBrandTable(
+        data.combined,
+        combinedTableHead,
+        combinedTableBody
+    );
     renderBrandTable(
         data.repurchase,
         tableHead,
@@ -984,6 +1093,7 @@ async function loadReport(params) {
     setLoading(true);
     tableBody.innerHTML = '<tr class="report-loading"><td>Loading report…</td></tr>';
     registrationTableBody.innerHTML = '<tr class="report-loading"><td>Loading report…</td></tr>';
+    combinedTableBody.innerHTML = '<tr class="report-loading"><td>Loading report…</td></tr>';
     clearCharts('Loading chart…');
 
     const query = new URLSearchParams(params).toString();
@@ -1010,6 +1120,8 @@ async function loadReport(params) {
             tableHead.innerHTML = '';
             registrationTableBody.innerHTML = '';
             registrationTableHead.innerHTML = '';
+            combinedTableBody.innerHTML = '';
+            combinedTableHead.innerHTML = '';
             totalSalesLabelEl.textContent = '—';
             periodLabelEl.textContent = '—';
             rateNote.textContent = '';

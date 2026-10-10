@@ -215,7 +215,7 @@ function identifyProductCategory(
 
     // Belgian Chocolate Drink family
     if (
-        preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002|JOY-BUNDLE-1|Q-BCD-002)(?:-|$)/', $itemCode) ||
+        preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002|JOY-BUNDLE-1|Q-BCD-002|Q-DRINKS4|Q-DRINKS4-C)(?:-|$)/', $itemCode) ||
         str_contains($description, '(BCDB) BOX BELGIAN CHOCOLATE DRINK') ||
         str_contains($description, 'BELGIAN CHOCOLATE DRINK')
     ) {

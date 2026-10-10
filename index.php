@@ -149,13 +149,11 @@ function dashboardProductCategory($brand, $itemCode, $description, $productType)
     $itemCode = strtoupper(trim($itemCode));
     $description = strtoupper(trim($description));
     $productType = strtoupper(trim($productType));
+    if (str_starts_with($itemCode, 'BPCC-') || str_contains($description, 'JOY CUP')) return null;
     foreach (['PAPERBAG', 'PAPER BAG', 'BUNTING', 'BROCHURE', 'FLYER', 'VOUCHER', 'DISPLAY', 'MINI RAK', 'MINI RACK', 'TABLE CLOTH', 'APRON', 'PLASTIC CUP', 'TUMBLER', 'WOVEN BAG', 'MENU BOARD', ' BOARD '] as $term) {
         if (str_contains($description, $term)) return null;
     }
-    if ($itemCode === 'BPCC-001' || str_contains($description, 'JOY CUP 12 OZ DOME SET')) return 'JOY CUP 12 OZ DOME SET (100PCS)';
-    if ($itemCode === 'BPCC-002' || str_contains($description, 'JOY CUP 12 OZ SIPPY SET')) return 'JOY CUP 12 OZ SIPPY SET (100PCS)';
-    if ($itemCode === 'BPCC-003' || str_contains($description, 'JOY CUP 16 OZ DOME SET')) return 'JOY CUP 16 OZ DOME SET (100PCS)';
-    if (preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002|JOY-BUNDLE-1|Q-BCD-002)(?:-|$)/', $itemCode) || str_contains($description, 'BELGIAN CHOCOLATE DRINK')) return '(BCDB) BOX BELGIAN CHOCOLATE DRINK';
+    if (preg_match('/^(?:BCD-002|BCDC-002|CBCDA-002|STK-BCDS-002|JOY-BUNDLE-1|Q-BCD-002|Q-DRINKS4|Q-DRINKS4-C)(?:-|$)/', $itemCode) || str_contains($description, 'BELGIAN CHOCOLATE DRINK')) return '(BCDB) BOX BELGIAN CHOCOLATE DRINK';
     if (in_array($itemCode, ['CA-6', 'CA-006'], true) || str_starts_with($itemCode, 'CAC-011') || str_starts_with($itemCode, 'STK-CA-6') || str_contains($description, 'UNICORN STRAWBERRY')) return 'UNICORN STRAWBERRY CHOCOLATE TUB';
     if (str_contains($description, 'CUTIE MINI CHOCO CRUNCH')) return 'CUTIE MINI CHOCO CRUNCH TUB';
     if (str_contains($description, 'BUTTERCREAM LATTE')) return 'BUTTERCREAM LATTE DRINK';
@@ -170,7 +168,7 @@ function dashboardProductCategory($brand, $itemCode, $description, $productType)
     if (str_starts_with($itemCode, 'ZEKY-BH') || str_starts_with($itemCode, 'STK-ZEKY-BH') || str_contains($description, 'ZEKY BRAIN HERO')) return 'ZEKY BRAIN HERO';
     if ($brand === 'STK' && preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) return 'SCARF';
     if ($brand === 'NAFESA') return preg_match('/^(?:NCH|NTU|NST|NIN)/', $itemCode) || str_contains($description, 'INNER') ? 'INNER' : 'SCARF';
-    if ($brand === 'CHOCO ALBAB') return in_array($productType, ['NORMAL', 'COMPOSITE'], true) ? dashboardProductName($description) : null;
+    if ($brand === 'CHOCO ALBAB') return $productType === 'NORMAL' ? dashboardProductName($description) : null;
     return null;
 }
 
@@ -194,12 +192,10 @@ function getDashboardTopProducts(PDO $pdo, $from, $to, $rate) {
     $stmt->execute(['from' => $from . ' 00:00:00', 'to' => date('Y-m-d 00:00:00', strtotime($to . ' +1 day'))]);
     $rows = $stmt->fetchAll();
     $joyOrders = [];
-    $joyCupQuantities = [];
     foreach ($rows as $row) {
         $code = strtoupper(trim((string)$row['item_code']));
         $orderId = (int)$row['order_id'];
         if ($code === 'JOY-BUNDLE-1') $joyOrders[$orderId] = true;
-        if (in_array($code, ['BPC-001', 'BPC-002'], true)) $joyCupQuantities[$orderId][$code] = ($joyCupQuantities[$orderId][$code] ?? 0) + (int)$row['quantity'];
     }
     $products = [];
     foreach ($rows as $row) {
@@ -216,8 +212,6 @@ function getDashboardTopProducts(PDO $pdo, $from, $to, $rate) {
             if (!isset($products[$allocatedCategory])) $products[$allocatedCategory] = ['product' => $allocatedCategory, 'quantity' => 0, 'total' => 0.0];
             $products[$allocatedCategory]['total'] += $sales * $share;
             if ($share === 1.0 && dashboardQuantityRow($allocatedCategory, $code, $row['product_type'] ?? '', $row['item_description'] ?? '')) $products[$allocatedCategory]['quantity'] += (int)$row['quantity'];
-            $cupSource = ['BPCC-001' => 'BPC-001', 'BPCC-002' => 'BPC-001', 'BPCC-003' => 'BPC-002'][$code] ?? null;
-            if ($share === 1.0 && $cupSource !== null && isset($joyCupQuantities[(int)$row['order_id']][$cupSource])) $products[$allocatedCategory]['quantity'] += $joyCupQuantities[(int)$row['order_id']][$cupSource];
         }
     }
     $products = array_values(array_filter($products, static fn($product) => $product['total'] > 0));
@@ -333,12 +327,12 @@ function getDashboardData($pdo, $requestedDate = null) {
     };
 
     try {
-        // Keep the headline total aligned with Overall Products (Tax Invoice formula).
         // Match Sales Comparison: confirmed system orders plus manual sales.
         $data['total'] = $sumOrders($reportDate, $reportDate);
         $data['mtd'] = $sumOrders($monthStart, $reportDate);
         $data['ytd'] = $sumOrders($yearStart, $reportDate);
-        $data['previous_total'] = $sumOrders(date('Y-m-d', strtotime($reportDate . ' -1 day')), date('Y-m-d', strtotime($reportDate . ' -1 day')));
+        $previousDate = date('Y-m-d', strtotime($reportDate . ' -1 day'));
+        $data['previous_total'] = $sumOrders($previousDate, $previousDate);
 
         // ── Previous-period comparisons ──
         $prevMonthStart = date('Y-m-01', strtotime($reportDate . ' -1 month'));
@@ -414,6 +408,20 @@ if ($isLoggedIn) {
 
 function dashboardMoney($amount) {
     return 'RM ' . number_format((float)$amount, 2);
+}
+
+function dashboardMoneyNoCents($amount) {
+    return 'RM ' . number_format((float)$amount, 0);
+}
+
+function dashboardSignedMoney($amount) {
+    $amount = (float)$amount;
+    return ($amount >= 0 ? '+' : '-') . 'RM ' . number_format(abs($amount), 2);
+}
+
+function dashboardSignedCount($amount) {
+    $amount = (int)$amount;
+    return ($amount >= 0 ? '+' : '-') . number_format(abs($amount));
 }
 
 function dashboardMoneyShort($amount) {
@@ -601,7 +609,13 @@ svg{display:block;}
 .mi-teal{background:rgba(0,180,180,.12);} .mi-purple{background:rgba(124,58,237,.1);}
 .mi-gold{background:rgba(245,166,35,.12);}
 .metric-label{font-size:0.75rem;font-weight:700;color:var(--gray-700);}
-.metric-value{font-size:1.1875rem;font-weight:800;color:var(--ink);margin:10px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.metric-value{font-size:1.1875rem;font-weight:800;color:var(--ink);margin:10px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.metric-compare{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;}
+.metric-diff-amt{font-size:0.75rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.metric-diff-pct{font-size:0.6875rem;font-weight:800;padding:1px 7px;border-radius:10px;white-space:nowrap;}
+.metric-diff-pct.mf-up{background:rgba(16,185,129,.12);}
+.metric-diff-pct.mf-down{background:rgba(224,32,46,.1);}
+.metric-ref{font-size:0.6875rem;font-weight:600;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .metric-foot{font-size:0.6875rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mf-up{color:var(--green);} .mf-down{color:var(--red);} .mf-neutral{color:var(--gray-500);font-weight:600;}
 
@@ -681,6 +695,158 @@ svg{display:block;}
 }
 @media(max-width:700px){.metric-grid{grid-template-columns:repeat(2,1fr);}.dash-hero{align-items:flex-start;padding:20px;}.main .page-header{display:none;}.metric-value{font-size:1rem;}.brand-list{grid-template-columns:minmax(0,66px) minmax(0,1fr) max-content;}}
 @media(max-width:600px){.metric-grid{grid-template-columns:1fr 1fr;} .main{padding:16px 14px 40px;} .dash-hero{padding:20px 22px;} .dash-hero-content h1{font-size:1.25rem;}}
+
+/* ══════════ UI REFINEMENT (soft modern layer) ══════════ */
+:root{
+  --shadow-card:0 1px 2px rgba(20,20,30,.04),0 4px 14px -6px rgba(20,20,30,.08);
+  --shadow-hover:0 2px 4px rgba(20,20,30,.04),0 14px 28px -12px rgba(20,20,30,.16);
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+body{
+  background:
+    radial-gradient(900px 400px at 100% -10%,rgba(0,180,180,.06),transparent 60%),
+    radial-gradient(800px 380px at -10% 0%,rgba(224,32,46,.05),transparent 60%),
+    var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+.metric-value,.monthly-value,.donut-center strong,.legend-val,.brand-total,
+.product-table td,.metric-diff-amt,.metric-diff-pct{font-variant-numeric:tabular-nums;}
+
+/* Entrance animation (halus, 1x sahaja) */
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes growX{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.dash-hero,.metric-card,.dashboard-card{animation:fadeUp .45s var(--ease) both;}
+.metric-card:nth-child(2){animation-delay:.04s}
+.metric-card:nth-child(3){animation-delay:.08s}
+.metric-card:nth-child(4){animation-delay:.12s}
+.metric-card:nth-child(5){animation-delay:.16s}
+.dashboard-grid .dashboard-card:nth-child(2){animation-delay:.08s}
+.dashboard-grid .dashboard-card:nth-child(3){animation-delay:.16s}
+.bottom-grid .dashboard-card:nth-child(2){animation-delay:.08s}
+
+/* Hero */
+.dash-hero{
+  border-radius:20px;padding:26px 30px;
+  box-shadow:0 12px 32px -14px rgba(142,22,32,.45);
+}
+.dash-hero::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(500px 200px at 15% 0%,rgba(255,255,255,.14),transparent 70%);
+}
+.dash-hero-content h1{letter-spacing:-.3px;}
+.hero-box{
+  background:rgba(255,255,255,.94);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.6);
+  box-shadow:0 4px 14px -6px rgba(0,0,0,.2);
+  transition:transform .2s var(--ease),box-shadow .2s var(--ease);
+}
+.hero-box:hover{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(0,0,0,.28);}
+.hero-status-dot{animation:pulseDot 2s ease-in-out infinite;}
+@keyframes pulseDot{0%,100%{box-shadow:0 0 0 3px rgba(16,185,129,.18)}50%{box-shadow:0 0 0 6px rgba(16,185,129,.06)}}
+.hero-cta{box-shadow:0 8px 18px -8px rgba(0,138,138,.6);}
+
+/* Metric cards */
+.metric-card{
+  position:relative;overflow:hidden;border-radius:16px;
+  border:1px solid rgba(20,20,30,.05);
+  transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .2s;
+}
+.metric-card::before{
+  content:'';position:absolute;left:0;top:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--red),var(--teal));
+  opacity:0;transition:opacity .2s;
+}
+.metric-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover);border-color:rgba(20,20,30,.08);}
+.metric-card:hover::before{opacity:1;}
+.metric-label{color:var(--gray-500);font-weight:700;letter-spacing:.1px;}
+.metric-icon{width:40px;height:40px;border-radius:12px;transition:transform .2s var(--ease);}
+.metric-card:hover .metric-icon{transform:scale(1.08) rotate(-4deg);}
+.metric-value{letter-spacing:-.4px;font-size:1.25rem;}
+.metric-diff-pct{padding:2px 8px;}
+.metric-diff-pct.mf-up{background:rgba(16,185,129,.12);color:#059669;}
+.metric-diff-pct.mf-down{background:rgba(224,32,46,.1);color:var(--red);}
+
+/* Cards */
+.dashboard-card{
+  border-radius:16px;padding:20px;
+  border:1px solid rgba(20,20,30,.05);
+  transition:box-shadow .2s var(--ease),border-color .2s;
+}
+.dashboard-card:hover{box-shadow:var(--shadow-hover);border-color:rgba(20,20,30,.08);}
+.card-heading{margin-bottom:16px;}
+.card-heading h2{
+  display:flex;align-items:center;gap:8px;letter-spacing:-.1px;
+}
+.card-heading h2::before{
+  content:'';width:4px;height:14px;border-radius:4px;
+  background:linear-gradient(180deg,var(--red),var(--teal));
+}
+
+/* Toggle pills */
+.toggle-group{background:var(--gray-100);padding:3px;border:1px solid rgba(20,20,30,.04);}
+.toggle-btn{transition:background .2s var(--ease),color .2s,box-shadow .2s;}
+.toggle-btn:hover:not(.active){color:var(--ink);}
+.toggle-btn.active{box-shadow:0 3px 8px -2px rgba(224,32,46,.45);}
+
+/* Donut + legend */
+.donut-svg circle{transition:stroke-width .2s var(--ease);}
+.donut-svg circle:hover{stroke-width:21;}
+.legend-row{padding:6px 8px;margin:-6px -8px;border-radius:8px;transition:background .15s;}
+.legend-row:hover{background:var(--gray-100);}
+.legend-dot{box-shadow:0 0 0 3px rgba(20,20,30,.05);}
+
+/* Brand bars */
+.brand-bar{height:24px;background:#eef2f6;}
+.brand-fill{
+  transform-origin:left center;
+  animation:growX .7s var(--ease) both;
+  background-image:linear-gradient(90deg,rgba(255,255,255,.0),rgba(255,255,255,.18));
+  background-blend-mode:overlay;
+}
+.brand-row:hover .brand-fill{filter:brightness(1.06);}
+
+/* Product table */
+.product-table{border-collapse:separate;border-spacing:0;}
+.product-table th{
+  background:#f3f6f9;color:var(--gray-700);
+  text-transform:uppercase;font-size:.625rem;letter-spacing:.5px;
+}
+.product-table th:first-child{border-radius:8px 0 0 8px;}
+.product-table th:last-child{border-radius:0 8px 8px 0;}
+.product-table td{padding:10px 8px;transition:background .15s;}
+.product-table td:first-child{max-width:none;color:var(--gray-500);font-weight:800;width:34px;}
+.product-table td:nth-child(2){max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;color:var(--ink);}
+.product-table tbody tr:hover td{background:#f8fafc;}
+.product-table tbody tr:last-child td{border-bottom:none;}
+.product-table tbody tr:first-child td:first-child{color:var(--gold);}
+
+/* Trend + monthly */
+.trend-pill,.monthly-pill{border:1px solid rgba(16,185,129,.18);}
+.trend-pill.down{border-color:rgba(224,32,46,.18);}
+.monthly-pill.behind{border-color:rgba(194,65,12,.18);}
+.trend-chart-svg polyline{stroke-linejoin:round;stroke-linecap:round;}
+.trend-chart-svg circle{transition:r .15s;}
+.trend-chart-svg circle:hover{r:5;}
+.monthly-progress{height:10px;background:#eaeff3;box-shadow:inset 0 1px 2px rgba(20,20,30,.06);}
+.monthly-progress span{
+  position:relative;transform-origin:left center;animation:growX .9s var(--ease) both;
+}
+.monthly-progress span::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+  animation:shine 2.8s ease-in-out infinite;
+}
+@keyframes shine{0%{transform:translateX(-100%)}60%,100%{transform:translateX(100%)}}
+.monthly-stat{padding:10px 12px;background:var(--gray-100);border-radius:10px;}
+
+/* Accessibility */
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:6px;}
+.hero-box input[type=date]:focus-visible{outline:none;}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;}
+}
+@media(max-width:700px){.dash-hero{border-radius:16px;}.monthly-stat{padding:8px 10px;}}
 </style>
 </head>
 <body>
@@ -758,12 +924,25 @@ $ytdChange = dashboardChange($d['ytd'], $d['ytd_prev']);
 $agentChange = dashboardChange($d['active_agents'], $d['active_agents_prev']);
 $newAgentChange = dashboardChange($d['new_agent_mtd'], $d['new_agent_mtd_prev']);
 $asdChange = dashboardChange($d['asd'], $d['asd_prev']);
-$trendChange = dashboardChange(array_sum($d['trend']), $d['trend_prev_total']);
+
+// ── Difference amounts (for the clearer KPI comparison format) ──
+$totalDiff = $d['total'] - $d['previous_total'];
+$mtdDiff = $d['mtd'] - $d['mtd_prev'];
+$ytdDiff = $d['ytd'] - $d['ytd_prev'];
+$newAgentDiff = $d['new_agent_mtd'] - $d['new_agent_mtd_prev'];
+$asdDiff = $d['asd'] - $d['asd_prev'];
+
+// ── Sales Trend: current day vs average of the previous 6 days shown in the chart ──
+$trendValues = array_values($d['trend']);
+$trendCurrentDay = end($trendValues) ?: 0;
+$trendPrev6 = array_slice($trendValues, 0, max(0, count($trendValues) - 1));
+$trendPrev6Avg = count($trendPrev6) > 0 ? array_sum($trendPrev6) / count($trendPrev6) : 0;
+$trendChange = dashboardChange($trendCurrentDay, $trendPrev6Avg);
 
 $dayOfMonth = (int)date('j', strtotime($d['report_date']));
 $daysInMonth = (int)date('t', strtotime($d['report_date']));
 $proratedTarget = (float)$d['monthly_target'];
-$monthlyProgress = $d['monthly_target'] > 0 ? min(100, ($d['mtd'] / $d['monthly_target']) * 100) : 0;
+$monthlyProgress = $d['monthly_target_full'] > 0 ? min(100, ($d['mtd'] / $d['monthly_target_full']) * 100) : 0;
 $monthlyDifference = $d['mtd'] - $proratedTarget;
 $monthlyDifferencePercent = $proratedTarget > 0 ? ($monthlyDifference / $proratedTarget) * 100 : 0;
 $daysRemaining = max(0, $daysInMonth - $dayOfMonth);
@@ -788,6 +967,7 @@ $polyline = implode(' ', array_map(fn($p) => round($p[0],1) . ',' . round($p[1],
 $areaPath = 'M' . round($points[0][0],1) . ',' . round($padT+$plotH,1) . ' ';
 foreach ($points as $p) { $areaPath .= 'L' . round($p[0],1) . ',' . round($p[1],1) . ' '; }
 $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$plotH,1) . ' Z';
+
 ?>
 <main class="main">
     <div class="page-header"><h1>Dashboard</h1></div>
@@ -824,27 +1004,47 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">Total Sales (<?= htmlspecialchars($reportShort) ?>)</span><span class="metric-icon mi-red">&#128200;</span></div>
             <div class="metric-value"><?= dashboardMoney($d['total']) ?></div>
-            <div class="metric-foot <?= $previousChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $previousChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($previousChange), 1) ?>% vs <?= htmlspecialchars($prevDayLabel) ?></div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $totalDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedMoney($totalDiff) ?></span>
+                <span class="metric-diff-pct <?= $previousChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $previousChange >= 0 ? '+' : '-' ?><?= number_format(abs($previousChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevDayLabel) ?></div>
         </article>
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">MTD Sales</span><span class="metric-icon mi-green">&#128176;</span></div>
             <div class="metric-value"><?= dashboardMoney($d['mtd']) ?></div>
-            <div class="metric-foot <?= $mtdChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $mtdChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($mtdChange), 1) ?>% vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $mtdDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedMoney($mtdDiff) ?></span>
+                <span class="metric-diff-pct <?= $mtdChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $mtdChange >= 0 ? '+' : '-' ?><?= number_format(abs($mtdChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
         </article>
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">YTD Sales</span><span class="metric-icon mi-teal">&#128202;</span></div>
             <div class="metric-value"><?= dashboardMoney($d['ytd']) ?></div>
-            <div class="metric-foot <?= $ytdChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $ytdChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($ytdChange), 1) ?>% vs <?= htmlspecialchars($prevYearLabel) ?> (YTD)</div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $ytdDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedMoney($ytdDiff) ?></span>
+                <span class="metric-diff-pct <?= $ytdChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $ytdChange >= 0 ? '+' : '-' ?><?= number_format(abs($ytdChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevYearLabel) ?> (YTD)</div>
         </article>
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">New Agent (MTD)</span><span class="metric-icon mi-purple">&#128101;</span></div>
             <div class="metric-value"><?= number_format($d['new_agent_mtd']) ?></div>
-            <div class="metric-foot <?= $newAgentChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $newAgentChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($newAgentChange), 1) ?>% vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $newAgentDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedCount($newAgentDiff) ?></span>
+                <span class="metric-diff-pct <?= $newAgentChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $newAgentChange >= 0 ? '+' : '-' ?><?= number_format(abs($newAgentChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
         </article>
         <article class="metric-card">
             <div class="metric-head"><span class="metric-label">ASD / Avg Sales per Dealer</span><span class="metric-icon mi-gold">&#127919;</span></div>
             <div class="metric-value"><?= dashboardMoney($d['asd']) ?></div>
-            <div class="metric-foot <?= $asdChange >= 0 ? 'mf-up' : 'mf-down' ?>"><?= $asdChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($asdChange), 1) ?>% vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
+            <div class="metric-compare">
+                <span class="metric-diff-amt <?= $asdDiff >= 0 ? 'mf-up' : 'mf-down' ?>"><?= dashboardSignedMoney($asdDiff) ?></span>
+                <span class="metric-diff-pct <?= $asdChange >= 0 ? 'mf-up' : 'mf-down' ?>">(<?= $asdChange >= 0 ? '+' : '-' ?><?= number_format(abs($asdChange), 1) ?>%)</span>
+            </div>
+            <div class="metric-ref">vs <?= htmlspecialchars($prevMonthLabel) ?> (MTD)</div>
         </article>
     </section>
 
@@ -897,7 +1097,7 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
         <article class="dashboard-card">
             <div class="card-heading">
                 <h2>Sales Trend (Last 7 Days)</h2>
-                <span class="trend-pill <?= $trendChange >= 0 ? '' : 'down' ?>"><?= $trendChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($trendChange), 1) ?>% vs previous 7 days</span>
+                <span class="trend-pill <?= $trendChange >= 0 ? '' : 'down' ?>"><?= $trendChange >= 0 ? '&#8593; +' : '&#8595; ' ?><?= number_format(abs($trendChange), 1) ?>% vs Last 6 Days Avg</span>
             </div>
             <div class="trend-chart-wrap">
                 <svg viewBox="0 0 <?= $chartW ?> <?= $chartH ?>" class="trend-chart-svg" preserveAspectRatio="none">
@@ -922,15 +1122,16 @@ $areaPath .= 'L' . round($points[count($points)-1][0],1) . ',' . round($padT+$pl
         <article class="dashboard-card">
             <div class="card-heading">
                 <h2>Monthly Performance (<?= htmlspecialchars(date('M Y', strtotime($d['report_date']))) ?>)</h2>
-                <span class="monthly-pill <?= $onTrack ? '' : 'behind' ?>">&#127919; <?= $onTrack ? 'On track to meet monthly target!' : 'Behind monthly target pace' ?></span>
+                <span class="monthly-pill <?= $onTrack ? '' : 'behind' ?>">&#127919; <?= $onTrack ? 'Above Monthly Target' : 'Behind Monthly Target' ?></span>
             </div>
-            <div class="monthly-value"><?= dashboardMoney($d['mtd']) ?> <small>/ <?= $d['monthly_target_full'] > 0 ? dashboardMoney($d['monthly_target_full']) : 'No target set' ?></small></div>
+            <div class="monthly-value"><?= dashboardMoney($d['mtd']) ?> <small>/ <?= $d['monthly_target_full'] > 0 ? dashboardMoneyNoCents($d['monthly_target_full']) : 'No target set' ?></small></div>
             <div class="monthly-progress"><span style="width:<?= $monthlyProgress ?>%"></span></div>
             <div class="monthly-stats">
-                <div class="monthly-stat">Supposedly Current Target<strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>
+                <div class="monthly-stat">Estimated Target (as at <?= htmlspecialchars(date('d M Y', strtotime($d['report_date']))) ?>)<strong><?= $d['monthly_target'] > 0 ? dashboardMoney($proratedTarget) : '—' ?></strong></div>
                 <div class="monthly-stat <?= $monthlyDifference < 0 ? 'neg' : '' ?>">Difference<strong><?= $d['monthly_target'] > 0 ? ($monthlyDifference >= 0 ? '+' : '-') . dashboardMoney(abs($monthlyDifference)) . ' (' . ($monthlyDifferencePercent >= 0 ? '+' : '') . number_format($monthlyDifferencePercent, 1) . '%)' : '—' ?></strong></div>
                 <div class="monthly-stat">Days Remaining<strong><?= $daysRemaining ?> days</strong></div>
             </div>
+
         </article>
     </section>
 </main>

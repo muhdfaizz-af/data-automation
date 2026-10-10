@@ -28,6 +28,7 @@ define('STARTER_KITS', [
     'STK-ZEKY' => 'Zeky',
     'STK-CA'   => 'Choco Albab',
     'STK-NF'   => 'Nafesa',
+    'STK-JOYP-1001' => 'JOYPRENEUR PACK',
 ]);
 
 define('REGISTRATION_ORDER_TYPES', [
@@ -213,6 +214,9 @@ function getRecruitmentMetrics(
 
               OR UPPER(TRIM(oi.item_code)) = 'STK-NF'
               OR UPPER(TRIM(oi.item_code)) LIKE 'STK-NF-%'
+
+              OR UPPER(TRIM(oi.item_code)) = 'STK-JOYP-1001'
+              OR UPPER(TRIM(oi.item_code)) LIKE 'STK-JOYP-1001-%'
           )
     ";
 
@@ -432,7 +436,8 @@ function getRecruitmentMetrics(
 
 function renderRecruitmentTable(
     string $heading,
-    array $metrics
+    array $metrics,
+    string $repurchaseHeading
 ): void {
     ?>
     <section class="report-block">
@@ -446,7 +451,7 @@ function renderRecruitmentTable(
                         <th colspan="2">New Registration</th>
                         <th colspan="2">SPC Upgrade</th>
                         <th rowspan="2">Total</th>
-                        <th colspan="2">Purchase Agent</th>
+                        <th colspan="2"><?= htmlspecialchars($repurchaseHeading) ?></th>
                     </tr>
                     <tr>
                         <th>MY</th>
@@ -546,7 +551,7 @@ if(!isValidDate($reportDate)) {
     $errors[] = 'Please select a valid report date.';
 }
 
-// Daily range contains one day, monthly range contains the complete calendar month.
+// Daily range contains one day, monthly range contains the complete calendar month
 $dailyFrom = $reportDate;
 $dailyTo = $reportDate;
 
@@ -750,8 +755,8 @@ include __DIR__ . '/../includes/sidebar.php';
                 Registration <?= htmlspecialchars($monthlyHeading) ?>
             </h2>
             <div class="report-subtitle">Counts are based on confirmed Tax Invoice orders.</div>
-            <?php renderRecruitmentTable($dailyHeading, $dailyMetrics); ?>
-            <?php renderRecruitmentTable($monthlyHeading, $monthlyMetrics); ?>
+            <?php renderRecruitmentTable($dailyHeading, $dailyMetrics, 'New Agent Daily Repurchase'); ?>
+            <?php renderRecruitmentTable($monthlyHeading, $monthlyMetrics, 'New Agent Monthly Repurchase'); ?>
         </section>
     <?php endif; ?>
 </main>

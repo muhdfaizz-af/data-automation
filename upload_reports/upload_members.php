@@ -1,25 +1,42 @@
 <?php
 /**
- * S ASIA SALES REPORT - Members Upload Interface
- * Web form untuk upload Member List (Excel / CSV)
+ * S ASIA SALES REPORT - Members Upload Interface (FAST VERSION)
+ *
+ * Perubahan utama:
+ *  1. Baca file secara STREAMING (OpenSpout utk xlsx, fgetcsv utk csv) - memori rendah, tak load 500k row sekali gus.
+ *  2. Company di-cache sekali (bukan 1 query setiap row).
+ *  3. Batch INSERT ... ON DUPLICATE KEY UPDATE (1000 row / query) dalam 1 transaction.
+ *  4. Proses jalan di BACKGROUND (response ditutup awal) + browser poll progress sebenar.
+ *  5. session_write_close() supaya polling tak kena block oleh session lock.
+ *
+ * Install sekali: composer require openspout/openspout
  */
 
 session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/../error.log');
 
 require_once __DIR__ . '/../config/db.php';
+
+const IMPORT_CHUNK = 1000; // bilangan row per query
+const MEMBER_IMPORT_LOG_FILE = __DIR__ . '/../error.log';
+
+function memberImportLogError(string $context, $error): void {
+  $message = sprintf("[%s] [upload_members] %s: %s", date('Y-m-d H:i:s'), $context, $error instanceof Throwable ? $error->getMessage() : (string)$error);
+  if ($error instanceof Throwable) $message .= "\n" . $error->getTraceAsString();
+  error_log($message . "\n\n", 3, MEMBER_IMPORT_LOG_FILE);
+}
 
 $isLoggedIn = isset($_SESSION['admin_id']);
 $adminUsername = $_SESSION['admin_username'] ?? '';
 
-// Kalau tak login, redirect
 if (!$isLoggedIn) {
     header('Location: ../index.php');
     exit;
 }
 
-// Handle idle timeout
 if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > 7200) {
     session_unset();
     session_destroy();
@@ -27,6 +44,419 @@ if (!empty($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) 
     exit;
 }
 $_SESSION['last_activity'] = time();
+// PENTING: lepaskan session lock supaya request progress boleh jalan serentak
+session_write_close();
+
+/* ============================================================
+ * Helpers
+ * ============================================================ */
+const FIELD_ALIASES = [
+    'member_code'              => ['memberid', 'membercode', 'memberno', 'id'],
+    'member_name'              => ['nameasperic', 'name', 'fullname'],
+    'nric'                     => ['nric', 'ic', 'icno'],
+    'mobile_no'                => ['mobileno', 'mobile', 'phoneno'],
+    'email'                    => ['email', 'emailaddress'],
+    'joined_date'              => ['joineddate', 'joindate', 'registrationdate'],
+    'sponsor_code'             => ['sponsorid', 'sponsorcode'],
+    'sponsor_name'             => ['sponsorname'],
+    'status'                   => ['status'],
+    'cl_code'                  => ['clcode'],
+    'cl_name'                  => ['clname'],
+    'occupation'               => ['occupation'],
+    'date_of_birth'            => ['dateofbirth', 'dob', 'birthdate'],
+    'source_of_funds'          => ['sourceoffunds'],
+    'estimated_monthly_income' => ['estimatedmonthlyincome', 'monthlyincome'],
+    'gender'                   => ['gender', 'sex'],
+    'marital_status'           => ['maritalstatus'],
+    'current_rank'             => ['currentrank', 'rank'],
+    'highest_rank'             => ['highestrank'],
+];
+
+function memberHeader($value) {
+    return preg_replace('/[^a-z0-9]/', '', strtolower(trim((string)$value)));
+}
+
+function memberCell($v) {
+    if ($v === null || is_bool($v)) return '';
+    if ($v instanceof DateTimeInterface) return $v->format('Y-m-d');
+    if (is_float($v)) return floor($v) == $v ? sprintf('%.0f', $v) : (string)$v;
+    return (string)$v;
+}
+
+function memberDate($value) {
+    $value = trim((string)$value);
+    if ($value === '' || in_array($value, ['0000-00-00', '0000-00-00 00:00:00'], true)) return null;
+    if (is_numeric($value) && $value > 20000 && $value < 80000) return gmdate('Y-m-d', (int)(($value - 25569) * 86400));
+    // Format Malaysia: d/m/Y atau d-m-Y (strtotime salah baca sebagai m/d/Y)
+    if (preg_match('#^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})(?:\s.*)?$#', $value, $m)) {
+        return checkdate((int)$m[2], (int)$m[1], (int)$m[3]) ? sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]) : null;
+    }
+    $ts = strtotime($value);
+    return $ts === false ? null : date('Y-m-d', $ts);
+}
+
+function memberAmount($value) {
+    if ($value === '') return null;
+    $value = str_replace(['RM', 'SGD', ',', ' ', '"'], '', strtoupper($value));
+    return is_numeric($value) ? (float)$value : null;
+}
+
+function dbConnect(): PDO {
+    return new PDO(
+        'mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET,
+        DB_USER, DB_PASS,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]
+    );
+}
+
+/** Cache semua company sekali: CODE / NAME => id */
+function companyMap(PDO $pdo): array {
+    $map = [];
+    foreach ($pdo->query('SELECT id, company_code, company_name FROM companies') as $r) {
+        foreach ([$r['company_code'], $r['company_name']] as $k) {
+            $k = strtoupper(trim((string)$k));
+            if ($k !== '' && !isset($map[$k])) $map[$k] = (int)$r['id'];
+        }
+    }
+    return $map;
+}
+
+function companyCodeOf(string $memberId): string {
+    return strtoupper(substr($memberId, 0, 2)) === 'SG' ? 'SG' : 'MY';
+}
+
+/** Generator: yield [lineNo => cells[]] secara streaming */
+function memberRows(string $path, string $ext, string $delimiter): Generator {
+    if ($ext === 'xlsx') {
+        if (!class_exists(\OpenSpout\Reader\XLSX\Reader::class)) {
+            throw new RuntimeException('Library OpenSpout belum diinstall. Run: composer require openspout/openspout');
+        }
+        $reader = new \OpenSpout\Reader\XLSX\Reader();
+        $reader->open($path);
+        try {
+            foreach ($reader->getSheetIterator() as $sheet) {
+                $line = 0;
+                foreach ($sheet->getRowIterator() as $row) {
+                    $line++;
+                    yield $line => array_map('memberCell', $row->toArray());
+                }
+                break; // sheet pertama sahaja
+            }
+        } finally {
+            $reader->close();
+        }
+    } else {
+        $fh = fopen($path, 'rb');
+        if (!$fh) throw new RuntimeException('Cannot open uploaded file.');
+        try {
+            if (fread($fh, 3) !== "\xEF\xBB\xBF") rewind($fh); // buang BOM
+            $line = 0;
+            while (($r = fgetcsv($fh, 0, $delimiter, '"', '\\')) !== false) {
+                $line++;
+                if ($r === [null]) continue;
+                yield $line => $r;
+            }
+        } finally {
+            fclose($fh);
+        }
+    }
+}
+
+/** Anggaran jumlah row (utk progress bar sahaja, murah) */
+function estimateRows(string $path, string $ext): int {
+    if ($ext === 'xlsx') {
+        $zip = new ZipArchive();
+        if ($zip->open($path) !== true) return 0;
+        $total = 0;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if (preg_match('#^xl/worksheets/[^/]+\.xml$#', $name)) {
+                $s = $zip->getStream($name);
+                $head = $s ? fread($s, 8192) : '';
+                if ($s) fclose($s);
+                if (preg_match('/<dimension ref="[A-Z]+\d+:[A-Z]+(\d+)"/', $head, $m)) $total = max(0, (int)$m[1] - 1);
+                break;
+            }
+        }
+        $zip->close();
+        return $total;
+    }
+    $fh = fopen($path, 'rb');
+    if (!$fh) return 0;
+    $n = 0;
+    while (!feof($fh)) { $buf = fread($fh, 1048576); $n += substr_count($buf, "\n"); }
+    fclose($fh);
+    return max(0, $n - 1);
+}
+
+function buildColumnMap(array $headerRow): array {
+    $idx = [];
+    foreach ($headerRow as $i => $h) {
+        $k = memberHeader($h);
+        if ($k !== '' && !isset($idx[$k])) $idx[$k] = $i;
+    }
+    $map = [];
+    foreach (FIELD_ALIASES as $field => $aliases) {
+        $map[$field] = null;
+        foreach ($aliases as $a) {
+            if (isset($idx[$a])) { $map[$field] = $idx[$a]; break; }
+        }
+    }
+    return $map;
+}
+
+/** Return array params, atau string (mesej error) */
+function parseMemberRow(array $row, array $map, array $companies, int $batchId) {
+    $get = fn($f) => $map[$f] === null ? '' : trim((string)($row[$map[$f]] ?? ''));
+    $memberId = $get('member_code');
+    if ($memberId === '') return 'Member ID is required.';
+    $companyId = $companies[companyCodeOf($memberId)] ?? null;
+    if (!$companyId) return 'Company not found for this Member ID.';
+
+    $p = [$companyId, $batchId];
+    foreach (array_keys(FIELD_ALIASES) as $f) {
+        $v = $get($f);
+        $p[] = match ($f) {
+            'joined_date', 'date_of_birth' => memberDate($v),
+            'estimated_monthly_income'     => memberAmount($v),
+            default                        => $v,
+        };
+    }
+    return $p;
+}
+
+function upsertStatement(PDO $pdo, int $n): PDOStatement {
+    static $cache = [];
+    if (isset($cache[$n])) return $cache[$n];
+    $cols = array_merge(['company_id', 'import_batch_id'], array_keys(FIELD_ALIASES));
+    $one  = '(' . implode(',', array_fill(0, count($cols), '?')) . ')';
+    $upd  = [];
+    foreach ($cols as $c) if ($c !== 'member_code') $upd[] = "$c = VALUES($c)";
+    $sql = 'INSERT INTO members (' . implode(',', $cols) . ') VALUES ' . implode(',', array_fill(0, $n, $one))
+         . ' ON DUPLICATE KEY UPDATE ' . implode(',', $upd);
+    return $cache[$n] = $pdo->prepare($sql);
+}
+
+/* ---------- progress file ---------- */
+function progressPath(int $batchId): string {
+    return sys_get_temp_dir() . '/sasia_member_import_' . $batchId . '.json';
+}
+function writeProgress(int $batchId, array $p): void {
+    $p['updated_at'] = time();
+    @file_put_contents(progressPath($batchId), json_encode($p), LOCK_EX);
+}
+
+/* ---------- core import ---------- */
+function runImport(PDO $pdo, int $batchId, string $path, string $ext, string $delim, array $companies, array $progress): void {
+    $gen = memberRows($path, $ext, $delim);
+    $gen->rewind();
+    $map = buildColumnMap($gen->current());
+    $gen->next();
+
+    $before = (int)$pdo->query('SELECT COUNT(*) FROM members')->fetchColumn();
+
+    $buf = []; $lines = [];
+    $total = 0; $ok = 0; $failed = 0; $errors = [];
+    $lastWrite = microtime(true);
+
+    $flush = function () use (&$buf, &$lines, &$ok, &$failed, &$errors, $pdo) {
+        $n = count($buf);
+        if ($n === 0) return;
+        try {
+            $pdo->beginTransaction();
+            upsertStatement($pdo, $n)->execute(array_merge(...$buf));
+            $pdo->commit();
+            $ok += $n;
+        } catch (Throwable $e) {
+          memberImportLogError('Batch insert failed; retrying rows individually', $e);
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            // Fallback: cari row yang bermasalah satu-satu
+            $pdo->beginTransaction();
+            $stmt = upsertStatement($pdo, 1);
+            foreach ($buf as $k => $params) {
+                try { $stmt->execute($params); $ok++; }
+                catch (Throwable $e2) {
+                    $failed++;
+                  memberImportLogError("Database error on row {$lines[$k]}", $e2);
+                    if (count($errors) < 100) $errors[] = "Row {$lines[$k]}: " . $e2->getMessage();
+                }
+            }
+            $pdo->commit();
+        }
+        $buf = []; $lines = [];
+    };
+
+    for (; $gen->valid(); $gen->next()) {
+        $row = $gen->current();
+        if (trim(implode('', $row)) === '') continue; // skip row kosong
+        $total++;
+        $p = parseMemberRow($row, $map, $companies, $batchId);
+        if (is_string($p)) {
+            $failed++;
+          memberImportLogError("Invalid data on row {$gen->key()}", $p);
+            if (count($errors) < 100) $errors[] = 'Row ' . $gen->key() . ': ' . $p;
+            continue;
+        }
+        $buf[] = $p; $lines[] = $gen->key();
+        if (count($buf) >= IMPORT_CHUNK) {
+            $flush();
+            if (microtime(true) - $lastWrite >= 0.5) {
+                $progress['processed'] = $total; $progress['ok'] = $ok; $progress['failed'] = $failed;
+                writeProgress($batchId, $progress);
+                $lastWrite = microtime(true);
+            }
+        }
+    }
+    $flush();
+
+    $after    = (int)$pdo->query('SELECT COUNT(*) FROM members')->fetchColumn();
+    $inserted = max(0, $after - $before);
+    $updated  = max(0, $ok - $inserted);
+    $status   = $failed ? 'completed_with_errors' : 'completed';
+
+    $pdo->prepare('UPDATE import_batches SET total_rows = :t, successful_rows = :s, failed_rows = :f, status = :st, imported_at = NOW() WHERE id = :id')
+        ->execute(['t' => $total, 's' => $ok, 'f' => $failed, 'st' => $status, 'id' => $batchId]);
+
+    $progress = array_merge($progress, [
+        'status' => $status, 'total' => $total, 'processed' => $total,
+        'ok' => $ok, 'inserted' => $inserted, 'updated' => $updated,
+        'failed' => $failed, 'errors' => $errors,
+    ]);
+    writeProgress($batchId, $progress);
+}
+
+/* ============================================================
+ * GET ?progress=ID  -> status semasa
+ * ============================================================ */
+if (isset($_GET['progress'])) {
+    header('Content-Type: application/json');
+    header('Cache-Control: no-store');
+    $file = progressPath((int)$_GET['progress']);
+    if (!is_file($file)) { echo json_encode(['status' => 'unknown']); exit; }
+    $p = json_decode((string)file_get_contents($file), true) ?: ['status' => 'unknown'];
+    $p['stale'] = $p['status'] === 'processing' && (time() - ($p['updated_at'] ?? time())) > 180;
+    echo json_encode($p);
+    exit;
+}
+
+/* ============================================================
+ * POST -> terima file, validate, balas segera, proses di background
+ * ============================================================ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Content-Type: application/json');
+    set_time_limit(0);
+    ini_set('memory_limit', '512M');
+    ignore_user_abort(true);
+
+    if (!isset($_FILES['members']) || $_FILES['members']['error'] !== UPLOAD_ERR_OK) {
+      $uploadError = $_FILES['members']['error'] ?? 'missing file';
+      memberImportLogError('File upload failed', 'Upload error: ' . $uploadError);
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Please select a member list file (check upload_max_filesize / post_max_size if file is large).']);
+        exit;
+    }
+
+    require_once __DIR__ . '/../vendor/autoload.php';
+
+    $stored = null;
+    $batchId = 0;
+    try {
+        $file = $_FILES['members'];
+        $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['xlsx', 'csv', 'txt', 'tsv'], true)) throw new RuntimeException('Only .xlsx, .csv, .txt and .tsv files are supported.');
+
+        $delimiter = (string)($_POST['delimiter'] ?? ',');
+        $delimiter = ($delimiter === "\t" || strtolower($delimiter) === 't') ? "\t" : ($delimiter !== '' ? $delimiter[0] : ',');
+        if ($ext === 'tsv') $delimiter = "\t";
+
+        $hash = hash_file('sha256', $file['tmp_name']);
+        $pdo  = dbConnect();
+
+        $dup = $pdo->prepare('SELECT id, status FROM import_batches WHERE file_hash = :hash LIMIT 1');
+        $dup->execute(['hash' => $hash]);
+        $existing = $dup->fetch();
+        if ($existing && $existing['status'] === 'completed') {
+            echo json_encode(['status' => 'success', 'members' => ['skipped' => true, 'message' => 'File already imported.']]);
+            exit;
+        }
+
+        // Simpan file ke temp supaya selamat walaupun request dah ditutup
+        $stored = sys_get_temp_dir() . '/sasia_members_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        if (!move_uploaded_file($file['tmp_name'], $stored)) throw new RuntimeException('Failed to store uploaded file.');
+
+        // Validate header + row pertama (cepat, baca 2 row sahaja)
+        $peek = memberRows($stored, $ext, $delimiter);
+        $peek->rewind();
+        if (!$peek->valid()) throw new RuntimeException('File is empty.');
+        $header = $peek->current();
+        $peek->next();
+        if (!$peek->valid()) throw new RuntimeException('File is empty.');
+        $firstRow = $peek->current();
+        unset($peek);
+
+        $map = buildColumnMap($header);
+        if ($map['member_code'] === null) throw new RuntimeException('Required columns missing. Header must include Member ID.');
+
+        $companies = companyMap($pdo);
+        $firstId   = trim((string)($firstRow[$map['member_code']] ?? ''));
+        $companyId = $companies[companyCodeOf($firstId)] ?? null;
+        if (!$companyId) throw new RuntimeException('Company code was not found in the companies table.');
+
+        if ($existing) $pdo->prepare('UPDATE import_batches SET file_hash = NULL WHERE id = :id')->execute(['id' => $existing['id']]);
+
+        $estimate = estimateRows($stored, $ext);
+        $pdo->prepare("INSERT INTO import_batches (company_id, file_type, original_filename, file_hash, total_rows, status) VALUES (:c, 'MEMBERS', :f, :h, :t, 'processing')")
+            ->execute(['c' => $companyId, 'f' => $file['name'], 'h' => $hash, 't' => $estimate]);
+        $batchId = (int)$pdo->lastInsertId();
+
+        $progress = ['status' => 'processing', 'total' => $estimate, 'processed' => 0, 'ok' => 0, 'failed' => 0, 'started' => time(), 'errors' => []];
+        writeProgress($batchId, $progress);
+
+        // ---- Balas browser sekarang, sambung proses di background ----
+        $body = json_encode(['status' => 'queued', 'batch_id' => $batchId, 'total' => $estimate]);
+        header('Connection: close');
+        header('Content-Length: ' . strlen($body));
+        echo $body;
+        while (ob_get_level() > 0) ob_end_flush();
+        flush();
+        if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+
+        // Kalau fatal error / timeout, tandakan batch sebagai failed
+        register_shutdown_function(function () use ($batchId, $stored) {
+            $f = progressPath($batchId);
+            $p = is_file($f) ? json_decode((string)file_get_contents($f), true) : null;
+            if ($p && ($p['status'] ?? '') === 'processing') {
+              $lastError = error_get_last();
+              if ($lastError && in_array($lastError['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
+                memberImportLogError('Fatal error during background import', $lastError['message'] . ' in ' . $lastError['file'] . ':' . $lastError['line']);
+              }
+                $p['status'] = 'failed';
+                $p['message'] = 'Import stopped unexpectedly (server error / memory / timeout).';
+                writeProgress($batchId, $p);
+                try { dbConnect()->prepare("UPDATE import_batches SET status = 'failed' WHERE id = :id")->execute(['id' => $batchId]); }
+                catch (Throwable $e) { memberImportLogError('Failed to update batch status after fatal error', $e); }
+            }
+            if ($stored && is_file($stored)) @unlink($stored);
+        });
+
+        runImport($pdo, $batchId, $stored, $ext, $delimiter, $companies, $progress);
+    } catch (Throwable $error) {
+      memberImportLogError('Upload/import failed', $error);
+        if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
+        if ($batchId) {
+            // Sudah balas browser -> simpan error dalam progress
+            writeProgress($batchId, ['status' => 'failed', 'message' => $error->getMessage(), 'errors' => []]);
+            try { $pdo->prepare("UPDATE import_batches SET status = 'failed' WHERE id = :id")->execute(['id' => $batchId]); }
+            catch (Throwable $e) { memberImportLogError('Failed to update batch status after import error', $e); }
+        } else {
+            if ($stored && is_file($stored)) @unlink($stored);
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => $error->getMessage()]);
+        }
+    }
+    if ($stored && is_file($stored)) @unlink($stored);
+    exit;
+}
 
 // Define active nav for sidebar
 $activeNav = 'upload_members';
@@ -130,7 +560,6 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
   <div class="card">
     <div class="card-title">📁 Select File</div>
 
-    <!-- MEMBER LIST UPLOAD -->
     <div class="upload-group">
       <label class="upload-label">Member List File</label>
       <span class="upload-hint">Supported: .xlsx, .csv, .txt (tab-separated)</span>
@@ -145,14 +574,12 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
       <input type="file" id="membersFile" class="upload-input" accept=".xlsx,.csv,.txt,.tsv">
     </div>
 
-    <!-- DELIMITER SETTING -->
     <div class="upload-group">
       <label class="upload-label">CSV Delimiter (if CSV / TXT file)</label>
       <span class="upload-hint">Usually comma (,) or semicolon (;). Taip <strong>t</strong> untuk Tab</span>
       <input type="text" id="delimiter" class="delimiter-input" value="," placeholder="," maxlength="1">
     </div>
 
-    <!-- ACTION BUTTONS -->
     <div class="button-group">
       <button id="uploadBtn" class="btn btn-primary" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -168,7 +595,6 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
       </button>
     </div>
 
-    <!-- PROGRESS SECTION -->
     <div id="progressSection" style="display:none; margin-top:24px;">
       <div id="progressText" class="progress-text"></div>
       <div class="progress-bar">
@@ -231,6 +657,8 @@ const resultsCard = document.getElementById('resultsCard');
 const resultsContent = document.getElementById('resultsContent');
 const delimiterInput = document.getElementById('delimiter');
 
+let importRunning = false;
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -239,22 +667,16 @@ function escapeHtml(str) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
 }
+const fmt = n => Number(n || 0).toLocaleString();
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ============================================================
 // Upload Dropzone Setup
 // ============================================================
 function setupDropZone(dropZone, fileInput, previewDiv) {
   dropZone.addEventListener('click', () => fileInput.click());
-
-  dropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropZone.classList.add('dragover');
-  });
-
-  dropZone.addEventListener('dragleave', () => {
-    dropZone.classList.remove('dragover');
-  });
-
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
   dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('dragover');
@@ -269,15 +691,15 @@ function setupDropZone(dropZone, fileInput, previewDiv) {
 function showPreview(fileInput, previewDiv) {
   if (fileInput.files.length > 0) {
     const file = fileInput.files[0];
+    const mb = (file.size / 1048576).toFixed(1);
     previewDiv.innerHTML = `
       <div class="file-preview">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>
         </svg>
-        <span>${escapeHtml(file.name)}</span>
+        <span>${escapeHtml(file.name)} (${mb} MB)</span>
         <span class="file-preview-clear" onclick="document.getElementById('${fileInput.id}').value=''; document.getElementById('${fileInput.id}').dispatchEvent(new Event('change'));">✕</span>
-      </div>
-    `;
+      </div>`;
   } else {
     previewDiv.innerHTML = '';
   }
@@ -285,7 +707,7 @@ function showPreview(fileInput, previewDiv) {
 }
 
 function updateUploadBtn() {
-  uploadBtn.disabled = !membersFile.files.length;
+  uploadBtn.disabled = importRunning || !membersFile.files.length;
 }
 
 setupDropZone(membersDropZone, membersFile, membersPreview);
@@ -294,6 +716,7 @@ setupDropZone(membersDropZone, membersFile, membersPreview);
 // Clear Button
 // ============================================================
 clearBtn.addEventListener('click', () => {
+  if (importRunning) return;
   membersFile.value = '';
   membersPreview.innerHTML = '';
   updateUploadBtn();
@@ -303,57 +726,97 @@ clearBtn.addEventListener('click', () => {
 });
 
 // ============================================================
-// Upload Button
+// Upload (XHR supaya ada progress muat naik) + polling progress import
 // ============================================================
+function postFile(formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'upload_members.php');
+    xhr.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onerror = () => reject(new Error('Network error while uploading.'));
+    xhr.onload = () => {
+      let json;
+      try { json = JSON.parse(xhr.responseText); }
+      catch (e) { return reject(new Error('Server error ' + xhr.status + ': ' + xhr.responseText.substring(0, 200))); }
+      if (xhr.status >= 400) return reject(new Error(json.message || ('Server error ' + xhr.status)));
+      resolve(json);
+    };
+    xhr.send(formData);
+  });
+}
+
+async function pollImport(batchId) {
+  const t0 = Date.now();
+  let fails = 0;
+  while (true) {
+    await sleep(1000);
+    let p;
+    try {
+      const r = await fetch('upload_members.php?progress=' + batchId, { cache: 'no-store' });
+      p = await r.json();
+      fails = 0;
+    } catch (e) {
+      if (++fails >= 15) throw new Error('Lost connection to server (session expired?). Check Upload history.');
+      continue;
+    }
+    if (p.status !== 'processing') return p;
+    if (p.stale) throw new Error('Import seems to have stopped on the server.');
+
+    const done = p.processed || 0, total = p.total || 0;
+    const secs = Math.max(1, (Date.now() - t0) / 1000);
+    const rate = done / secs;
+    let pct = total ? Math.min(99, Math.round(done / total * 100)) : 0;
+    let eta = (total && rate > 0) ? Math.max(0, Math.round((total - done) / rate)) : null;
+    progressFill.style.width = (total ? 30 + pct * 0.7 : 50) + '%';
+    progressText.textContent = `⚙️ Processing ${fmt(done)}${total ? ' / ~' + fmt(total) : ''} rows` +
+      (total ? ` (${pct}%)` : '') + ` · ${fmt(Math.round(rate))} rows/s` +
+      (eta !== null ? ` · ~${eta}s left` : '') +
+      (p.failed ? ` · ${fmt(p.failed)} failed` : '');
+  }
+}
+
 uploadBtn.addEventListener('click', async () => {
-  uploadBtn.disabled = true;
+  importRunning = true;
+  updateUploadBtn();
   statusContainer.innerHTML = '';
   resultsCard.style.display = 'none';
   progressSection.style.display = 'block';
   progressFill.style.width = '0%';
-  progressText.textContent = '⏳ Preparing file...';
+  progressText.textContent = '⏳ Uploading file...';
 
   const formData = new FormData();
-  if (membersFile.files.length) {
-    formData.append('members', membersFile.files[0]);
-  }
+  formData.append('members', membersFile.files[0]);
   if (delimiterInput.value) {
-    // "t" = Tab
-    const d = delimiterInput.value.toLowerCase() === 't' ? '\t' : delimiterInput.value;
-    formData.append('delimiter', d);
+    formData.append('delimiter', delimiterInput.value.toLowerCase() === 't' ? '\t' : delimiterInput.value);
   }
 
   try {
-    progressText.textContent = '⏳ Uploading and processing file...';
-    progressFill.style.width = '30%';
-
-    const response = await fetch('process_members.php', {
-      method: 'POST',
-      body: formData
+    const queued = await postFile(formData, f => {
+      progressFill.style.width = Math.round(f * 30) + '%';
+      progressText.textContent = `⏳ Uploading file... ${Math.round(f * 100)}%`;
     });
 
-    progressFill.style.width = '70%';
-    progressText.textContent = '⏳ Finalizing...';
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error('Server error: ' + response.status + ' - ' + errorText.substring(0, 200));
+    let result;
+    if (queued.status === 'queued') {
+      progressText.textContent = '⚙️ Starting import...';
+      const p = await pollImport(queued.batch_id);
+      if (p.status === 'failed' || p.status === 'unknown') {
+        throw new Error(p.message || 'Import failed.');
+      }
+      result = { status: 'success', members: { total: p.total, inserted: p.inserted, updated: p.updated, failed: p.failed, errors: p.errors } };
+    } else {
+      result = queued; // contoh: file already imported
     }
 
-    const result = await response.json();
     progressFill.style.width = '100%';
     progressText.textContent = '✅ Complete!';
-
-    setTimeout(() => {
-      progressSection.style.display = 'none';
-      showResults(result);
-      uploadBtn.disabled = false;
-    }, 500);
-
+    setTimeout(() => { progressSection.style.display = 'none'; showResults(result); }, 400);
   } catch (error) {
     progressSection.style.display = 'none';
     showAlert('❌ Error: ' + escapeHtml(error.message), 'error');
-    uploadBtn.disabled = false;
+  } finally {
+    importRunning = false;
+    updateUploadBtn();
   }
 });
 
@@ -374,33 +837,25 @@ function showResults(result) {
     } else {
       html += `
         <div class="stat-grid">
-          <div class="stat-box"><div class="stat-num">${m.total || 0}</div><div class="stat-lbl">Total Rows</div></div>
-          <div class="stat-box ok"><div class="stat-num">${m.inserted || 0}</div><div class="stat-lbl">New Members</div></div>
-          <div class="stat-box warn"><div class="stat-num">${m.updated || 0}</div><div class="stat-lbl">Updated</div></div>
-          <div class="stat-box bad"><div class="stat-num">${m.failed || 0}</div><div class="stat-lbl">Failed</div></div>
+          <div class="stat-box"><div class="stat-num">${fmt(m.total)}</div><div class="stat-lbl">Total Rows</div></div>
+          <div class="stat-box ok"><div class="stat-num">${fmt(m.inserted)}</div><div class="stat-lbl">New Members</div></div>
+          <div class="stat-box warn"><div class="stat-num">${fmt(m.updated)}</div><div class="stat-lbl">Updated</div></div>
+          <div class="stat-box bad"><div class="stat-num">${fmt(m.failed)}</div><div class="stat-lbl">Failed</div></div>
         </div>`;
 
       if (m.errors && m.errors.length) {
-        html += '<div class="error-list"><strong>Failed rows:</strong><br>' +
+        html += '<div class="error-list"><strong>Failed rows (first 100):</strong><br>' +
           m.errors.map(e => escapeHtml(e)).join('<br>') + '</div>';
       }
     }
-
     resultsContent.innerHTML = html;
 
-    // Clear file input
     membersFile.value = '';
     membersPreview.innerHTML = '';
     updateUploadBtn();
-
   } else {
-    let errors = escapeHtml(result.message || 'Upload failed');
-    if (result.members && result.members.error) {
-      errors += `<br><strong>Members:</strong> ${escapeHtml(result.members.error)}`;
-    }
-    resultsContent.innerHTML = `<div class="alert alert-error">❌ ${errors}</div>`;
+    resultsContent.innerHTML = `<div class="alert alert-error">❌ ${escapeHtml(result.message || 'Upload failed')}</div>`;
   }
-
   resultsCard.style.display = 'block';
 }
 
@@ -429,7 +884,6 @@ function closeDrawer() {
   document.getElementById('drawerOverlay').classList.remove('open');
 }
 
-// Handle window resize for sidebar
 window.addEventListener('resize', function() {
   if (window.innerWidth < 900) {
     document.body.classList.remove('sidebar-collapsed');
@@ -442,7 +896,6 @@ window.addEventListener('resize', function() {
   }
 });
 
-// Initial state
 updateUploadBtn();
 </script>
 

@@ -681,7 +681,7 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .chart-empty.show{display:flex;}
 
 /* ════════════════════════════════════════════════════
-   BREAKDOWN TABLE — polished, section-aware design
+   BREAKDOWN TABLE — polished, aligned, no senget
    ════════════════════════════════════════════════════ */
 .comparison-table-wrap{margin-top:24px;width:100%;}
 .comparison-table-wrap.is-loading{opacity:.35;pointer-events:none;}
@@ -698,27 +698,54 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
 .card-gold .comparison-table-title::before{background:var(--gold);}
 
 .comparison-table-scroll{
-  overflow-x:auto;border:1px solid var(--gray-100);
-  border-radius:var(--radius-md);background:#fff;
+  overflow-x:auto;
+  border:1px solid var(--gray-100);
+  border-radius:var(--radius-md);
+  background:#fff;
   box-shadow:0 1px 2px rgba(20,20,30,.03);
 }
+
+/* ── table: collapse + fixed layout supaya semua column sejajar ── */
 .comparison-table{
-  width:100%;border-collapse:separate;border-spacing:0;
+  width:100%;
+  border-collapse:collapse;
+  border-spacing:0;
   font-size:0.75rem;
+  table-layout:fixed;
 }
+
+/* ── column widths (4 columns) ── */
+.comparison-table thead th:nth-child(1),
+.comparison-table tbody td:nth-child(1),
+.comparison-table tfoot td:nth-child(1){ width:34%; }
+
+.comparison-table thead th:nth-child(2),
+.comparison-table tbody td:nth-child(2),
+.comparison-table tfoot td:nth-child(2){ width:22%; }
+
+.comparison-table thead th:nth-child(3),
+.comparison-table tbody td:nth-child(3),
+.comparison-table tfoot td:nth-child(3){ width:22%; }
+
+.comparison-table thead th:nth-child(4),
+.comparison-table tbody td:nth-child(4),
+.comparison-table tfoot td:nth-child(4){ width:22%; }
+
+/* ── header ── */
 .comparison-table thead th{
   padding:12px 16px;
   background:#F9F9FB;
   color:var(--gray-700);
-  font-size:0.6875rem;font-weight:800;text-align:left;
+  font-size:0.6875rem;font-weight:800;
+  text-align:left;
   text-transform:uppercase;letter-spacing:.5px;
   white-space:nowrap;
   border-bottom:1.5px solid var(--gray-300);
-  position:sticky;top:0;z-index:1;
+  position:sticky;top:0;z-index:2;
 }
 .comparison-table thead th:not(:first-child){text-align:right;}
 
-/* header colour per section */
+/* header colours per section */
 #dailyCard .comparison-table thead th{
   background:linear-gradient(180deg,#FFF5F6,#FDEDEE);
   color:var(--red-dark);
@@ -735,18 +762,20 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
   border-bottom-color:#F3D9A3;
 }
 
+/* ── body ── */
 .comparison-table tbody td{
   padding:11px 16px;
   border-top:1px solid var(--gray-100);
-  white-space:nowrap;font-weight:600;color:var(--ink);
+  white-space:nowrap;
+  font-weight:600;
+  color:var(--ink);
   font-variant-numeric:tabular-nums;
+  vertical-align:middle;
 }
 .comparison-table tbody td:not(:first-child){text-align:right;}
 
-/* zebra striping */
+/* zebra + hover */
 .comparison-table tbody tr:nth-child(even){background:#FAFAFC;}
-
-/* hover */
 .comparison-table tbody tr{transition:background .15s ease;}
 .comparison-table tbody tr:hover{background:#FFF0F1;}
 .card-teal .comparison-table tbody tr:hover{background:#EAFBFA;}
@@ -758,29 +787,30 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
   border-right:1px solid var(--gray-100);
 }
 /* Total sales column — section colour */
-.comparison-table tbody td.col-total{
-  font-weight:800;
-  color:var(--red-dark);
-}
+.comparison-table tbody td.col-total{ font-weight:800; color:var(--red-dark); }
 .card-teal .comparison-table tbody td.col-total{color:var(--teal-dark);}
 .card-gold .comparison-table tbody td.col-total{color:#8A5A0E;}
 
-/* Difference badges (pill style) */
+/* ── difference badges — inline-block, sejajar dgn header ── */
 .change-positive,
 .change-negative,
 .change-neutral{
-  display:inline-flex;align-items:center;justify-content:flex-end;gap:3px;
-  min-width:72px;
-  padding:3px 9px;border-radius:999px;
+  display:inline-block;
+  padding:3px 9px;
+  border-radius:999px;
   font-size:inherit;font-weight:800;
   line-height:1.2;
+  min-width:72px;
+  text-align:right;
 }
 .change-positive{color:#065F46;background:#D1FAE5;}
 .change-negative{color:#991B1B;background:#FEE2E2;}
 .change-neutral {color:#6B7280;background:#F3F4F6;font-weight:700;}
+
+/* empty (first row) — sama alignment dgn row lain, cuma warna pudar */
 .comparison-table tbody td.empty-value,
-.comparison-table tfoot td.empty-value{text-align:center;}
-.empty-value .change-neutral{justify-content:center;}
+.comparison-table tfoot td.empty-value{text-align:right;}
+.empty-value .change-neutral{color:#B0B0B8;background:transparent;font-weight:700;min-width:0;padding:0;}
 
 /* footer total */
 .comparison-table tfoot td{
@@ -790,11 +820,10 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
   background:#F9F9FB;
   color:var(--ink);
   font-variant-numeric:tabular-nums;
+  white-space:nowrap;
 }
 .comparison-table tfoot td:not(:first-child){text-align:right;}
-.comparison-table tfoot td.col-total{
-  color:var(--red-dark);font-size:0.75rem;
-}
+.comparison-table tfoot td.col-total{ color:var(--red-dark); }
 .card-teal .comparison-table tfoot td.col-total{color:var(--teal-dark);}
 .card-gold .comparison-table tfoot td.col-total{color:#8A5A0E;}
 
@@ -997,12 +1026,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
-              <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="monthlyTotalValue">—</div>
-            </div>
-            <div class="stat-block stat-average">
               <div class="stat-label">Average Monthly Sales</div>
-              <div class="stat-value" id="monthlyAverageValue">—</div>
+              <div class="stat-value" id="monthlyTotalValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="monthly">
@@ -1113,12 +1138,8 @@ body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);width:calc(1
         <div class="stats-row">
           <div class="stats-group">
             <div class="stat-block stat-total">
-              <div class="stat-label">Total Sales</div>
-              <div class="stat-value" id="yearlyTotalValue">—</div>
-            </div>
-            <div class="stat-block stat-average">
               <div class="stat-label">Average Yearly Sales</div>
-              <div class="stat-value" id="yearlyAverageValue">—</div>
+              <div class="stat-value" id="yearlyTotalValue">—</div>
             </div>
           </div>
           <select class="chart-type-select" data-chart="yearly">
@@ -1300,7 +1321,10 @@ function buildPeriodLabel(key, label, rowKey){
         const y = Number(parts[0]);
         const m = Number(parts[1]);
         const monthName = MONTH_NAMES[m - 1] || '';
-        return meta.dayFrom + ' - ' + meta.dayTo + ' ' + monthName + ' ' + y;
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const effectiveDayFrom = Math.min(meta.dayFrom, daysInMonth);
+        const effectiveDayTo = Math.min(meta.dayTo, daysInMonth);
+        return effectiveDayFrom + ' - ' + effectiveDayTo + ' ' + monthName + ' ' + y;
     }
     if (key === 'yearly') {
         const meta = sectionMeta.yearly;
@@ -1313,6 +1337,35 @@ function buildPeriodLabel(key, label, rowKey){
         return meta.dayFrom + ' ' + fromName + ' - ' + meta.dayTo + ' ' + toName + ' ' + y;
     }
     return label;
+}
+
+// ════════════════════════════════════════════════════
+// KPI helpers for the Monthly / Yearly stat cards.
+// ════════════════════════════════════════════════════
+
+// Monthly: total number of days that actually fall inside the day-of-month
+// range (dayFrom..dayTo), clipped to how many days each month in the range
+// actually has (e.g. dayTo=31 but a given month only has 30 or 28 days).
+function countMonthlySelectedDays(keys, dayFrom, dayTo){
+    let total = 0;
+    (keys || []).forEach(function(key){
+        const parts = String(key).split('-');
+        const y = Number(parts[0]);
+        const m = Number(parts[1]);
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const effectiveTo = Math.min(dayTo, daysInMonth);
+        if (effectiveTo >= dayFrom) {
+            total += (effectiveTo - dayFrom + 1);
+        }
+    });
+    return total;
+}
+
+// Yearly: total number of months covered across all selected years, using
+// the same start-month/end-month window applied to every year.
+function countYearlySelectedMonths(numYears, monthFrom, monthTo){
+    const monthsPerYear = Math.max(0, (monthTo - monthFrom + 1));
+    return numYears * monthsPerYear;
 }
 
 // ════════════════════════════════════════════════════
@@ -1456,9 +1509,6 @@ function applySectionResult(key, json){
     chartData[key].values = json.values || [];
     chartData[key].keys   = json.keys || [];
 
-    document.getElementById(key + 'TotalValue').textContent   = formatRM(json.total);
-    document.getElementById(key + 'AverageValue').textContent = formatRM(json.average);
-
     const errDiv = document.getElementById(key + 'ErrorMsg');
     if (json.error) {
         errDiv.textContent = json.error;
@@ -1489,6 +1539,38 @@ function applySectionResult(key, json){
         if (json.month_to)   sectionMeta.yearly.monthTo   = Number(json.month_to);
         if (json.day_from)   sectionMeta.yearly.dayFrom   = Number(json.day_from);
         if (json.day_to)     sectionMeta.yearly.dayTo     = Number(json.day_to);
+    }
+
+    // ── Stat cards ──
+    // Daily: unchanged — "Total Sales" and "Average Daily Sales" as before.
+    if (key === 'daily') {
+        document.getElementById('dailyTotalValue').textContent   = formatRM(json.total);
+        document.getElementById('dailyAverageValue').textContent = formatRM(json.average);
+    }
+    // Monthly: "Average Monthly Sales" (total ÷ number of selected months) and
+    // "Average Daily Sales" (total ÷ total number of selected days across those months).
+    else if (key === 'monthly') {
+        document.getElementById('monthlyTotalValue').textContent = formatRM(json.average);
+
+        const dayFrom = Number(json.day_from) || sectionMeta.monthly.dayFrom;
+        const dayTo   = Number(json.day_to)   || sectionMeta.monthly.dayTo;
+        const totalSelectedDays = countMonthlySelectedDays(chartData.monthly.keys, dayFrom, dayTo);
+        const avgDaily = totalSelectedDays > 0 ? (json.total / totalSelectedDays) : 0;
+        const monthlyAverageEl = document.getElementById('monthlyAverageValue');
+        if (monthlyAverageEl) monthlyAverageEl.textContent = formatRM(avgDaily);
+    }
+    // Yearly: "Average Yearly Sales" (total ÷ number of selected years) and
+    // "Average Monthly Sales" (total ÷ total number of included months across those years).
+    else if (key === 'yearly') {
+        document.getElementById('yearlyTotalValue').textContent = formatRM(json.average);
+
+        const monthFrom = Number(json.month_from) || sectionMeta.yearly.monthFrom;
+        const monthTo   = Number(json.month_to)   || sectionMeta.yearly.monthTo;
+        const numYears  = chartData.yearly.keys.length || chartData.yearly.labels.length;
+        const totalSelectedMonths = countYearlySelectedMonths(numYears, monthFrom, monthTo);
+        const avgMonthly = totalSelectedMonths > 0 ? (json.total / totalSelectedMonths) : 0;
+        const yearlyAverageEl = document.getElementById('yearlyAverageValue');
+        if (yearlyAverageEl) yearlyAverageEl.textContent = formatRM(avgMonthly);
     }
 
     const typeSelect = document.querySelector('.chart-type-select[data-chart="' + key + '"]');
