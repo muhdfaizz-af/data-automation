@@ -168,6 +168,8 @@ function dashboardProductCategory($brand, $itemCode, $description, $productType)
     if (str_starts_with($itemCode, 'ZEKY-BH') || str_starts_with($itemCode, 'STK-ZEKY-BH') || str_contains($description, 'ZEKY BRAIN HERO')) return 'ZEKY BRAIN HERO';
     if ($brand === 'STK' && preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) return 'SCARF';
     if ($brand === 'NAFESA') return preg_match('/^(?:NCH|NTU|NST|NIN)/', $itemCode) || str_contains($description, 'INNER') ? 'INNER' : 'SCARF';
+    if ($brand === 'CHOCO ALBAB' && (in_array($itemCode, ['CAC-027', 'CA-18', 'CA-018'], true) || str_contains($description, 'CHOCO ALBAB RUBY INDULGENCE CUTIE TUB'))) return 'CHOCO ALBAB RUBY INDULGENCE CUTIE TUB';
+    if ($brand === 'CHOCO ALBAB' && (in_array($itemCode, ['CAC-1001', 'CA-1001'], true) || str_contains($description, 'SIGNATURE BOX PREMIX DRINK'))) return 'SIGNATURE BOX PREMIX DRINK';
     if ($brand === 'CHOCO ALBAB') return $productType === 'NORMAL' ? dashboardProductName($description) : null;
     return null;
 }
