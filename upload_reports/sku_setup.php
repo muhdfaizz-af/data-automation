@@ -661,9 +661,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
         $top = array_map(static fn ($v) => strtoupper(trim((string) $v)), array_shift($rows));
         $sub = array_map(static fn ($v) => strtoupper(trim((string) $v)), array_shift($rows));
 
-        // Excel uses merged cells for WMDP, SBHDP, EMDP, and SG.
-        // PhpSpreadsheet returns blank values for the merged columns, so carry
-        // the last group header across the columns before locating Unit Price.
+        // Excel uses merged cells for WMDP, SBHDP, EMDP, and SG. PhpSpreadsheet returns blank values for the merged columns, so carry the last group header across the columns before locating Unit Price.
         $activeGroup = '';
         foreach ($top as $index => $value) {
             if ($value !== '') {
@@ -874,16 +872,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
                 );
             }
 
-            // The database SKU is authoritative during an update.
             $_POST['item_code'] = $originalCode;
         }
 
-        $data = validateComposite(
-            $_POST,
-            $products,
-            $registeredComposites,
-            $originalCode
-        );
+        $data = validateComposite($_POST, $products, $registeredComposites, $originalCode);
 
         if ($action === 'update') {
             $statement = $pdo->prepare(
@@ -1246,9 +1238,6 @@ table tr:hover{background:var(--gray-50);}
 .pagination a{padding:7px 11px;border:1px solid var(--gray-300);border-radius:6px;text-decoration:none;color:inherit;}
 .pagination a.active{background:var(--red);color:#fff;border-color:var(--red);}
 .normal-sku-actions{display:flex;gap:8px;align-items:center;}
-.normal-edit-card{width:min(100%,720px);}
-.normal-edit-card .modal-dismiss span{font-size:25px;line-height:1;}
-#normalEditStatus.error{color:var(--red);}
 .composite-actions {display: flex;align-items: center;justify-content: center;gap: 8px;white-space: nowrap;}
 .delete-composite-form {display: inline;margin: 0;}
 .btn-small {min-height: 34px;padding: 7px 12px;justify-content: center;font-size: 12px;}
@@ -1279,7 +1268,46 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
 @media (max-width: 600px) {.modal-backdrop {padding: 12px;}.modal-card {padding: 26px 20px 20px;}.modal-actions {flex-direction: column-reverse;}.modal-actions .btn {justify-content: center;width: 100%;}}
 .readonly-control {color: var(--gray-700);background: var(--gray-100);cursor: not-allowed;}
 
-/* section */
+/* SKU EDIT MODAL (LOOSE & COMPOSITE) */
+.sku-edit-modal {position: fixed;inset: 0;z-index: 9999;background: rgba(0, 0, 0, 0.50);display: flex;align-items: center;justify-content: center;padding: 20px;}
+.sku-edit-modal[hidden] {display: none;}
+.sku-edit-content {position: relative;background: #ffffff;width: 100%;max-width: 950px;max-height: 90vh;overflow-y: auto;border-radius: 18px;padding: 30px;box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);}
+.sku-edit-close {position: absolute;top: 14px;right: 14px;width: 36px;height: 36px;border: none;border-radius: 50%;background: #f3f4f6;color: #555;font-size: 24px;cursor: pointer;}
+.sku-edit-title {font-size: 18px;font-weight: 700;color: #18181b;margin: 0 0 10px;}
+.sku-edit-subtitle {font-size: 13px;color: #92929e;margin: 0 0 26px;}
+.sku-edit-fields {min-width: 0;margin: 0;padding: 0;border: 0;}
+.sku-edit-fields:disabled {opacity: .6;}
+.sku-edit-actions button:disabled {opacity: .5;cursor: not-allowed;}
+.sku-edit-details {display: grid;grid-template-columns: 1fr 1fr;gap: 20px;margin-bottom: 22px;}
+.sku-edit-field {display: flex;flex-direction: column;gap: 6px;min-width: 0;}
+.sku-edit-field label,.sku-edit-loose-group label,.sku-edit-quantity-group label {font-size: 13px;font-weight: 600;color: #52525b;}
+.sku-edit-field label span,
+.sku-edit-loose-group label span,
+.sku-edit-quantity-group label span {color: #e11d48;}
+.sku-edit-field input,.sku-edit-loose-input,.sku-edit-quantity-input {width: 100%;height: 42px;box-sizing: border-box;padding: 0 14px;border: 1px solid #d4d4dd;border-radius: 9px;background: #fff;color: #27272a;font-size: 14px;font-family: inherit;}
+.sku-edit-field input:focus,.sku-edit-loose-input:focus,.sku-edit-quantity-input:focus {outline: none;border-color: #10b981;box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.10);}
+.sku-edit-field input[readonly] {background: #f1f1f3;color: #666670;cursor: not-allowed;}
+.sku-edit-field small {font-size: 12px;color: #9696a2;}
+.sku-edit-section {margin-bottom: 16px;}
+.sku-edit-section h3 {font-size: 14px;font-weight: 700;margin: 0 0 6px;color: #18181b;}
+.sku-edit-section p {font-size: 13px;color: #92929e;margin: 0;}
+.sku-edit-rows {display: flex;flex-direction: column;gap: 14px;}
+.sku-edit-row {display: grid;grid-template-columns: minmax(0, 1fr) 170px 108px;align-items: end;gap: 16px;}
+.sku-edit-loose-group,.sku-edit-quantity-group {display: flex;flex-direction: column;gap: 6px;min-width: 0;}
+.sku-edit-loose-input {cursor: pointer;background-color: #ffffff;}
+.sku-edit-btn-remove {height: 42px;background: #e91632;color: #fff;border: none;border-radius: 11px;padding: 0 14px;font-size: 14px;font-weight: 600;cursor: pointer;box-shadow: 0 5px 12px rgba(233, 22, 50, 0.22);}
+.sku-edit-btn-remove:hover {background: #c8102e;}
+.sku-edit-actions {display: flex;flex-wrap: wrap;align-items: center;gap: 12px;margin-top: 24px;}
+.sku-edit-btn-add,.sku-edit-btn-save,.sku-edit-btn-cancel {height: 44px;border-radius: 11px;padding: 0 24px;font-size: 14px;font-weight: 600;font-family: inherit;cursor: pointer;}
+.sku-edit-btn-add {background: #ffffff;color: #27272a;border: 1px solid #d4d4dd;}
+.sku-edit-btn-save {background: #10b981;color: #ffffff;border: none;box-shadow: 0 5px 12px rgba(16, 185, 129, 0.20);}
+.sku-edit-btn-save:hover {background: #059669;}
+.sku-edit-btn-cancel {background: #ffffff;color: #27272a;border: 1px solid #d4d4dd;}
+.sku-edit-status {font-size: 12px;color: #777;margin: 12px 0 0;}
+.sku-edit-status.error {color: var(--red);}
+@media (max-width: 700px) {.sku-edit-content {padding: 22px;}.sku-edit-details {grid-template-columns: 1fr;}.sku-edit-row {grid-template-columns: 1fr 1fr;}.sku-edit-loose-group {grid-column: 1 / -1;}.sku-edit-btn-remove {width: 100%;}.sku-edit-actions {flex-direction: column;}.sku-edit-actions button {width: 100%;}}
+
+/* SECTION */
 .section-description{font-size:13px;line-height:1.6;color:var(--gray-500);margin:-8px 0 24px;}
 .component-heading{font-size:14px;font-weight:800;margin-bottom:6px;}
 .component-help{margin-bottom:16px;}
@@ -1345,17 +1373,9 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                 </svg>
             </div>
 
-            <h2 class="modal-title" id="successModalTitle">
-                Successful
-            </h2>
-
-            <p class="modal-message">
-                <?= compositeEscape($success) ?>
-            </p>
-
-            <button type="button" class="btn btn-success modal-confirm-button" id="confirmSuccessModal">
-                Okay
-            </button>
+            <h2 class="modal-title" id="successModalTitle">Successful</h2>
+            <p class="modal-message"><?= compositeEscape($success) ?></p>
+            <button type="button" class="btn btn-success modal-confirm-button" id="confirmSuccessModal">Okay</button>
         </div>
     </div>
 <?php endif; ?>
@@ -1388,49 +1408,61 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
         </section>
     <?php endif; ?>
 
-    <div class="modal-backdrop" id="normalEditModal" hidden role="dialog" aria-modal="true" aria-labelledby="normalEditTitle">
-        <div class="modal-card normal-edit-card">
-            <button type="button" class="modal-dismiss" id="closeNormalEdit" aria-label="Close edit popup"><span aria-hidden="true">&times;</span></button>
-            <h2 class="modal-title" id="normalEditTitle">Edit Loose SKU</h2>
-            <p class="form-hint" id="normalEditStatus">Loading SKU...</p>
+    <div class="sku-edit-modal" id="normalEditModal" hidden role="dialog" aria-modal="true" aria-labelledby="normalEditTitle">
+        <div class="sku-edit-content">
+            <button type="button" class="sku-edit-close" id="closeNormalEdit" aria-label="Close edit popup"><span aria-hidden="true">&times;</span></button>
+            <h2 class="sku-edit-title" id="normalEditTitle">Edit Loose SKU</h2>
+            <p class="sku-edit-subtitle">Update the product details and unit prices for this loose SKU.</p>
             <form id="normalEditForm">
                 <input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>">
                 <input type="hidden" name="action" value="ajax_update_normal">
-                <div class="grid-2">
-                    <div class="form-group"><label class="form-label">SKU <span class="required">*</span></label><input class="form-control" name="product_sku" readonly></div>
-                    <div class="form-group"><label class="form-label">Product name <span class="required">*</span></label><input class="form-control uppercase-input" name="product_name" required></div>
-                    <div class="form-group"><label class="form-label">Brand</label><input class="form-control uppercase-input" name="brand"></div>
-                    <?php foreach (['wmdp'=>'WMDP','sbhdp'=>'SBHDP','emdp'=>'EMDP','sgdp'=>'SGDP'] as $field=>$label): ?><div class="form-group"><label class="form-label"><?= $label ?></label><input class="form-control" type="number" min="0" step="0.01" name="<?= $field ?>"></div><?php endforeach; ?>
-                </div>
-                <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelNormalEdit">Cancel Editing</button><button type="submit" class="btn btn-success">Save changes</button></div>
+                <fieldset class="sku-edit-fields" disabled>
+                    <div class="sku-edit-details">
+                        <div class="sku-edit-field"><label for="normalEditSku">SKU <span>*</span></label><input id="normalEditSku" name="product_sku" readonly required><small>Loose SKU cannot be changed.</small></div>
+                        <div class="sku-edit-field"><label for="normalEditName">Product name <span>*</span></label><input id="normalEditName" class="uppercase-input" name="product_name" required></div>
+                        <div class="sku-edit-field"><label for="normalEditBrand">Brand</label><input id="normalEditBrand" class="uppercase-input" name="brand"></div>
+                        <?php foreach (['wmdp'=>'WMDP','sbhdp'=>'SBHDP','emdp'=>'EMDP','sgdp'=>'SGDP'] as $field=>$label): ?><div class="sku-edit-field"><label for="normalEdit<?= $label ?>"><?= $label ?></label><input id="normalEdit<?= $label ?>" type="number" min="0" step="0.01" name="<?= $field ?>"></div><?php endforeach; ?>
+                    </div>
+                </fieldset>
+                <p class="sku-edit-status" id="normalEditStatus" role="status" aria-live="polite"></p>
+                <div class="sku-edit-actions"><button type="submit" class="sku-edit-btn-save" disabled>Save changes</button><button type="button" class="sku-edit-btn-cancel" id="cancelNormalEdit">Cancel edit</button></div>
             </form>
         </div>
     </div>
 
-    <div class="modal-backdrop" id="compositeAjaxModal" hidden>
-        <div class="modal-card composite-edit-card">
-            <button type="button" class="modal-dismiss" id="closeCompositeAjax">
-                &times;
-            </button><h2 class="modal-title">Edit Composite</h2>
-            <p class="form-hint" id="compositeAjaxStatus">Loading...</p>
+    <div id="compositeAjaxModal" class="sku-edit-modal" hidden role="dialog" aria-modal="true" aria-labelledby="compositeAjaxTitle">
+        <div class="sku-edit-content">
+            <button type="button" id="closeCompositeAjax" class="sku-edit-close" aria-label="Close edit popup"><span aria-hidden="true">&times;</span></button>
+            <h2 class="sku-edit-title" id="compositeAjaxTitle">Edit Composite</h2>
+            <p class="sku-edit-subtitle">Use the composite SKU exactly as it appears in your Tax Invoice.</p>
+
             <form id="compositeAjaxForm">
                 <input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>">
                 <input type="hidden" name="action" value="ajax_update_composite">
                 <input type="hidden" name="original_code">
-                <div class="grid-2">
-                    <div class="form-group">
-                        <label class="form-label">Composite SKU</label>
-                        <input class="form-control readonly-control" name="item_code" readonly>
+                <fieldset class="sku-edit-fields" disabled>
+                    <div class="sku-edit-details">
+                        <div class="sku-edit-field">
+                            <label for="compositeAjaxSku">Composite SKU <span>*</span></label>
+                            <input id="compositeAjaxSku" type="text" name="item_code" readonly required>
+                            <small>Composite SKU cannot be changed.</small>
+                        </div>
+                        <div class="sku-edit-field">
+                            <label for="compositeAjaxName">Composite name <span>*</span></label>
+                            <input class="uppercase-input" id="compositeAjaxName" type="text" name="item_description" required>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Composite name *
-                        </label><input class="form-control uppercase-input" name="item_description" required>
+                    <div class="sku-edit-section">
+                        <h3>Loose items</h3>
+                        <p>Choose each product once and enter its quantity for one pack.</p>
                     </div>
-                </div>
-                <div id="compositeAjaxRows"></div>
-                <div class="button-group">
-                    <button type="submit" class="btn btn-success">Update composite</button>
-                    <button type="button" class="btn btn-secondary" id="cancelCompositeAjax">Cancel edit</button>
+                    <div id="compositeAjaxRows" class="sku-edit-rows"></div>
+                </fieldset>
+                <p id="compositeAjaxStatus" class="sku-edit-status" role="status" aria-live="polite"></p>
+                <div class="sku-edit-actions">
+                    <button type="button" id="addCompositeAjaxItem" class="sku-edit-btn-add" disabled>+ &nbsp; Add loose item</button>
+                    <button type="submit" class="sku-edit-btn-save" disabled>Save changes</button>
+                    <button type="button" id="cancelCompositeAjax" class="sku-edit-btn-cancel">Cancel edit</button>
                 </div>
             </form>
         </div>
@@ -1455,12 +1487,10 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
 
             <h2 class="card-title" id="addCompositeTitle"><?= $isEditing ? 'Edit Composite' : 'Add a Composite' ?></h2>
             <p class="section-description">Use the composite SKU exactly as it appears in your Tax Invoice.</p>
-
             <form method="post" action="sku_setup.php">
                 <input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>">
                 <input type="hidden" name="action" value="<?= $isEditing ? 'update' : 'create' ?>">
                 <input type="hidden" name="original_code" value="<?= compositeEscape($originalCode) ?>">
-
                 <div class="grid-2">
                     <div class="form-group">
                         <label class="form-label" for="compositeSku">Composite SKU <span class="required">*</span></label>
@@ -1477,14 +1507,11 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                         <input class="form-control uppercase-input" id="compositeName" name="item_description" maxlength="255" value="<?= compositeEscape($formName) ?>" placeholder="E.g. COMBO DRINKS x4" autocomplete="off" required>
                     </div>
                 </div>
-
                 <h3 class="component-heading">Loose items</h3>
                 <p class="form-hint component-help">Choose each product once and enter its quantity for one pack.</p>
-
                 <div id="componentRows">
                     <?php foreach ($formRows as $values) {renderCompositeComponent($products, $registeredComposites, $values);}?>
                 </div>
-
                 <div class="button-group">
                     <button type="button" id="addItem" class="btn btn-secondary">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1501,10 +1528,8 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                             />
                             <path d="M17 21v-8H7v8M7 3v5h8"/>
                         </svg>
-
                         <?= $isEditing ? 'Update composite' : 'Save composite' ?>
                     </button>
-
                     <?php if ($isEditing): ?>
                         <a href="sku_setup.php" class="btn btn-secondary">
                             Cancel edit
@@ -1512,13 +1537,11 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                     <?php endif; ?>
                 </div>
             </form>
-
             <template id="componentTemplate">
                 <?php renderCompositeComponent($products, $registeredComposites, ['code' => '', 'quantity' => '1']); ?>
             </template>
         </section>
         <?php if ($isEditing): ?></div><?php endif; ?>
-
         <?php elseif ($pdo !== null): ?>
         <div class="alert alert-warning" role="status">
             Add products to the price list before setting up a composite.
@@ -1562,9 +1585,7 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                                                 </li>
                                             <?php endforeach; ?>
                                         </ul>
-                                    <?php else: ?>
-                                        <span class="text-muted">Not configured</span>
-                                    <?php endif; ?>
+                                    <?php else: ?><span class="text-muted">Not configured</span><?php endif; ?>
                                 </td>
                                 <td>
                                 <div class="composite-actions">
@@ -1576,25 +1597,14 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                             </td>
                             </tr>
                         <?php endforeach; ?>
-                        <?php if (!$displayComposites): ?>
-                            <tr><td colspan="4" class="empty-state">No composites available.</td></tr>
-                        <?php endif; ?>
+                        <?php if (!$displayComposites): ?><tr><td colspan="4" class="empty-state">No composites available.</td></tr><?php endif; ?>
                     </tbody>
                 </table>
             </div>
             <?php if ($compositePageCount > 1): ?><nav class="pagination" aria-label="Composite SKU pages"><?php for ($page = 1; $page <= $compositePageCount; $page++): ?><a class="<?= $page === $compositePage ? 'active' : '' ?>" href="sku_setup.php?mode=composite&amp;composite_q=<?= rawurlencode($compositeSearch) ?>&amp;composite_page=<?= $page ?>"><?= $page ?></a><?php endfor; ?></nav><?php endif; ?>
         </section>
-        <?php if (!empty($importMessage)): ?>
-            <div class="alert alert-success">
-                <?= htmlspecialchars($importMessage) ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if (!empty($importError)): ?>
-            <div class="alert alert-danger">
-                <?= htmlspecialchars($importError) ?>
-            </div>
-        <?php endif; ?>
+        <?php if (!empty($importMessage)): ?><div class="alert alert-success"><?= htmlspecialchars($importMessage) ?></div><?php endif; ?>
+        <?php if (!empty($importError)): ?><div class="alert alert-danger"><?= htmlspecialchars($importError) ?></div><?php endif; ?>
     <?php endif; ?>
     <?php endif; ?>
 
@@ -1627,23 +1637,15 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                 </svg>
             </div>
 
-            <h2 class="modal-title" id="deleteCompositeTitle">
-                Delete composite?
-            </h2>
-
+            <h2 class="modal-title" id="deleteCompositeTitle">Delete composite?</h2>
             <p class="modal-message">
-                You are about to delete
-                <strong id="deleteCompositeDescription"></strong>.
-                Its loose-item configuration will be removed.
+                You are about to delete <strong id="deleteCompositeDescription"></strong>.Its loose-item configuration will be removed.
             </p>
 
             <form method="post" action="sku_setup.php">
                 <input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>">
-
                 <input type="hidden" name="action" value="delete">
-
                 <input type="hidden" name="original_code" id="deleteCompositeCode" value="">
-
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" id="cancelDeleteComposite">Cancel</button>
                     <button type="submit" class="btn btn-danger">Delete composite</button>
@@ -1683,54 +1685,119 @@ uppercaseInputs.forEach(input => {
     input.value = input.value.toLocaleUpperCase();
 });
 
-const normalEditModal = document.getElementById('normalEditModal');
-const normalEditForm = document.getElementById('normalEditForm');
-const normalEditStatus = document.getElementById('normalEditStatus');
-const closeNormalEdit = document.getElementById('closeNormalEdit');
-const cancelNormalEdit = document.getElementById('cancelNormalEdit');
+function setupSkuEditModal({modalId, formId, statusId, closeId, cancelId, triggerSelector, endpoint, populate, clear = () => {}}) {
+    const modal = document.getElementById(modalId);
+    const form = document.getElementById(formId);
+    const status = document.getElementById(statusId);
+    if (!modal || !form || !status) return null;
 
-function closeNormalEditModal() {
-    if (!normalEditModal) return;
-    normalEditModal.hidden = true;
-    document.body.classList.remove('modal-open');
-}
+    const fields = form.querySelector('.sku-edit-fields');
+    const editButtons = form.querySelectorAll('[type="submit"], .sku-edit-btn-add');
+    let ready = false;
+    let saving = false;
+    let loadRequest = null;
+    let requestVersion = 0;
+    let trigger = null;
 
-async function openNormalEditModal(button) {
-    if (!normalEditModal || !normalEditForm) return;
-    normalEditModal.hidden = false;
-    document.body.classList.add('modal-open');
-    normalEditStatus.textContent = 'Loading SKU...';
-    normalEditStatus.classList.remove('error');
-    try {
-        const response = await fetch(`sku_setup.php?ajax=normal_sku&sku=${encodeURIComponent(button.dataset.sku || '')}`, {headers: {'Accept': 'application/json'}});
-        const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.message || 'Unable to load SKU.');
-        Object.entries(result.sku).forEach(([field, value]) => {
-            const input = normalEditForm.elements[field];
-            if (input) input.value = value ?? '';
-        });
-        normalEditStatus.textContent = 'Update the SKU details and save your changes.';
-    } catch (error) {
-        normalEditStatus.textContent = error.message;
-        normalEditStatus.classList.add('error');
+    function setEnabled(enabled) {
+        fields.disabled = !enabled;
+        editButtons.forEach(button => { button.disabled = !enabled; });
     }
+
+    function setStatus(message, error = false) {
+        status.textContent = message;
+        status.classList.toggle('error', error);
+    }
+
+    async function request(url, options, fallback) {
+        const response = await fetch(url, {
+            ...options,
+            headers: {'Accept': 'application/json'}
+        });
+        let result;
+        try {
+            result = await response.json();
+        } catch (error) {
+            throw new Error(`${fallback} Reload the page and try again.`);
+        }
+        if (!response.ok || !result.ok) throw new Error(result.message || fallback);
+        return result;
+    }
+
+    function close() {
+        loadRequest?.abort();
+        requestVersion++;
+        modal.hidden = true;
+        document.body.classList.toggle('modal-open', !!document.querySelector('.modal-backdrop:not([hidden]), .sku-edit-modal:not([hidden])'));
+        trigger?.focus();
+    }
+
+    async function open(button) {
+        if (saving) return;
+        loadRequest?.abort();
+        loadRequest = new AbortController();
+        const version = ++requestVersion;
+        trigger = button;
+        ready = false;
+        form.reset();
+        clear();
+        setEnabled(false);
+        setStatus('Loading SKU...');
+        modal.hidden = false;
+        document.body.classList.add('modal-open');
+        document.getElementById(closeId)?.focus();
+
+        try {
+            const result = await request(
+                `sku_setup.php?ajax=${endpoint}&sku=${encodeURIComponent(button.dataset.sku || '')}`,
+                {signal: loadRequest.signal},
+                'Unable to load SKU.'
+            );
+            if (version !== requestVersion) return;
+            populate(result, form);
+            ready = true;
+            setEnabled(true);
+            setStatus('Update the SKU details and save your changes.');
+        } catch (error) {
+            if (version !== requestVersion || error.name === 'AbortError') return;
+            setStatus(error.message, true);
+        }
+    }
+
+    document.querySelectorAll(triggerSelector).forEach(button => button.addEventListener('click', () => open(button)));
+    document.getElementById(closeId)?.addEventListener('click', close);
+    document.getElementById(cancelId)?.addEventListener('click', close);
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!ready || saving) return;
+        const body = new FormData(form);
+        const version = requestVersion;
+        saving = true;
+        setEnabled(false);
+        setStatus('Saving...');
+        try {
+            await request('sku_setup.php', {method: 'POST', body}, 'Unable to save SKU.');
+            window.location.reload();
+        } catch (error) {
+            if (version === requestVersion) setStatus(error.message, true);
+        } finally {
+            saving = false;
+            setEnabled(ready);
+        }
+    });
+
+    return {modal, close};
 }
 
-document.querySelectorAll('.ajax-edit-normal').forEach(button => button.addEventListener('click', () => openNormalEditModal(button)));
-closeNormalEdit?.addEventListener('click', closeNormalEditModal);
-cancelNormalEdit?.addEventListener('click', closeNormalEditModal);
-normalEditModal?.addEventListener('click', event => { if (event.target === normalEditModal) closeNormalEditModal(); });
-normalEditForm?.addEventListener('submit', async event => {
-    event.preventDefault();
-    normalEditStatus.textContent = 'Saving...';
-    try {
-        const response = await fetch('sku_setup.php', {method: 'POST', body: new FormData(normalEditForm), headers: {'Accept': 'application/json'}});
-        const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.message || 'Unable to save SKU.');
-        window.location.reload();
-    } catch (error) {
-        normalEditStatus.textContent = error.message;
-        normalEditStatus.classList.add('error');
+const normalEditController = setupSkuEditModal({
+    modalId: 'normalEditModal', formId: 'normalEditForm', statusId: 'normalEditStatus',
+    closeId: 'closeNormalEdit', cancelId: 'cancelNormalEdit',
+    triggerSelector: '.ajax-edit-normal', endpoint: 'normal_sku',
+    populate(result, form) {
+        ['product_sku', 'product_name', 'brand', 'wmdp', 'sbhdp', 'emdp', 'sgdp'].forEach(field => {
+            form.elements[field].value = result.sku[field] ?? '';
+        });
     }
 });
 
@@ -1857,6 +1924,13 @@ document.addEventListener('keydown', event => {
         return;
     }
 
+    for (const controller of [normalEditController, compositeEditController]) {
+        if (controller && !controller.modal.hidden) {
+            controller.close();
+            return;
+        }
+    }
+
     if (deleteModal && !deleteModal.hidden) {
         closeDeleteModal();
         return;
@@ -1872,89 +1946,71 @@ document.addEventListener('keydown', event => {
     }
 });
 
-const compositeAjaxModal=document.getElementById('compositeAjaxModal');
-const compositeAjaxForm=document.getElementById('compositeAjaxForm');
-const compositeAjaxRows=document.getElementById('compositeAjaxRows');
-const compositeAjaxStatus=document.getElementById('compositeAjaxStatus');
+const compositeAjaxRows = document.getElementById('compositeAjaxRows');
+const compositeAjaxStatus = document.getElementById('compositeAjaxStatus');
+const looseItemTemplate = document.getElementById('componentTemplate')
+    ?.content.querySelector('select[name="loose_code[]"]');
+let compositeRowId = 0;
 
-function closeCompositeAjax() {
-    if (compositeAjaxModal) {
-        compositeAjaxModal.hidden = true;
-        document.body.classList.remove('modal-open');
-    }
+function addCompositeAjaxRow(item = {}) {
+    const row = document.createElement('div');
+    const rowId = ++compositeRowId;
+    row.className = 'sku-edit-row';
+    row.innerHTML = `
+        <div class="sku-edit-loose-group">
+            <label for="compositeLoose${rowId}">Loose item <span>*</span></label>
+            <select id="compositeLoose${rowId}" class="sku-edit-loose-input" name="loose_code[]" required>
+                <option value="">Select loose item</option>
+            </select>
+        </div>
+        <div class="sku-edit-quantity-group">
+            <label for="compositeQuantity${rowId}">Quantity per pack <span>*</span></label>
+            <input id="compositeQuantity${rowId}" class="sku-edit-quantity-input"
+                type="number" name="quantity[]" min="1" step="1" required>
+        </div>
+        <button type="button" class="sku-edit-btn-remove">Remove</button>
+    `;
+
+    const select = row.querySelector('select');
+    const quantity = row.querySelector('[name="quantity[]"]');
+    // Template children live in the template's content fragment.
+    if (looseItemTemplate) select.innerHTML = looseItemTemplate.innerHTML;
+    select.value = item.item_code ?? '';
+    quantity.value = item.quantity ?? 1;
+
+    row.querySelector('.sku-edit-btn-remove').addEventListener('click', () => {
+        if (compositeAjaxRows.children.length <= 1) {
+            compositeAjaxStatus.textContent = 'Keep at least one loose item.';
+            compositeAjaxStatus.classList.add('error');
+            return;
+        }
+        row.remove();
+    });
+    compositeAjaxRows.append(row);
 }
 
-// Open composite edit modal
-document.querySelectorAll('.ajax-edit-composite').forEach(button => {
-    button.addEventListener('click', async () => {
-        compositeAjaxModal.hidden = false;
-        document.body.classList.add('modal-open');
-
-        try {
-            const response = await fetch(
-                `sku_setup.php?ajax=composite_sku&sku=${encodeURIComponent(button.dataset.sku)}`
-            );
-
-            const data = await response.json();
-
-            if (!data.ok) {
-                throw new Error(data.message);
-            }
-
-            compositeAjaxForm.elements.original_code.value = data.composite.item_code;
-
-            compositeAjaxForm.elements.item_code.value = data.composite.item_code;
-
-            compositeAjaxForm.elements.item_description.value = data.composite.item_description || '';
-
-            compositeAjaxRows.innerHTML = '';
-
-            (data.composite.loose_items || []).forEach(item => {
-                const row = document.createElement('div');
-                row.className = 'grid-2 component-row';
-
-                row.innerHTML = `
-                    <div class="form-group">
-                        <label class="form-label">Loose item *</label>
-                        <input class="form-control" name="loose_code[]" value="${item.item_code}"required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Quantity *</label>
-                        <input class="form-control" type="number" name="quantity[]" value="${item.quantity}" min="1" required>
-                    </div>
-                `;
-
-                compositeAjaxRows.append(row);
-            });
-
-            compositeAjaxStatus.textContent =
-                'Update the composite details and save your changes.';
-
-        } catch (error) {
-            compositeAjaxStatus.textContent = error.message;
-        }
-    });
+const compositeEditController = setupSkuEditModal({
+    modalId: 'compositeAjaxModal', formId: 'compositeAjaxForm', statusId: 'compositeAjaxStatus',
+    closeId: 'closeCompositeAjax', cancelId: 'cancelCompositeAjax',
+    triggerSelector: '.ajax-edit-composite', endpoint: 'composite_sku',
+    clear() { compositeAjaxRows.innerHTML = ''; },
+    populate(result, form) {
+        if (!looseItemTemplate) throw new Error('No loose SKUs are available. Add a loose SKU before editing this composite.');
+        form.elements.original_code.value = result.composite.item_code;
+        form.elements.item_code.value = result.composite.item_code;
+        form.elements.item_description.value = result.composite.item_description || '';
+        (result.composite.loose_items || []).forEach(item => addCompositeAjaxRow(item));
+        if (compositeAjaxRows.children.length === 0) addCompositeAjaxRow();
+    }
 });
 
-document.getElementById('closeCompositeAjax')?.addEventListener('click', closeCompositeAjax);
-document.getElementById('cancelCompositeAjax')?.addEventListener('click', closeCompositeAjax);
-
-compositeAjaxForm?.addEventListener('submit', async event => {
-    event.preventDefault();
-
-    const response = await fetch('sku_setup.php', {
-        method: 'POST',
-        body: new FormData(compositeAjaxForm)
-    });
-
-    const data = await response.json();
-
-    if (data.ok) {
-        location.reload();
-    } else {
-        compositeAjaxStatus.textContent = data.message;
+document.getElementById('addCompositeAjaxItem')?.addEventListener('click', () => {
+    if (compositeAjaxRows.children.length >= 100) {
+        compositeAjaxStatus.textContent = 'Maximum 100 loose items allowed.';
+        compositeAjaxStatus.classList.add('error');
+        return;
     }
+    addCompositeAjaxRow();
 });
 
 </script>
