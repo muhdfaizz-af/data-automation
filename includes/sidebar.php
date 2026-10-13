@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 /**
  * Sidebar Navigation Component
  * Used in dashboard layout
  */
 
-// ── Icon SVG Definitions ──
+// Icon SVG Definitions  
 $icoHome='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>';
 $icoBox='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>';
 $icoBundle='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>';
@@ -14,7 +14,7 @@ $icoImperson='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 $icoUpload='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
 $icoLogout='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
 
-// ── Navigation Item Helper Function ──
+// Navigation Item Helper Function  
 $navBasePath = $navBasePath ?? '';
 $activeNav = $activeNav ?? 'dashboard';
 $currentPage = basename($_SERVER['SCRIPT_NAME'] ?? '');
@@ -52,6 +52,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   .nav-parent-content{display:flex;align-items:center;gap:11px;flex:1;min-width:0;}
   .nav-parent .ni{width:18px;height:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
   .nav-parent .ni svg{width:18px;height:18px;}
+  .nav-chev svg{width:16px;height:16px;display:block;}
   .nav-chev{width:18px;height:18px;display:flex;align-items:center;justify-content:center;transition:transform .2s ease;color:var(--gray-700);font-size:17px;line-height:1;font-weight:700;}
   .nav-group.open > .nav-parent .nav-chev{transform:rotate(180deg);}
   .nav-parent:hover .nav-chev{color:var(--ink);}
@@ -104,7 +105,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
       </span>
-      <span class="nav-chev">▾</span>
+      <span class="nav-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>
     <div class="nav-children">
       <?= navItem('performance_sales/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
@@ -123,7 +124,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
         <span class="ni"><?= $icoMembers ?></span>
         <span class="nav-label">Agent Performance</span>
       </span>
-      <span class="nav-chev">▾</span>
+      <span class="nav-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>
     <div class="nav-children">
       <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $currentPage === 'agent_behavior.php', $navBasePath) ?>
@@ -136,7 +137,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   <?= navItem('upload_reports/upload_members.php', $icoMembers, 'Upload Members', $activeNav === 'upload_members', $navBasePath) ?>
   <?= navItem('salestarget/', $icoUpload, 'Sales Target', $activeNav === 'salestarget', $navBasePath) ?>
   <?= navItem('upload_reports/manual_sales.php', $icoSales, 'Manual Sales', $activeNav === 'manual_sales', $navBasePath) ?>
-  <?= navItem('upload_reports/promo_setup.php', $icoSales, 'Promo Setup', $activeNav === 'promo_setup', $navBasePath) ?>
+  <?= navItem('upload_reports/sku_setup.php', $icoSales, 'SKU Setup', $activeNav === 'sku_setup', $navBasePath) ?>
   
   <div class="nav-divider"></div>
   <a href="<?= $navBasePath ?>logout.php" class="nav-item nav-logout" title="Logout"><span class="ni"><?= $icoLogout ?></span><span class="nav-label">Logout</span></a>
@@ -167,7 +168,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
         <span class="ni"><?= $icoSales ?></span>
         <span class="nav-label">Sales Performance</span>
       </span>
-      <span class="nav-chev">▾</span>
+      <span class="nav-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>
     <div class="nav-children">
       <?= navItem('performance_sales/sales_comparison.php', $icoSales, 'Sales Comparison', $currentPage === 'sales_comparison.php', $navBasePath) ?>
@@ -186,7 +187,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
         <span class="ni"><?= $icoMembers ?></span>
         <span class="nav-label">Agent Performance</span>
       </span>
-      <span class="nav-chev">▾</span>
+      <span class="nav-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>
     <div class="nav-children">
       <?= navItem('performance_agent/agent_behavior.php', $icoMembers, 'Agent Behavior', $activeNav === 'agentperformance', $navBasePath) ?>
@@ -200,7 +201,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
   <?= navItem('upload_reports/upload_members.php', $icoMembers, 'Upload Members', $activeNav === 'upload_members', $navBasePath) ?>
   <?= navItem('salestarget/', $icoUpload, 'Sales Target', $activeNav === 'salestarget', $navBasePath) ?>
   <?= navItem('upload_reports/manual_sales.php', $icoSales, 'Manual Sales', $activeNav === 'manual_sales', $navBasePath) ?>
-  <?= navItem('upload_reports/promo_setup.php', $icoSales, 'Promo Setup', $activeNav === 'promo_setup', $navBasePath) ?>
+  <?= navItem('upload_reports/sku_setup.php', $icoSales, 'SKU Setup', $activeNav === 'sku_setup', $navBasePath) ?>
   
   <div class="nav-divider"></div>
   <a href="<?= $navBasePath ?>logout.php" class="nav-item nav-logout"><span class="ni"><?= $icoLogout ?></span><span class="nav-label">Logout</span></a>
@@ -277,7 +278,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 </script>
 
 <script>
-  // ── Auto-expand sidebar bila mouse masuk kawasan sidebar ──
+  // Auto-expand sidebar bila mouse masuk kawasan sidebar  
   (function () {
     const sidebarEl = document.getElementById('sidebarMain');
     if (!sidebarEl) return;
@@ -299,13 +300,13 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
     });
   })();
 
-  // ── Function untuk butang open/close sidebar ──
+  // Function untuk butang open/close sidebar  
   function toggleSidebar() {
     document.body.classList.toggle('sidebar-collapsed');
     localStorage.setItem('sidebarCollapsed', document.body.classList.contains('sidebar-collapsed'));
   }
 
-  // ── Load balik state sidebar (collapsed/expand) bila page dibuka semula ──
+  // Load balik state sidebar (collapsed/expand) bila page dibuka semula  
   document.addEventListener('DOMContentLoaded', function () {
     const saved = localStorage.getItem('sidebarCollapsed');
     if (saved === 'true') {
@@ -315,7 +316,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
 </script>
 
 <script>
-  // ── Simpan & restore state nav-group (contoh: Sales Performance) ──
+  // Simpan & restore state nav-group (contoh: Sales Performance)  
   document.addEventListener('DOMContentLoaded', function () {
     const groups = document.querySelectorAll('.nav-group[data-nav-id]');
 
@@ -340,7 +341,7 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
     });
   });
 
-  // ── Update localStorage bila user click buka/tutup group ──
+  // Update localStorage bila user click buka/tutup group  
   document.addEventListener('DOMContentLoaded', function () {
     const groups = document.querySelectorAll('.nav-group[data-nav-id]');
 
@@ -359,3 +360,4 @@ function navItem($href, $icon, $label, $active = false, $basePath = '') {
     });
   });
 </script>
+

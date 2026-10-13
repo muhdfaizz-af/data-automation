@@ -281,10 +281,10 @@ ORDER_SQL = """
 ITEM_SQL = """
     INSERT INTO order_items (
         order_id, commission_month, cdo, cdo_created_date, product_type,
-        item_code, item_description, brand, email, total_weight, qty,
+        price_code, item_code, item_description, brand, email, total_weight, qty,
         bv, pv, total_bv, total_pv, total_retail_price, discount,
         invoice_amount, total_invoice_amount_paid, order_processed_location
-    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
 """
 
 
@@ -608,6 +608,7 @@ def _process_tax_invoice(conn, rows, header_map, company_cache):
                 get_row_value(row, header_map, ["cdo"]),
                 parse_date(get_row_value(row, header_map, ["cdocreateddate"])),
                 get_row_value(row, header_map, ["producttype"]),
+                str(get_row_value(row, header_map, ["pricecode"]) or "").strip(),
                 item_code,
                 get_row_value(row, header_map, ["itemdescription"]),
                 get_row_value(row, header_map, ["brand"]),

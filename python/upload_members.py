@@ -1,28 +1,13 @@
 from datetime import date, datetime
 from io import BytesIO
-import os
 
 import openpyxl
-import pymysql
 from flask import Flask, jsonify, request
+
+from db import get_connection
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB
-
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": int(os.getenv("DB_PORT", "3306")),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASS", ""),
-    "database": os.getenv("DB_NAME", "data_automation"),
-    "charset": "utf8mb4",
-    "cursorclass": pymysql.cursors.DictCursor,
-    "autocommit": False,
-    # Supaya tak hang selamanya kalau DB tak boleh dicapai / ada lock
-    "connect_timeout": 10,
-    "read_timeout": 120,
-    "write_timeout": 120,
-}
 
 # NOTA: PAGE dihantar terus (bukan render_template_string) supaya
 # tiada masalah dengan simbol { } dalam CSS/JS.
@@ -672,7 +657,7 @@ def import_members(file_bytes, filename):
     data_rows = rows[1:]
     print(f"[members] {filename}: {len(data_rows)} data rows", flush=True)
 
-    connection = pymysql.connect(**DB_CONFIG)
+    connection = get_connection()
     try:
         with connection.cursor() as cursor:
             company_cache = {}
