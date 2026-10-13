@@ -220,7 +220,7 @@ function loginPerfHourLabel($hr) {
 // ── Read filters ──
 $today = date('Y-m-d');
 $defaultTo = date('Y-m-d', strtotime('-1 day'));
-$defaultFrom = date('Y-m-d', strtotime($defaultTo . ' -21 days'));
+$defaultFrom = $defaultTo;
 
 $fromDate = $_GET['from_date'] ?? $defaultFrom;
 $toDate = $_GET['to_date'] ?? $defaultTo;

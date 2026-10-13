@@ -4,6 +4,8 @@ session_start();
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
@@ -42,6 +44,48 @@ if (
 
 $_SESSION['last_activity'] = time();
 $_SESSION['composite_csrf'] ??= bin2hex(random_bytes(32));
+
+// Download Excel import templates (generated on the fly, matches the import parsers).
+if (in_array($_GET['download'] ?? '', ['composite_template', 'normal_template'], true)) {
+    $isComposite = $_GET['download'] === 'composite_template';
+    $templateSheet = new Spreadsheet();
+    $ws = $templateSheet->getActiveSheet();
+
+    if ($isComposite) {
+        $ws->setTitle('Composite');
+        $ws->fromArray([
+            ['Company Code', 'Composite SKU', 'Composite Name', 'Normal SKU', 'Qty', 'Status'],
+            ['ALL', 'DRINKS4', 'COMBO DRINKS X4', 'AC-010', 2, ''],
+            ['ALL', 'DRINKS4', 'COMBO DRINKS X4', 'AC-011', 2, ''],
+        ], null, 'A1');
+        $ws->getStyle('A1:F1')->getFont()->setBold(true);
+        foreach (range('A', 'F') as $col) {
+            $ws->getColumnDimension($col)->setAutoSize(true);
+        }
+        $templateName = 'composite_sku_template.xlsx';
+    } else {
+        $ws->setTitle('Loose SKU');
+        $ws->fromArray([
+            ['Product SKU', 'Product Name', 'Brand', 'WMDP', 'SBHDP', 'EMDP', 'SG'],
+            ['', '', '', 'Unit Price', 'Unit Price', 'Unit Price', 'Unit Price'],
+            ['AC-010', 'DARK CHOCOLATE COOKIES', 'CHOCO ALBAB', 15.00, 15.50, 16.00, 18.00],
+        ], null, 'A1');
+        $ws->getStyle('A1:G2')->getFont()->setBold(true);
+        foreach (range('A', 'G') as $col) {
+            $ws->getColumnDimension($col)->setAutoSize(true);
+        }
+        $templateName = 'loose_sku_template.xlsx';
+    }
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $templateName . '"');
+    header('Cache-Control: private, no-store');
+    (new Xlsx($templateSheet))->save('php://output');
+    exit;
+}
 
 // Remember the active mode in the session so the URL can stay static.
 if (isset($_GET['mode'])) {
@@ -1413,7 +1457,7 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
             <h2 class="card-title" id="normalSkuListTitle">Loose SKUs</h2>
             <form method="get" action="sku_setup.php" class="sku-search-form"><input type="hidden" name="mode" value="normal"><input class="form-control" type="search" name="q" value="<?= compositeEscape($normalSearch) ?>" placeholder="Search SKU, product name, or brand"><button class="btn btn-primary" type="submit">Search</button><a class="btn btn-secondary" href="sku_setup.php?mode=normal">Clear</a></form>
             <div class="uploader"><strong>Import loose SKUs</strong></div>
-            <form method="post" action="sku_setup.php" enctype="multipart/form-data" class="sku-import-form"><input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>"><input type="hidden" name="action" value="import_normal_excel"><label class="file-picker"><span>Choose Excel file</span><input type="file" name="normal_excel" accept=".xlsx,.xls,.csv" required></label><button class="btn btn-primary" type="submit">Import Excel</button></form>
+            <form method="post" action="sku_setup.php" enctype="multipart/form-data" class="sku-import-form"><input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>"><input type="hidden" name="action" value="import_normal_excel"><label class="file-picker"><span>Choose Excel file</span><input type="file" name="normal_excel" accept=".xlsx,.xls,.csv" required></label><button class="btn btn-primary" type="submit">Import Excel</button><a class="btn btn-secondary" href="sku_setup.php?download=normal_template" download>Download Template</a></form>
             <p class="form-hint">Excel format: two header rows with Product SKU, Product Name, Brand, and Unit Price under WMDP, SBHDP, EMDP, and SG.</p><div class="table-wrap"><table><thead><tr><th>SKU</th><th>Name</th><th>Brand</th><th>WMDP</th><th>SBHDP</th><th>EMDP</th><th>SGDP</th><th>Action</th></tr></thead><tbody><?php foreach ($normalProducts as $product): ?><tr><td class="composite-code"><?= compositeEscape($product['product_sku']) ?></td><td><?= compositeEscape($product['product_name'] ?? '') ?></td><td><?= compositeEscape($product['brand'] ?? '') ?></td><td><?= compositeEscape($product['wmdp'] ?? '') ?></td><td><?= compositeEscape($product['sbhdp'] ?? '') ?></td><td><?= compositeEscape($product['emdp'] ?? '') ?></td><td><?= compositeEscape($product['sgdp'] ?? '') ?></td><td class="normal-sku-actions"><button type="button" class="btn btn-secondary btn-small ajax-edit-normal" data-sku="<?= compositeEscape($product['product_sku']) ?>">Edit</button><button type="button" class="btn btn-danger btn-small open-normal-delete" data-normal-sku="<?= compositeEscape($product['product_sku']) ?>" data-normal-name="<?= compositeEscape($product['product_name'] ?? "") ?>">Delete</button></td></tr><?php endforeach; ?></tbody></table></div>
             <?php if ($normalPageCount > 1): ?><nav class="pagination" aria-label="Normal SKU pages"><?php for ($page = 1; $page <= $normalPageCount; $page++): ?><a class="<?= $page === $normalPage ? 'active' : '' ?>" href="sku_setup.php?mode=normal&amp;q=<?= rawurlencode($normalSearch) ?>&amp;page=<?= $page ?>"><?= $page ?></a><?php endfor; ?></nav><?php endif; ?>
         </section>
@@ -1565,6 +1609,7 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                 <input type="hidden" name="action" value="import_excel">
                 <label class="file-picker"><span>Choose Excel file</span><input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls,.csv" required></label>
                 <button type="submit" class="btn btn-primary">Import Excel</button>
+                <a class="btn btn-secondary" href="sku_setup.php?download=composite_template" download>Download Template</a>
             </form>
             <div class="table-wrap" tabindex="0" role="region" aria-label="Saved composites">
                 <table>
@@ -1721,7 +1766,7 @@ async function navigate(url, options = {}) {
 // Every link inside <main> that points to sku_setup.php
 document.addEventListener('click', event => {
     const link = event.target.closest('main.main a[href]');
-    if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || link.target === '_blank') return;
+    if (!link || link.hasAttribute('download') || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || link.target === '_blank') return;
 
     const url = new URL(link.href, location.href);
     if (url.origin !== location.origin || !url.pathname.endsWith('/' + PAGE)) return;
