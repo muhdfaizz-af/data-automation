@@ -314,8 +314,30 @@ function identifyProductCategory(
         return 'SCARF';
     }
 
-    // Other Choco Albab products are consolidate by cleaned name
-   if ($brand === 'CHOCO ALBAB') {
+    // Ruby Indulgence carton sales roll up to the loose product category.
+    if (
+        $brand === 'CHOCO ALBAB' &&
+        (
+            in_array($itemCode, ['CAC-027', 'CA-18', 'CA-018'], true) ||
+            str_contains($description, 'CHOCO ALBAB RUBY INDULGENCE CUTIE TUB')
+        )
+    ) {
+        return 'CHOCO ALBAB RUBY INDULGENCE CUTIE TUB';
+    }
+
+    // Signature Box carton sales roll up to the loose product category.
+    if (
+        $brand === 'CHOCO ALBAB' &&
+        (
+            in_array($itemCode, ['CAC-1001', 'CA-1001'], true) ||
+            str_contains($description, 'SIGNATURE BOX PREMIX DRINK')
+        )
+    ) {
+        return 'SIGNATURE BOX PREMIX DRINK';
+    }
+
+    // Other Choco Albab products are consolidated by cleaned name.
+    if ($brand === 'CHOCO ALBAB') {
         return $productType === 'NORMAL'
             ? cleanProductName($description)
             : null;
@@ -1146,8 +1168,10 @@ include __DIR__ . '/../includes/sidebar.php';
             Rankings use confirmed MY and SG Tax Invoice
             lines. Singapore sales are converted using SGD ×
             <?= number_format(SGD_TO_MYR_RATE, 2) ?>.
-            Sets, bundles, packages, cartons and Starter Kits
-            are excluded.
+            Ruby Indulgence and Signature Box carton sales are
+            included, with quantities sourced from loose CA-18 and
+            CA-1001 respectively. Other bundle/carton treatment
+            follows the existing product-specific rules.
         </div>
     <?php endif; ?>
     </main>
