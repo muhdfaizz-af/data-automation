@@ -18,30 +18,72 @@ $REGIONS = [
 ];
 // ===========================================
 
+// HTTP tanpa cURL: file_get_contents + cookie disimpan manual dalam fail JSON
+const COOKIE_FILE_NAME = 'luckydraw_cookie.json';
+
+function cookieFilePath(): string {
+    return sys_get_temp_dir() . '/' . COOKIE_FILE_NAME;
+}
+
 function http(string $url, ?array $post = null, array $headers = []): string {
-    $jar = sys_get_temp_dir() . '/luckydraw_cookie.txt';
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_COOKIEJAR      => $jar,
-        CURLOPT_COOKIEFILE     => $jar,
-        CURLOPT_TIMEOUT        => 60,
-        CURLOPT_USERAGENT      => 'Mozilla/5.0',
-        CURLOPT_HTTPHEADER     => $headers,
-    ]);
-    if ($post !== null) {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post));
+    $file = cookieFilePath();
+    $cookies = [];
+    if (file_exists($file)) {
+        $c = json_decode((string) file_get_contents($file), true);
+        if (is_array($c)) $cookies = $c;
     }
-    $out = curl_exec($ch);
-    $GLOBALS['LAST'] = [
-        'code' => curl_getinfo($ch, CURLINFO_HTTP_CODE),
-        'url'  => curl_getinfo($ch, CURLINFO_EFFECTIVE_URL),
-        'err'  => curl_error($ch),
+
+    $lines = $headers;
+    $lines[] = 'User-Agent: Mozilla/5.0';
+    if ($cookies) {
+        $parts = [];
+        foreach ($cookies as $k => $v) $parts[] = $k . '=' . $v;
+        $lines[] = 'Cookie: ' . implode('; ', $parts);
+    }
+
+    $http = [
+        'method'          => $post !== null ? 'POST' : 'GET',
+        'timeout'         => 60,
+        'follow_location' => 1,
+        'max_redirects'   => 10,
+        'ignore_errors'   => true,   // pulangkan body walaupun 4xx/5xx
     ];
-    curl_close($ch);
-    return $out === false ? '' : $out;
+    if ($post !== null) {
+        $lines[] = 'Content-Type: application/x-www-form-urlencoded';
+        $http['content'] = http_build_query($post);
+    }
+    $http['header'] = implode("\r\n", $lines);
+
+    $ctx = stream_context_create([
+        'http' => $http,
+        'ssl'  => ['verify_peer' => true, 'verify_peer_name' => true],
+    ]);
+
+    $body = @file_get_contents($url, false, $ctx);
+    $err = '';
+    if ($body === false) {
+        $e = error_get_last();
+        $err = $e['message'] ?? 'Unknown stream error';
+    }
+
+    $respHeaders = $http_response_header ?? [];
+    $code = 0;
+    if ($respHeaders && preg_match('/^HTTP\/\S+\s+(\d+)/', $respHeaders[0], $m)) $code = (int) $m[1];
+
+    // Simpan cookie baru (Set-Cookie)
+    $changed = false;
+    foreach ($respHeaders as $h) {
+        if (stripos($h, 'Set-Cookie:') !== 0) continue;
+        $pair = explode(';', trim(substr($h, 11)), 2)[0];
+        $eq = strpos($pair, '=');
+        if ($eq === false) continue;
+        $name = trim(substr($pair, 0, $eq));
+        if ($name !== '') { $cookies[$name] = trim(substr($pair, $eq + 1)); $changed = true; }
+    }
+    if ($changed) file_put_contents($file, json_encode($cookies), LOCK_EX);
+
+    $GLOBALS['LAST'] = ['code' => $code, 'url' => $url, 'err' => $err];
+    return is_string($body) ? $body : '';
 }
 
 // Cara login sama seperti api_loginagents.php (POST AJAX ke sysapp/Login/Login)
@@ -49,7 +91,7 @@ const ADMIN_LOGIN_PATH = '/index.php/sysapp/Login/Login';
 
 function adminLogin(): bool {
     $base = rtrim(ADMIN_SOURCE_BASE_URL, '/');
-    @unlink(sys_get_temp_dir() . '/luckydraw_cookie.txt');   // sesi baru
+    @unlink(cookieFilePath());   // sesi baru
     http($base . '/');                                        // dapatkan cookie awal
 
     $resp = http($base . ADMIN_LOGIN_PATH, [
@@ -212,7 +254,7 @@ foreach ($REGIONS as $code => $url) {
     if ($debug) {
         echo '<pre style="background:#eee;padding:8px;white-space:pre-wrap">'
            . htmlspecialchars("[$code] HTTP " . ($GLOBALS['LAST']['code'] ?? '') . ' | URL: ' . ($GLOBALS['LAST']['url'] ?? '')
-           . ' | curl err: ' . ($GLOBALS['LAST']['err'] ?? '') . "\nUsername set: " . (ADMIN_SOURCE_USERNAME !== '' ? 'ya' : 'TIDAK (env kosong!)')
+           . ' | ralat: ' . ($GLOBALS['LAST']['err'] ?? '') . "\nUsername set: " . (ADMIN_SOURCE_USERNAME !== '' ? 'ya' : 'TIDAK (env kosong!)')
            . "\nLogin: " . json_encode($GLOBALS['LOGIN_INFO'] ?? 'tak perlu login', JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)
            . "\nParser: " . json_encode($GLOBALS['PARSE_DIAGNOSTICS'] ?? [])
            . "\nNota: " . json_encode($GLOBALS['NOTES'] ?? [])
