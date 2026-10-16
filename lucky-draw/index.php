@@ -6,6 +6,12 @@ const FILTER_BRAND        = 'Nafesa';   // Only Brand
 const FILTER_PRODUCT_TYPE = 'Normal';   // Only Product Type
 const EXCLUDE_PRICE_CODE  = 'FOC';      // Exclude Price Code
 
+// Awalan Order ID bagi setiap region (link admin pulangkan semua company bercampur)
+$ORDER_PREFIXES = [
+    'MY' => ['MYHQ', 'MYBT'],
+    'SG' => ['SGHQ'],
+];
+
 $REGIONS = [
     'MY' => 'https://admin.e-saudagaar.com/index.php/report/RepDPProduction/printTaxInvoice?param=TVlfX19fX18wMS0xMC0yMDI2X18zMS0xMC0yMDI2X19fX19fX19fX19fX19fX19fMl9fX19jc2JfX19fX19fX19f',
     'SG' => 'https://admin.e-saudagaar.com/index.php/report/RepDPProduction/printTaxInvoice?param=U0dfX19fX18wMS0xMC0yMDI2X18zMS0xMC0yMDI2X19fX19fX19fX19fX19fX19fMl9fX19jc2JfX19fX19fX19f',
@@ -191,16 +197,25 @@ $debug = isset($_GET['debug']);
 // unit   = 1 baris setiap unit (DEFAULT: qty 100 = 100 baris)
 $mode = in_array($_GET['mode'] ?? '', ['member', 'item'], true) ? $_GET['mode'] : 'unit';
 $agg = [];
+$seenHash = [];
+$GLOBALS['NOTES'] = [];
 
 foreach ($REGIONS as $code => $url) {
     if ($view !== 'ALL' && $view !== $code) continue;
     $rows = parseRows(fetchReport($url));
+    $n = count($rows);
+    // (a) Satu page yang mengandungi report yang sama dua kali (cth. versi skrin + cetak)
+    if ($n > 0 && $n % 2 === 0 && array_slice($rows, 0, $n / 2) == array_slice($rows, $n / 2)) {
+        $rows = array_slice($rows, 0, $n / 2);
+        $GLOBALS['NOTES'][] = "$code: report dikesan berganda dalam page, separuh dibuang.";
+    }
     if ($debug) {
         echo '<pre style="background:#eee;padding:8px;white-space:pre-wrap">'
            . htmlspecialchars("[$code] HTTP " . ($GLOBALS['LAST']['code'] ?? '') . ' | URL: ' . ($GLOBALS['LAST']['url'] ?? '')
            . ' | curl err: ' . ($GLOBALS['LAST']['err'] ?? '') . "\nUsername set: " . (ADMIN_SOURCE_USERNAME !== '' ? 'ya' : 'TIDAK (env kosong!)')
            . "\nLogin: " . json_encode($GLOBALS['LOGIN_INFO'] ?? 'tak perlu login', JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)
            . "\nParser: " . json_encode($GLOBALS['PARSE_DIAGNOSTICS'] ?? [])
+           . "\nNota: " . json_encode($GLOBALS['NOTES'] ?? [])
            . "\nPanjang HTML: " . strlen($GLOBALS['DEBUG_HTML'])
            . "\n<table: " . substr_count(strtolower($GLOBALS['DEBUG_HTML']), '<table')
            . " | <tr: " . substr_count(strtolower($GLOBALS['DEBUG_HTML']), '<tr')
@@ -217,12 +232,13 @@ foreach ($REGIONS as $code => $url) {
             : "$code: tiada rekod pada laporan.";
         continue;
     }
-    $skipped = 0;
+    $prefixes = $ORDER_PREFIXES[$code] ?? [];
+    $outside = 0;
     foreach ($rows as $r) {
         if ($r['id'] === '' || $r['qty'] < 1) continue;
-        // Order ID mesti bermula dengan kod region (MYBT... = MY, SGBT... = SG).
-        // Elak data region lain masuk dua kali bila link SG pulangkan data MY.
-        if (strpos($r['order'], $code) !== 0) { $skipped++; continue; }
+        $okRegion = false;
+        foreach ($prefixes as $pf) if (strpos($r['order'], $pf) === 0) { $okRegion = true; break; }
+        if (!$okRegion) { $outside++; continue; }
         if (strtolower($r['brand']) !== strtolower(FILTER_BRAND)) continue;
         if (strtolower($r['type'])  !== strtolower(FILTER_PRODUCT_TYPE)) continue;
         if (strtolower($r['price']) === strtolower(EXCLUDE_PRICE_CODE)) continue;
@@ -241,10 +257,7 @@ foreach ($REGIONS as $code => $url) {
         $agg[$key]['code'][$r['code']]   = 1;
         $agg[$key]['desc'][$r['desc']]   = 1;
     }
-    if ($skipped > 0) {
-        $errors[] = "$code: $skipped baris diabaikan kerana Order ID bukan milik $code "
-                  . "(link $code mungkin pulangkan data company lain).";
-    }
+    $GLOBALS['NOTES'][] = "$code: $outside baris order region lain diabaikan (awalan dibenarkan: " . implode('/', $prefixes) . ").";
 }
 foreach ($agg as $a) {
     $entries[] = [
