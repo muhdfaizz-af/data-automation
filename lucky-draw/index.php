@@ -186,6 +186,11 @@ $view = strtoupper($_GET['region'] ?? 'ALL');
 $errors = [];
 $entries = []; // 1 unit = 1 baris
 $debug = isset($_GET['debug']);
+// item   = 1 baris setiap Member + Item Code
+// member = 1 baris setiap Member sahaja
+// unit   = 1 baris setiap unit (DEFAULT: qty 100 = 100 baris)
+$mode = in_array($_GET['mode'] ?? '', ['member', 'item'], true) ? $_GET['mode'] : 'unit';
+$agg = [];
 
 foreach ($REGIONS as $code => $url) {
     if ($view !== 'ALL' && $view !== $code) continue;
@@ -212,15 +217,42 @@ foreach ($REGIONS as $code => $url) {
             : "$code: tiada rekod pada laporan.";
         continue;
     }
+    $skipped = 0;
     foreach ($rows as $r) {
         if ($r['id'] === '' || $r['qty'] < 1) continue;
+        // Order ID mesti bermula dengan kod region (MYBT... = MY, SGBT... = SG).
+        // Elak data region lain masuk dua kali bila link SG pulangkan data MY.
+        if (strpos($r['order'], $code) !== 0) { $skipped++; continue; }
         if (strtolower($r['brand']) !== strtolower(FILTER_BRAND)) continue;
         if (strtolower($r['type'])  !== strtolower(FILTER_PRODUCT_TYPE)) continue;
         if (strtolower($r['price']) === strtolower(EXCLUDE_PRICE_CODE)) continue;
-        for ($i = 0; $i < $r['qty']; $i++) {
-            $entries[] = ['id'=>$r['id'],'name'=>$r['name'],'order'=>$r['order'],'code'=>$r['code'],'desc'=>$r['desc'],'region'=>$code];
+        if ($mode === 'unit') {
+            for ($i = 0; $i < $r['qty']; $i++) {
+                $entries[] = ['id'=>$r['id'],'name'=>$r['name'],'order'=>$r['order'],'code'=>$r['code'],'desc'=>$r['desc'],'region'=>$code,'qty'=>1];
+            }
+            continue;
         }
+        $key = $mode === 'member' ? $r['id'] : $r['id'] . '|' . $r['code'];
+        if (!isset($agg[$key])) {
+            $agg[$key] = ['id'=>$r['id'],'name'=>$r['name'],'order'=>[],'code'=>[],'desc'=>[],'region'=>$code,'qty'=>0];
+        }
+        $agg[$key]['qty'] += $r['qty'];
+        $agg[$key]['order'][$r['order']] = 1;
+        $agg[$key]['code'][$r['code']]   = 1;
+        $agg[$key]['desc'][$r['desc']]   = 1;
     }
+    if ($skipped > 0) {
+        $errors[] = "$code: $skipped baris diabaikan kerana Order ID bukan milik $code "
+                  . "(link $code mungkin pulangkan data company lain).";
+    }
+}
+foreach ($agg as $a) {
+    $entries[] = [
+        'id' => $a['id'], 'name' => $a['name'], 'region' => $a['region'], 'qty' => $a['qty'],
+        'order' => implode(', ', array_keys($a['order'])),
+        'code'  => implode(', ', array_keys($a['code'])),
+        'desc'  => implode(', ', array_keys($a['desc'])),
+    ];
 }
 usort($entries, fn($a, $b) => [$a['id'],$a['order'],$a['code']] <=> [$b['id'],$b['order'],$b['code']]);
 
@@ -229,8 +261,8 @@ if (isset($_GET['csv'])) {
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="lucky-draw.csv"');
     $o = fopen('php://output', 'w');
-    fputcsv($o, ['Member ID', 'Member Name', 'Order ID', 'Item Code', 'Item Description', 'Qty']);
-    foreach ($entries as $m) fputcsv($o, [$m['id'], $m['name'], $m['order'], $m['code'], $m['desc'], 1]);
+    fputcsv($o, ['Member ID', 'Member Name', 'Order ID', 'Item Code', 'Item Description', 'Total Qty']);
+    foreach ($entries as $m) fputcsv($o, [$m['id'], $m['name'], $m['order'], $m['code'], $m['desc'], $m['qty']]);
     exit;
 }
 ?>
@@ -254,17 +286,22 @@ if (isset($_GET['csv'])) {
 <h2>Lucky Draw – Nafesa (Normal, bukan FOC)</h2>
 <p>
   Region:
-  <a href="?region=ALL">Semua</a> |
-  <a href="?region=MY">MY</a> |
-  <a href="?region=SG">SG</a>
-  &nbsp; <a class="btn" href="?region=<?= htmlspecialchars($view) ?>&csv=1">Export CSV</a>
+  <a href="?region=ALL&mode=<?= $mode ?>">Semua</a> |
+  <a href="?region=MY&mode=<?= $mode ?>">MY</a> |
+  <a href="?region=SG&mode=<?= $mode ?>">SG</a>
+  &nbsp; <a class="btn" href="?region=<?= htmlspecialchars($view) ?>&mode=<?= $mode ?>&csv=1">Export CSV</a>
   <button class="btn" onclick="draw()">Cabut Pemenang</button>
+</p>
+<p>Kiraan:
+  <a href="?region=<?= htmlspecialchars($view) ?>&mode=item"><?= $mode==='item' ? '<b>Member + Item</b>' : 'Member + Item' ?></a> |
+  <a href="?region=<?= htmlspecialchars($view) ?>&mode=member"><?= $mode==='member' ? '<b>Member sahaja</b>' : 'Member sahaja' ?></a> |
+  <a href="?region=<?= htmlspecialchars($view) ?>&mode=unit"><?= $mode==='unit' ? '<b>Setiap unit</b>' : 'Setiap unit' ?></a>
 </p>
 <?php foreach ($errors as $e): ?><p class="err"><?= htmlspecialchars($e) ?></p><?php endforeach; ?>
 <div id="winner"></div>
-<p><b>Jumlah tiket (1 unit = 1 baris): <?= count($entries) ?></b></p>
+<p><b>Jumlah baris / tiket: <?= count($entries) ?></b></p>
 <table>
-  <tr><th>Member ID</th><th>Member Name</th><th>Order ID</th><th>Item Code</th><th>Item Description</th><th>Qty</th></tr>
+  <tr><th>Member ID</th><th>Member Name</th><th>Order ID</th><th>Item Code</th><th>Item Description</th><th>Total Qty</th></tr>
   <?php foreach ($entries as $m): ?>
   <tr>
     <td><?= htmlspecialchars($m['id']) ?></td>
@@ -272,7 +309,7 @@ if (isset($_GET['csv'])) {
     <td><?= htmlspecialchars($m['order']) ?></td>
     <td><?= htmlspecialchars($m['code']) ?></td>
     <td><?= htmlspecialchars($m['desc']) ?></td>
-    <td>1</td>
+    <td><?= (int) $m['qty'] ?></td>
   </tr>
   <?php endforeach; ?>
 </table>
