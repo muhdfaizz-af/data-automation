@@ -3,7 +3,7 @@ require_once __DIR__ . '/config.php';
 
 // ================= SETTING =================
 const FILTER_BRAND        = 'Nafesa';   // Only Brand
-const FILTER_PRODUCT_TYPE = 'Normal';   // Only Product Type
+const DEFAULT_PRODUCT_TYPE = 'Normal';
 const EXCLUDE_PRICE_CODE  = 'FOC';      // Exclude Price Code
 
 // Awalan Order ID bagi setiap region (link admin pulangkan semua company bercampur)
@@ -238,6 +238,7 @@ function luckyDateTime(string $value): ?DateTimeImmutable
     $timezone = new DateTimeZone('Asia/Singapore');
 
     foreach ([
+        'Y-m-d',
         'Y-m-d\TH:i:s',
         'Y-m-d\TH:i',
         'Y-m-d H:i:s',
@@ -280,13 +281,13 @@ function luckyReportUrl(
     $decoded = is_string($param)
         ? base64_decode($param, true)
         : false;
-    
+
     if ($decoded === false) {
         throw new RuntimeException('Invalid report URL parameter.');
     }
 
     // Request tarikh yang dipilih di external report.
-    // Masa yang tepat berlaku locally
+    // The precise time filtering happens locally.
     $dates = [$from->format('d-m-Y'), $to->format('d-m-Y')];
     $index = 0;
 
@@ -311,11 +312,12 @@ function luckyReportUrl(
 
 function luckyLink(array $changes = []): string
 {
-    global $view, $mode, $fromInput, $toInput;
+    global $view, $mode, $typeInput, $fromInput, $toInput;
 
     $params = array_replace([
         'region' => $view,
         'mode' => $mode,
+        'type' => $typeInput,
         'from' => $fromInput,
         'to' => $toInput,
     ], $changes);
@@ -337,10 +339,30 @@ if ($view !== 'ALL' && !array_key_exists($view, $REGIONS)) {
 }
 $entries = []; // 1 unit = 1 baris
 $debug = isset($_GET['debug']);
+
+// AJAX: hanya pulangkan bahagian #app (tanpa <html>), URL browser tidak berubah
+$isAjax = isset($_GET['ajax']);
+if ($isAjax) {
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store');
+}
+
 // item   = 1 baris setiap Member + Item Code
 // member = 1 baris setiap Member sahaja
 // unit   = 1 baris setiap unit (DEFAULT: qty 100 = 100 baris)
 $mode = in_array($_GET['mode'] ?? '', ['member', 'item'], true) ? $_GET['mode'] : 'unit';
+$typeInput = $_GET['type'] ?? DEFAULT_PRODUCT_TYPE;
+if (!is_string($typeInput)) {
+    $errors[] = 'Jenis produk tidak sah.';
+    $typeInput = DEFAULT_PRODUCT_TYPE;
+} else {
+    $typeInput = trim($typeInput);
+    if ($typeInput === '' || strlen($typeInput) > 100) {
+        $errors[] = 'Sila pilih jenis produk yang sah.';
+        $typeInput = DEFAULT_PRODUCT_TYPE;
+    }
+}
+$availableTypes = [];
 $agg = [];
 $seenHash = [];
 $GLOBALS['NOTES'] = [];
@@ -358,14 +380,27 @@ if (!is_string($fromInput) || !is_string($toInput)) {
     $fromInput = trim($fromInput);
     $toInput = trim($toInput);
 
-    if ($fromInput !== '' || $toInput !== '') {
+    if ($fromInput === '' && $toInput === '') {
+        $today = new DateTimeImmutable('today', new DateTimeZone('Asia/Singapore'));
+        $fromTime = $today->setTime(0, 0, 0);
+        $toTime = $today->setTime(23, 59, 0);
+        $fromInput = $fromTime->format('Y-m-d\TH:i:s');
+        $toInput = $toTime->format('Y-m-d\TH:i:s');
+    } else {
         $fromTime = luckyDateTime($fromInput);
         $toTime = luckyDateTime($toInput);
 
         if (!$fromTime || !$toTime) {
-            $errors[] = 'Sila masukkan tarikh dan masa mula serta tamat yang sah.';
+            $errors[] = 'Sila pilih tarikh mula dan tamat yang sah.';
         } elseif ($fromTime > $toTime) {
-            $errors[] = 'Masa mula mesti sebelum atau sama dengan masa tamat.';
+            $errors[] = 'Tarikh mula mesti sebelum atau sama dengan tarikh tamat.';
+        } else {
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromInput)) {
+                $fromTime = $fromTime->setTime(0, 0, 0);
+            }
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $toInput)) {
+                $toTime = $toTime->setTime(23, 59, 59);
+            }
         }
     }
 }
@@ -409,6 +444,7 @@ foreach (($errors ? [] : $REGIONS) as $code => $url) {
         if ($missing) {
             $errors[] = "$code: header jadual tidak lengkap (perlu: " . implode(', ', $missing) . ").";
         } else {
+            // A successfully parsed empty report is a valid zero-entry result.
             $GLOBALS['NOTES'][] = "$code: tiada rekod pada laporan.";
         }
         continue;
@@ -421,8 +457,16 @@ foreach (($errors ? [] : $REGIONS) as $code => $url) {
         foreach ($prefixes as $pf) if (strpos($r['order'], $pf) === 0) { $okRegion = true; break; }
         if (!$okRegion) { $outside++; continue; }
         if (strtolower($r['brand']) !== strtolower(FILTER_BRAND)) continue;
-        if (strtolower($r['type'])  !== strtolower(FILTER_PRODUCT_TYPE)) continue;
         if (strtolower($r['price']) === strtolower(EXCLUDE_PRICE_CODE)) continue;
+        if (
+            stripos($r['desc'], 'Charm') !== false
+            || stripos($r['desc'], 'Paperbag') !== false
+        ) continue;
+        $productType = trim($r['type']);
+        if ($productType !== '') {
+            $availableTypes[strtolower($productType)] = $productType;
+        }
+        if (strtolower($productType) !== strtolower($typeInput)) continue;
         if ($fromTime && $toTime) {
             $rowTime = luckyDateTime($r['datetime']);
 
@@ -453,7 +497,7 @@ foreach (($errors ? [] : $REGIONS) as $code => $url) {
     }
     $GLOBALS['NOTES'][] = "$code: $outside baris order region lain diabaikan (awalan dibenarkan: " . implode('/', $prefixes) . ").";
 }
-
+// Never draw from a partial pool when a requested report or filter failed.
 if ($errors) {
     $entries = [];
     $agg = [];
@@ -488,7 +532,15 @@ if (isset($_GET['csv'])) {
     foreach ($entries as $m) fputcsv($o, [$m['id'], $m['name'], $m['order'], $m['code'], $m['desc'], $m['qty']]);
     exit;
 }
+
+$availableTypes = array_values($availableTypes);
+if (!in_array(strtolower($typeInput), array_map('strtolower', $availableTypes), true)) {
+    $availableTypes[] = $typeInput;
+}
+natcasesort($availableTypes);
+$availableTypes = array_values($availableTypes);
 ?>
+<?php if (!$isAjax): ?>
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -500,33 +552,46 @@ if (isset($_GET['csv'])) {
   table{border-collapse:collapse;width:100%}
   th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}
   th{background:#f3f3f3}
-  .btn{padding:8px 14px;border:0;border-radius:6px;background:#222;color:#fff;text-decoration:none;cursor:pointer;font-size:14px}
+  .btn{padding:8px 14px;border:0;border-radius:6px;background:#222;color:#fff;text-decoration:none;cursor:pointer;font-size:14px;display:inline-block}
   #winner{font-size:28px;font-weight:bold;margin:16px 0;color:#0a7d33}
   .err{color:#b00}
+  #app{transition:opacity .15s}
+  #app.loading{opacity:.45;pointer-events:none}
 </style>
 </head>
 <body>
-<h2>Lucky Draw – Nafesa (Normal, bukan FOC)</h2>
-<form method="get" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:16px 0">
+<div id="app">
+<?php endif; ?>
+
+<h2>Lucky Draw Nafesa (<?= htmlspecialchars($typeInput, ENT_QUOTES, 'UTF-8') ?>, bukan FOC)</h2>
+<form method="get" id="filter-form" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:16px 0">
     <input type="hidden" name="region" value="<?= htmlspecialchars($view, ENT_QUOTES, 'UTF-8') ?>">
     <input type="hidden" name="mode" value="<?= htmlspecialchars($mode, ENT_QUOTES, 'UTF-8') ?>">
     <label>
-        Dari<br>
-        <input type="text" name="from" placeholder="19-10-2026 22:00:00" pattern="[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}" title="Format: DD-MM-YYYY HH:MM:SS (24-hour time)" maxlength="19" autocomplete="off" spellcheck="false" required style="width:230px;padding:8px;font:inherit" value="<?= htmlspecialchars($fromTime ? $fromTime->format('d-m-Y H:i:s') : $fromInput, ENT_QUOTES, 'UTF-8') ?>">
+        Tarikh &amp; masa mula<br>
+        <input type="datetime-local" name="from" step="1" required style="width:230px;padding:8px;font:inherit" value="<?= htmlspecialchars($fromTime ? $fromTime->format('Y-m-d\TH:i:s') : $fromInput, ENT_QUOTES, 'UTF-8') ?>">
     </label>
     <label>
-        Hingga<br>
-        <input type="text" name="to" placeholder="19-10-2026 23:00:00" pattern="[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}" title="Format: DD-MM-YYYY HH:MM:SS (24-hour time)" maxlength="19" autocomplete="off" spellcheck="false" required style="width:230px;padding:8px;font:inherit" value="<?= htmlspecialchars($toTime ? $toTime->format('d-m-Y H:i:s') : $toInput, ENT_QUOTES, 'UTF-8') ?>">
+        Tarikh &amp; masa tamat<br>
+        <input type="datetime-local" name="to" step="1" required style="width:230px;padding:8px;font:inherit" value="<?= htmlspecialchars($toTime ? $toTime->format('Y-m-d\TH:i:s') : $toInput, ENT_QUOTES, 'UTF-8') ?>">
+    </label>
+    <label>
+        Jenis produk<br>
+        <select name="type" style="min-width:170px;padding:8px;font:inherit">
+            <?php foreach ($availableTypes as $productType): ?>
+                <option value="<?= htmlspecialchars($productType, ENT_QUOTES, 'UTF-8') ?>" <?= strtolower($productType) === strtolower($typeInput) ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($productType, ENT_QUOTES, 'UTF-8') ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
     </label>
     <button class="btn" type="submit">Tapis</button>
-    <a class="btn" href="<?= luckyLink(['from' => '', 'to' => '']) ?>">
-        Reset
-    </a>
+    <a class="btn ajax" href="<?= luckyLink(['from' => '', 'to' => '']) ?>">Reset</a>
 </form>
 
 <?php if ($fromTime && $toTime && !$errors): ?>
     <p>
-        Tempoh CDO:
+        Tempoh:
         <b><?= $fromTime->format('d-m-Y H:i:s') ?></b>
         hingga
         <b><?= $toTime->format('d-m-Y H:i:s') ?></b>
@@ -535,19 +600,20 @@ if (isset($_GET['csv'])) {
 <?php endif; ?>
 <p>
     Region:
-    <a href="<?= luckyLink(['region' => 'ALL']) ?>">Semua</a> |
-    <a href="<?= luckyLink(['region' => 'MY']) ?>">MY</a> |
-    <a href="<?= luckyLink(['region' => 'SG']) ?>">SG</a>
+    <a class="ajax" href="<?= luckyLink(['region' => 'ALL']) ?>">Semua</a> |
+    <a class="ajax" href="<?= luckyLink(['region' => 'MY']) ?>">MY</a> |
+    <a class="ajax" href="<?= luckyLink(['region' => 'SG']) ?>">SG</a>
     &nbsp;
     <a class="btn" href="<?= luckyLink(['csv' => 1]) ?>">Export CSV</a>
 </p>
 <p>
     Kiraan:
-    <a href="<?= luckyLink(['mode' => 'item']) ?>">Member + Item</a> |
-    <a href="<?= luckyLink(['mode' => 'member']) ?>">Member sahaja</a> |
-    <a href="<?= luckyLink(['mode' => 'unit']) ?>">Setiap unit</a>
+    <a class="ajax" href="<?= luckyLink(['mode' => 'item']) ?>">Member + Item</a> |
+    <a class="ajax" href="<?= luckyLink(['mode' => 'member']) ?>">Member sahaja</a> |
+    <a class="ajax" href="<?= luckyLink(['mode' => 'unit']) ?>">Setiap unit</a>
 </p>
 <?php foreach ($errors as $e): ?><p class="err"><?= htmlspecialchars($e) ?></p><?php endforeach; ?>
+<p><button class="btn" type="button" onclick="draw()">Cabut Bertuah</button></p>
 <div id="winner"></div>
 <p><b>Jumlah baris / tiket: <?= count($entries) ?></b></p>
 <table>
@@ -563,14 +629,68 @@ if (isset($_GET['csv'])) {
   </tr>
   <?php endforeach; ?>
 </table>
+<script type="application/json" id="members-data"><?= json_encode($entries, JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
+
+<?php if (!$isAjax): ?>
+</div>
 <script>
-const members = <?= json_encode($entries) ?>;
+// Cabut bertuah: baca data terkini daripada #members-data (dikemas kini oleh AJAX)
 function draw(){
-  if(!members.length){alert('Tiada peserta');return;}
-  const buf = new Uint32Array(1); crypto.getRandomValues(buf);
+  let members = [];
+  try {
+    members = JSON.parse(document.getElementById('members-data').textContent || '[]');
+  } catch (e) {}
+  if (!members.length) { alert('Tiada peserta'); return; }
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
   const w = members[buf[0] % members.length];
-  document.getElementById('winner').textContent = '🎉 ' + w.id + ' – ' + w.name;
+  document.getElementById('winner').textContent = 'ðŸŽ‰ ' + w.id + ' â€“ ' + w.name;
 }
+
+// AJAX: kemas kini #app tanpa menukar URL di address bar
+(function(){
+  const app = document.getElementById('app');
+  let reqId = 0;
+
+  async function load(query) {
+    const id = ++reqId;
+    const params = new URLSearchParams(query);
+    params.set('ajax', '1');
+    params.delete('csv');
+    app.classList.add('loading');
+    try {
+      const res = await fetch('?' + params.toString(), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        cache: 'no-store'
+      });
+      const html = await res.text();
+      if (id !== reqId) return;          // abaikan respons lama
+      app.innerHTML = html;
+    } catch (err) {
+      if (id !== reqId) return;
+      alert('Gagal memuatkan data: ' + err.message);
+    } finally {
+      if (id === reqId) app.classList.remove('loading');
+    }
+  }
+
+  // Klik pada link .ajax (Reset, Region, Kiraan)
+  app.addEventListener('click', function(e){
+    const a = e.target.closest('a.ajax');
+    if (!a) return;
+    e.preventDefault();
+    load(new URL(a.href, location.href).search);
+  });
+
+  // Submit borang Tapis
+  app.addEventListener('submit', function(e){
+    const form = e.target.closest('form');
+    if (!form) return;
+    e.preventDefault();
+    load(new URLSearchParams(new FormData(form)).toString());
+  });
+})();
 </script>
 </body>
 </html>
+<?php endif; ?>
