@@ -574,13 +574,16 @@ COLLATE=utf8mb4_unicode_ci;
 -- ============================================================
 -- TABLE: composite_items
 -- ============================================================
--- Promo catalogue: Multipack (Q-DRINKS4) and Variety Pack (Q-DRINKS4-C).
+-- Composite catalogue maintained through SKU Setup.
 CREATE TABLE IF NOT EXISTS `composite_items` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `company_code` VARCHAR(10) NOT NULL DEFAULT 'ALL',
     `product_type` VARCHAR(20) DEFAULT NULL,
     `item_code` VARCHAR(50) NOT NULL,
     `item_description` VARCHAR(255) DEFAULT NULL,
+    `status` VARCHAR(20) DEFAULT NULL,
     `loose_items` JSON DEFAULT NULL COMMENT 'Component list: item_code and quantity per pack',
+    `include_in_overall` TINYINT(1) NOT NULL DEFAULT 0,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         ON UPDATE CURRENT_TIMESTAMP,
@@ -592,9 +595,7 @@ DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci
 COMMENT='Composite product catalogue matching order_items product fields';
 
--- Keep this catalogue limited to the two configured promos.
-DELETE FROM `composite_items`
-WHERE UPPER(TRIM(`item_code`)) NOT IN ('Q-DRINKS4', 'Q-DRINKS4-C');
+-- Preserve all manually configured composites, including historical variants.
 
 -- Refresh only the configured promos from order_items; preserve loose_items.
 -- The highest source ID supplies the latest imported description for each code.
@@ -623,6 +624,18 @@ VALUES
     ('composite', 'Q-DRINKS4', 'MULTI PACK PROMO DRINKS', '[{"item_code":"BMD-001","quantity":1},{"item_code":"BCD-002","quantity":1},{"item_code":"BRC-001","quantity":1},{"item_code":"BCL-001","quantity":1}]'),
     ('composite', 'Q-DRINKS4-C', 'VARIETY PACK PROMO DRINKS', '[{"item_code":"BMD-001","quantity":2},{"item_code":"BCD-002","quantity":4},{"item_code":"BRC-001","quantity":4},{"item_code":"BCL-001","quantity":4}]')
 ON DUPLICATE KEY UPDATE `loose_items` = COALESCE(`loose_items`, VALUES(`loose_items`));
+
+-- Initial reporting selection; later changes are managed in SKU Setup.
+UPDATE `composite_items`
+SET `include_in_overall` = 1
+WHERE UPPER(TRIM(`item_description`)) LIKE 'VARIETY PACK PROMO DRINKS%'
+   OR UPPER(TRIM(`item_description`)) LIKE 'MULTI PACK PROMO DRINKS%'
+   OR UPPER(TRIM(`item_description`)) LIKE 'COMBO DRINKS X4%'
+   OR UPPER(TRIM(`item_description`)) LIKE 'JOY STATION BASIC PACKAGE%'
+   OR UPPER(TRIM(`item_description`)) LIKE 'CARTON MIX CUTIE TUB%'
+   OR UPPER(TRIM(`item_description`)) LIKE 'CARTON CHOCO ALBAB TUB MIX 6%'
+   OR UPPER(TRIM(`item_description`)) LIKE 'CARTON MIX CHOCO ALBAB TUB%'
+   OR UPPER(TRIM(`item_description`)) LIKE 'CARTON ALBAB COOKIES MIX%';
 
 -- ============================================================
 -- ENABLE FOREIGN KEYS

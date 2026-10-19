@@ -220,7 +220,7 @@ function loginPerfHourLabel($hr) {
 // ── Read filters ──
 $today = date('Y-m-d');
 $defaultTo = date('Y-m-d', strtotime('-1 day'));
-$defaultFrom = date('Y-m-d', strtotime($defaultTo . ' -21 days'));
+$defaultFrom = $defaultTo;
 
 $fromDate = $_GET['from_date'] ?? $defaultFrom;
 $toDate = $_GET['to_date'] ?? $defaultTo;
@@ -229,9 +229,9 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $toDate)) $toDate = $defaultTo;
 if ($toDate > $today) $toDate = $today;
 if ($fromDate > $toDate) $fromDate = $toDate;
 
-$region = $_GET['region'] ?? 'MY';
+$region = $_GET['region'] ?? 'ALL';
 $allowedRegions = ['ALL' => 'All Regions', 'MY' => 'Malaysia', 'SG' => 'Singapore'];
-if (!isset($allowedRegions[$region])) $region = 'MY';
+if (!isset($allowedRegions[$region])) $region = 'ALL';
 
 $pdo = getDBConnection();
 $dbActive = $pdo instanceof PDO;
@@ -682,7 +682,7 @@ include __DIR__ . '/../includes/sidebar.php';
                 tr.innerHTML =
                     '<td>' + hourLabel(r.hour) + '</td>' +
                     '<td>' + fmt(r.total) + '</td>' +
-                    '<td>' + fmt(r.avg_per_day, 0s) + '</td>' +
+                    '<td>' + fmt(r.avg_per_day, 0) + '</td>' +
                     '<td>' + fmt(r.contribution, 1) + '%</td>';
                 tbody.appendChild(tr);
             });

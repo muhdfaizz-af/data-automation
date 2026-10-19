@@ -1,9 +1,11 @@
-﻿<?php
+<?php
 session_start();
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
@@ -20,16 +22,92 @@ $pdo = new PDO(
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
-    ]
+    ] 
 );
+
+// Require an authenticated admin (moved ABOVE every import/POST handler).
+if (empty($_SESSION['admin_id'])) {
+    header('Location: ../index.php');
+    exit;
+}
+
+if (
+    !empty($_SESSION['last_activity']) &&
+    time() - $_SESSION['last_activity'] > 7200
+) {
+    session_unset();
+    session_destroy();
+
+    header('Location: ../index.php?expired=1');
+    exit;
+}
+
+$_SESSION['last_activity'] = time();
+$_SESSION['composite_csrf'] ??= bin2hex(random_bytes(32));
+
+// Download Excel import templates (generated on the fly, matches the import parsers).
+if (in_array($_GET['download'] ?? '', ['composite_template', 'normal_template'], true)) {
+    $isComposite = $_GET['download'] === 'composite_template';
+    $templateSheet = new Spreadsheet();
+    $ws = $templateSheet->getActiveSheet();
+
+    if ($isComposite) {
+        $ws->setTitle('Composite');
+        $ws->fromArray([
+            ['Company Code', 'Composite SKU', 'Composite Name', 'Normal SKU', 'Qty', 'Status'],
+            ['ALL', 'DRINKS4', 'COMBO DRINKS X4', 'AC-010', 2, ''],
+            ['ALL', 'DRINKS4', 'COMBO DRINKS X4', 'AC-011', 2, ''],
+        ], null, 'A1');
+        $ws->getStyle('A1:F1')->getFont()->setBold(true);
+        foreach (range('A', 'F') as $col) {
+            $ws->getColumnDimension($col)->setAutoSize(true);
+        }
+        $templateName = 'composite_sku_template.xlsx';
+    } else {
+        $ws->setTitle('Loose SKU');
+        $ws->fromArray([
+            ['Product SKU', 'Product Name', 'Brand', 'WMDP', 'SBHDP', 'EMDP', 'SG'],
+            ['', '', '', 'Unit Price', 'Unit Price', 'Unit Price', 'Unit Price'],
+            ['AC-010', 'DARK CHOCOLATE COOKIES', 'CHOCO ALBAB', 15.00, 15.50, 16.00, 18.00],
+        ], null, 'A1');
+        $ws->getStyle('A1:G2')->getFont()->setBold(true);
+        foreach (range('A', 'G') as $col) {
+            $ws->getColumnDimension($col)->setAutoSize(true);
+        }
+        $templateName = 'loose_sku_template.xlsx';
+    }
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $templateName . '"');
+    header('Cache-Control: private, no-store');
+    (new Xlsx($templateSheet))->save('php://output');
+    exit;
+}
+
+// Remember the active mode in the session so the URL can stay static.
+if (isset($_GET['mode'])) {
+    $_SESSION['sku_mode'] = ($_GET['mode'] === 'normal') ? 'normal' : 'composite';
+}
+$mode = $_SESSION['sku_mode'] ?? 'composite';
 
 $importMessage = '';
 $importError = '';
 
+// Import composite SKUs from Excel.
 if ($_SERVER['REQUEST_METHOD'] === 'POST'
-&& ($_POST['action'] ?? '') === 'import_excel'
+    && ($_POST['action'] ?? '') === 'import_excel'
 ) {
     try {
+        if (
+            !is_string($_POST['csrf'] ?? null) ||
+            !hash_equals($_SESSION['composite_csrf'], $_POST['csrf'])
+        ) {
+            throw new RuntimeException('Your form expired. Reload this page and try again.');
+        }
+
         if (
             !isset($_FILES['excel_file']) ||
             $_FILES['excel_file']['error'] !== UPLOAD_ERR_OK
@@ -40,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
         $extension = strtolower(
             pathinfo($_FILES['excel_file']['name'], PATHINFO_EXTENSION)
         );
-        
+
         if (!in_array($extension, ['xlsx', 'xls', 'csv'], true)) {
             throw new RuntimeException(
                 'Only XLSX, XLS, and CSV files are supported.'
@@ -52,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
 
         $rows = $sheet->toArray(null, true, true, false);
 
-        if(count($rows) < 2) {
+        if (count($rows) < 2) {
             throw new RuntimeException('The Excel file contains no data.');
         }
 
@@ -186,6 +264,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
 
         $pdo->beginTransaction();
 
+        // Composite imports replace rows, so retain their reporting flags.
+        $reportFlags = [];
+        foreach ($pdo->query(
+            'SELECT UPPER(TRIM(item_code)) AS sku,
+                    MAX(include_in_overall) AS include_in_overall
+             FROM composite_items GROUP BY UPPER(TRIM(item_code))'
+        ) as $record) {
+            $reportFlags[$record['sku']] = (int) $record['include_in_overall'];
+        }
+
         $saveStatement = $pdo->prepare("
             INSERT INTO composite_items
             (
@@ -194,7 +282,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
                 item_code,
                 item_description,
                 status,
-                loose_items
+                loose_items,
+                include_in_overall
             )
             VALUES
             (
@@ -203,7 +292,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
                 :item_code,
                 :item_description,
                 :status,
-                :loose_items
+                :loose_items,
+                :include_in_overall
             )
             ON DUPLICATE KEY UPDATE
                 item_description = VALUES(item_description),
@@ -211,6 +301,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
                 loose_items = VALUES(loose_items),
                 updated_at = CURRENT_TIMESTAMP
         ");
+
+        $removeExisting = $pdo->prepare(
+            'DELETE FROM composite_items WHERE UPPER(TRIM(item_code)) = :item_code'
+        );
 
         $savedCount = 0;
 
@@ -223,9 +317,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
 
             // A composite SKU is global. Remove older company-specific rows
             // before inserting the single consolidated mapping.
-            $removeExisting = $pdo->prepare(
-                'DELETE FROM composite_items WHERE UPPER(TRIM(item_code)) = :item_code'
-            );
             $removeExisting->execute([':item_code' => $composite['item_code']]);
 
             $saveStatement->execute([
@@ -237,7 +328,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
                 ':loose_items' => json_encode(
                     $composite['loose_items'],
                     JSON_THROW_ON_ERROR
-                )
+                ),
+                ':include_in_overall' => $reportFlags[strtoupper(trim($composite['item_code']))] ?? 0,
             ]);
 
             $savedCount++;
@@ -245,7 +337,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
 
         $pdo->commit();
 
-        $importMessage = "{$savedCount} composite items imported successfully." . ($missingWarning ?? '');
+        $importMessage = "{$savedCount} composite items imported successfully." . $missingWarning;
     } catch (Throwable $exception) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -254,26 +346,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
         $importError = $exception->getMessage();
     }
 }
-
-// Require an authenticated admin.
-if (empty($_SESSION['admin_id'])) {
-    header('Location: ../index.php');
-    exit;
-}
-
-if (
-    !empty($_SESSION['last_activity']) &&
-    time() - $_SESSION['last_activity'] > 7200
-) {
-    session_unset();
-    session_destroy();
-
-    header('Location: ../index.php?expired=1');
-    exit;
-}
-
-$_SESSION['last_activity'] = time();
-$_SESSION['composite_csrf'] ??= bin2hex(random_bytes(32));
 
 // AJAX endpoint used by the loose-SKU edit modal.
 if (($_GET['ajax'] ?? '') === 'normal_sku') {
@@ -337,7 +409,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
 if (($_GET['ajax'] ?? '') === 'composite_sku') {
     header('Content-Type: application/json; charset=utf-8');
     $code = strtoupper(trim((string) ($_GET['sku'] ?? '')));
-    $q = $pdo->prepare('SELECT item_code,item_description,loose_items FROM composite_items WHERE UPPER(TRIM(item_code))=:code LIMIT 1');
+    $q = $pdo->prepare('SELECT item_code, item_description, loose_items, include_in_overall FROM composite_items WHERE UPPER(TRIM(item_code)) = :code LIMIT 1');
     $q->execute([':code'=>$code]); $row=$q->fetch();
     if (!$row) { http_response_code(404); echo json_encode(['ok'=>false,'message'=>'Composite SKU was not found.']); exit; }
     $row['loose_items']=json_decode($row['loose_items'] ?? '[]',true) ?: [];
@@ -363,14 +435,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='ajax_upda
             $ajaxProducts[strtoupper(trim($product['product_sku']))] = $product;
         }
 
-        $ajaxRegistered = [];
-        $compositeQuery = $pdo->query(
-            'SELECT item_code FROM composite_items'
-        );
-        foreach ($compositeQuery as $composite) {
-            $ajaxRegistered[strtoupper(trim($composite['item_code']))] = true;
-        }
-
         $name = mb_strtoupper(trim((string) ($_POST['item_description'] ?? '')), 'UTF-8');
         $codes = is_array($_POST['loose_code'] ?? null) ? $_POST['loose_code'] : [];
         $quantities = is_array($_POST['quantity'] ?? null) ? $_POST['quantity'] : [];
@@ -389,8 +453,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='ajax_upda
             }
             $items[$sku] = ['item_code'=>$sku, 'quantity'=>(int) $qty];
         }
-        $q=$pdo->prepare("UPDATE composite_items SET item_description=:name, loose_items=:items WHERE UPPER(TRIM(item_code))=:code");
-        $q->execute([':name'=>$name,':items'=>json_encode(array_values($items), JSON_THROW_ON_ERROR),':code'=>$code]);
+        $includeInOverall = ($_POST['include_in_overall'] ?? '0') === '1' ? 1 : 0;
+        $q = $pdo->prepare('UPDATE composite_items SET item_description = :name, loose_items = :items, include_in_overall = :include WHERE UPPER(TRIM(item_code)) = :code');
+        $q->execute([':name' => $name, ':items' => json_encode(array_values($items), JSON_THROW_ON_ERROR), ':include' => $includeInOverall, ':code' => $code,]);
         echo json_encode(['ok'=>true]);
     } catch(Throwable $e) { http_response_code(422); echo json_encode(['ok'=>false,'message'=>$e->getMessage()]); }
     exit;
@@ -400,7 +465,7 @@ header('Cache-Control: private, no-store');
 
 $activeNav = 'sku_setup';
 $navBasePath = '../';
-$pageTitle = 'Composite Setup';
+$pageTitle = 'SKU Setup';
 $adminUsername = $_SESSION['admin_username'] ?? '';
 
 function compositeEscape($value): string
@@ -432,7 +497,7 @@ function validateComposite(
         'UTF-8'
     );
 
-    $originalCode = $originalCode !== null 
+    $originalCode = $originalCode !== null
         ? strtoupper(trim($originalCode))
         : null;
 
@@ -449,7 +514,7 @@ function validateComposite(
         );
     }
 
-    if (isset($registeredComposites[$code]) && $code !== $originalCode) 
+    if (isset($registeredComposites[$code]) && $code !== $originalCode)
     {
         throw new InvalidArgumentException(
             'This composite SKU already exists.'
@@ -536,7 +601,6 @@ function validateComposite(
     ];
 }
 
-$mode = (($_GET['mode'] ?? 'composite') === 'normal') ? 'normal' : 'composite';
 $normalEditSku = strtoupper(trim((string) ($_GET['edit_normal'] ?? '')));
 $normalEditing = null;
 $normalSearch = trim((string) ($_GET['q'] ?? ''));
@@ -561,80 +625,81 @@ $products = [];
 $composites = [];
 $registeredComposites = [];
 
-    $productQuery = $pdo->query(
-        'SELECT product_sku, product_name, brand, wmdp, sbhdp, emdp, sgdp
-         FROM price_code
-         ORDER BY product_sku'
-    );
+$productQuery = $pdo->query(
+    'SELECT product_sku, product_name, brand, wmdp, sbhdp, emdp, sgdp
+     FROM price_code
+     ORDER BY product_sku'
+);
 
-    foreach ($productQuery as $row) {
-        $products[strtoupper(trim($row['product_sku']))] = $row;
-    }
+foreach ($productQuery as $row) {
+    $products[strtoupper(trim($row['product_sku']))] = $row;
+}
 
-    $where = '';
-    $searchParams = [];
-    if ($normalSearch !== '') {
-        $where = 'WHERE product_sku LIKE :search_sku OR product_name LIKE :search_name OR brand LIKE :search_brand';
-        $searchParams = [
-            ':search_sku' => '%' . $normalSearch . '%',
-            ':search_name' => '%' . $normalSearch . '%',
-            ':search_brand' => '%' . $normalSearch . '%',
-        ];
-    }
-    $countStatement = $pdo->prepare("SELECT COUNT(*) FROM price_code {$where}");
-    $countStatement->execute($searchParams);
-    $normalTotal = (int) $countStatement->fetchColumn();
-    $normalPageCount = max(1, (int) ceil($normalTotal / $normalPerPage));
-    $normalPage = min($normalPage, $normalPageCount);
-    $normalOffset = ($normalPage - 1) * $normalPerPage;
-    $normalStatement = $pdo->prepare(
-        "SELECT product_sku, product_name, brand, wmdp, sbhdp, emdp, sgdp
-         FROM price_code {$where} ORDER BY product_sku LIMIT :limit OFFSET :offset"
-    );
-    foreach ($searchParams as $key => $value) {
-        $normalStatement->bindValue($key, $value, PDO::PARAM_STR);
-    }
-    $normalStatement->bindValue(':limit', $normalPerPage, PDO::PARAM_INT);
-    $normalStatement->bindValue(':offset', $normalOffset, PDO::PARAM_INT);
-    $normalStatement->execute();
-    $normalProducts = $normalStatement->fetchAll();
+$where = '';
+$searchParams = [];
+if ($normalSearch !== '') {
+    $where = 'WHERE product_sku LIKE :search_sku OR product_name LIKE :search_name OR brand LIKE :search_brand';
+    $searchParams = [
+        ':search_sku' => '%' . $normalSearch . '%',
+        ':search_name' => '%' . $normalSearch . '%',
+        ':search_brand' => '%' . $normalSearch . '%',
+    ];
+}
+$countStatement = $pdo->prepare("SELECT COUNT(*) FROM price_code {$where}");
+$countStatement->execute($searchParams);
+$normalTotal = (int) $countStatement->fetchColumn();
+$normalPageCount = max(1, (int) ceil($normalTotal / $normalPerPage));
+$normalPage = min($normalPage, $normalPageCount);
+$normalOffset = ($normalPage - 1) * $normalPerPage;
+$normalStatement = $pdo->prepare(
+    "SELECT product_sku, product_name, brand, wmdp, sbhdp, emdp, sgdp
+     FROM price_code {$where} ORDER BY product_sku LIMIT :limit OFFSET :offset"
+);
+foreach ($searchParams as $key => $value) {
+    $normalStatement->bindValue($key, $value, PDO::PARAM_STR);
+}
+$normalStatement->bindValue(':limit', $normalPerPage, PDO::PARAM_INT);
+$normalStatement->bindValue(':offset', $normalOffset, PDO::PARAM_INT);
+$normalStatement->execute();
+$normalProducts = $normalStatement->fetchAll();
 
-    $composites = $pdo->query(
-        'SELECT item_code, item_description, loose_items
-         FROM composite_items
-         ORDER BY item_code'
-    )->fetchAll();
+$composites = $pdo->query(
+    'SELECT item_code, item_description, loose_items
+     FROM composite_items
+     ORDER BY item_code'
+)->fetchAll();
 
-    $compositeWhere = '';
-    $compositeParams = [];
-    if ($compositeSearch !== '') {
-        $compositeWhere = 'WHERE item_code LIKE :composite_code OR item_description LIKE :composite_name';
-        $compositeParams = [
-            ':composite_code' => '%' . $compositeSearch . '%',
-            ':composite_name' => '%' . $compositeSearch . '%',
-        ];
-    }
-    $compositeCountStatement = $pdo->prepare("SELECT COUNT(*) FROM composite_items {$compositeWhere}");
-    $compositeCountStatement->execute($compositeParams);
-    $compositeTotal = (int) $compositeCountStatement->fetchColumn();
-    $compositePageCount = max(1, (int) ceil($compositeTotal / $compositePerPage));
-    $compositePage = min($compositePage, $compositePageCount);
-    $compositeOffset = ($compositePage - 1) * $compositePerPage;
-    $displayStatement = $pdo->prepare(
-        "SELECT item_code, item_description, loose_items
-         FROM composite_items {$compositeWhere} ORDER BY item_code LIMIT :limit OFFSET :offset"
-    );
-    foreach ($compositeParams as $key => $value) $displayStatement->bindValue($key, $value, PDO::PARAM_STR);
-    $displayStatement->bindValue(':limit', $compositePerPage, PDO::PARAM_INT);
-    $displayStatement->bindValue(':offset', $compositeOffset, PDO::PARAM_INT);
-    $displayStatement->execute();
-    $displayComposites = $displayStatement->fetchAll();
+$compositeWhere = '';
+$compositeParams = [];
+if ($compositeSearch !== '') {
+    $compositeWhere = 'WHERE item_code LIKE :composite_code OR item_description LIKE :composite_name';
+    $compositeParams = [
+        ':composite_code' => '%' . $compositeSearch . '%',
+        ':composite_name' => '%' . $compositeSearch . '%',
+    ];
+}
+$compositeCountStatement = $pdo->prepare("SELECT COUNT(*) FROM composite_items {$compositeWhere}");
+$compositeCountStatement->execute($compositeParams);
+$compositeTotal = (int) $compositeCountStatement->fetchColumn();
+$compositePageCount = max(1, (int) ceil($compositeTotal / $compositePerPage));
+$compositePage = min($compositePage, $compositePageCount);
+$compositeOffset = ($compositePage - 1) * $compositePerPage;
+$displayStatement = $pdo->prepare(
+    "SELECT item_code, item_description, loose_items
+     FROM composite_items {$compositeWhere} ORDER BY item_code LIMIT :limit OFFSET :offset"
+);
+foreach ($compositeParams as $key => $value) $displayStatement->bindValue($key, $value, PDO::PARAM_STR);
+$displayStatement->bindValue(':limit', $compositePerPage, PDO::PARAM_INT);
+$displayStatement->bindValue(':offset', $compositeOffset, PDO::PARAM_INT);
+$displayStatement->execute();
+$displayComposites = $displayStatement->fetchAll();
 
-    foreach ($composites as $composite) {
-        $registeredComposites[
-            strtoupper(trim($composite['item_code']))
-        ] = true;
-    }
+foreach ($composites as $composite) {
+    $registeredComposites[
+        strtoupper(trim($composite['item_code']))
+    ] = true;
+}
+
 // Import loose/normal SKUs from the two-header Excel template.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
     && ($_POST['action'] ?? '') === 'import_normal_excel'
@@ -696,12 +761,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
         }
 
         $pdo->beginTransaction();
+
         $save = $pdo->prepare(
             'INSERT INTO price_code (product_sku, product_name, brand, wmdp, sbhdp, emdp, sgdp)
              VALUES (:sku,:name,:brand,:wmdp,:sbhdp,:emdp,:sgdp)
              ON DUPLICATE KEY UPDATE product_name=VALUES(product_name), brand=VALUES(brand),
              wmdp=VALUES(wmdp), sbhdp=VALUES(sbhdp), emdp=VALUES(emdp), sgdp=VALUES(sgdp)'
         );
+
         $saved = 0;
         foreach ($rows as $rowNumber => $row) {
             $sku = strtoupper(trim((string) ($row[$skuCol] ?? '')));
@@ -721,7 +788,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
         }
         $pdo->commit();
         $_SESSION['composite_success'] = "{$saved} loose/normal SKUs imported successfully.";
-        header('Location: sku_setup.php?mode=normal');
+        $_SESSION['sku_mode'] = 'normal';
+        header('Location: sku_setup.php');
         exit;
     } catch (Throwable $exception) {
         if ($pdo->inTransaction()) $pdo->rollBack();
@@ -789,7 +857,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
                 $_SESSION['composite_success'] = "Loose SKU {$sku} was added successfully.";
             }
         }
-        header('Location: sku_setup.php?mode=normal');
+        $_SESSION['sku_mode'] = 'normal';
+        header('Location: sku_setup.php');
         exit;
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
@@ -798,7 +867,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
 
 // Create, update or delete a composite.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
-    && !in_array($_POST['action'] ?? '', ['create_normal', 'update_normal', 'delete_normal', 'import_normal_excel'], true)
+    && !in_array($_POST['action'] ?? '', ['create_normal', 'update_normal', 'delete_normal', 'import_normal_excel', 'import_excel'], true)
 ) {
     try {
         if (
@@ -850,6 +919,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
 
             $_SESSION['composite_success'] =
                 'Composite ' . $deleteCode . ' was deleted successfully.';
+            $_SESSION['sku_mode'] = 'composite';
 
             header('Location: sku_setup.php');
             exit;
@@ -921,6 +991,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo !== null
                 'Composite ' . $data['item_code'] . ' added successfully.';
         }
 
+        $_SESSION['sku_mode'] = 'composite';
         header('Location: sku_setup.php');
         exit;
     } catch (InvalidArgumentException $exception) {
@@ -1154,7 +1225,7 @@ svg{display:block;}
 
 /* LAYOUT */
 .layout{display:flex;margin-top:var(--topbar-h);}
-.main{margin-left:var(--sidebar-w);flex:1;padding:28px 32px 48px;max-width:1200px;min-width:0;transition:margin-left .25s ease;}
+.main{margin-left:var(--sidebar-w);flex:1;padding:28px 32px 48px;max-width:1200px;min-width:0;transition:margin-left .25s ease,opacity .15s ease;}
 body.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
 @media(max-width:900px){.main{margin-left:0;padding:20px 16px 40px;}
 body.sidebar-collapsed .main{margin-left:0 !important;}}
@@ -1273,6 +1344,8 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
 .sku-edit-modal[hidden] {display: none;}
 .sku-edit-content {position: relative;background: #ffffff;width: 100%;max-width: 950px;max-height: 90vh;overflow-y: auto;border-radius: 18px;padding: 30px;box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);}
 .sku-edit-close {position: absolute;top: 14px;right: 14px;width: 36px;height: 36px;border: none;border-radius: 50%;background: #f3f4f6;color: #555;font-size: 24px;cursor: pointer;}
+.sku-edit-close,.modal-dismiss {display: inline-flex;align-items: center;justify-content: center;padding: 0;line-height: 0;}
+.sku-edit-close svg,.modal-dismiss svg {display: block;width: 16px;height: 16px;flex: 0 0 16px;pointer-events: none;}
 .sku-edit-title {font-size: 18px;font-weight: 700;color: #18181b;margin: 0 0 10px;}
 .sku-edit-subtitle {font-size: 13px;color: #92929e;margin: 0 0 26px;}
 .sku-edit-fields {min-width: 0;margin: 0;padding: 0;border: 0;}
@@ -1337,7 +1410,7 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
 })();
 </script>
 
-<!-- SIDEBAR & TOPNAV --> 
+<!-- SIDEBAR & TOPNAV -->
 <?php require __DIR__ . '/../includes/topnav.php'; ?>
 <?php require __DIR__ . '/../includes/sidebar.php'; ?>
 
@@ -1378,12 +1451,12 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
             <button type="button" class="btn btn-success modal-confirm-button" id="confirmSuccessModal">Okay</button>
         </div>
     </div>
-<?php endif; ?>
-    
+    <?php endif; ?>
+
     <?php if ($mode === 'normal' && $pdo !== null): ?>
         <section class="card" aria-labelledby="normalSkuTitle">
             <h2 class="card-title" id="normalSkuTitle"><?= $normalEditing ? 'Edit Loose SKU' : 'Add Loose SKU' ?></h2>
-            <form method="post" action="sku_setup.php?mode=normal">
+            <form method="post" action="sku_setup.php">
                 <input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>">
                 <input type="hidden" name="action" value="<?= $normalEditing ? 'update_normal' : 'create_normal' ?>">
                 <input type="hidden" name="original_sku" value="<?= compositeEscape($normalEditing['product_sku'] ?? '') ?>">
@@ -1400,17 +1473,71 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
         </section>
         <section class="card" aria-labelledby="normalSkuListTitle">
             <h2 class="card-title" id="normalSkuListTitle">Loose SKUs</h2>
-            <form method="get" class="sku-search-form"><input type="hidden" name="mode" value="normal"><input class="form-control" type="search" name="q" value="<?= compositeEscape($normalSearch) ?>" placeholder="Search SKU, product name, or brand"><button class="btn btn-primary" type="submit">Search</button><a class="btn btn-secondary" href="sku_setup.php?mode=normal">Clear</a></form>
+            <form method="get" action="sku_setup.php" class="sku-search-form"><input type="hidden" name="mode" value="normal">
+                <input class="form-control uppercase-input" type="search" name="q" value="<?= compositeEscape($normalSearch) ?>" placeholder="Search SKU, product name, or brand">
+                <button class="btn btn-primary" type="submit">Search</button>
+                <a class="btn btn-secondary" href="sku_setup.php?mode=normal">Clear</a>
+            </form>
             <div class="uploader"><strong>Import loose SKUs</strong></div>
-            <form method="post" enctype="multipart/form-data" class="sku-import-form"><input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>"><input type="hidden" name="action" value="import_normal_excel"><label class="file-picker"><span>Choose Excel file</span><input type="file" name="normal_excel" accept=".xlsx,.xls,.csv" required></label><button class="btn btn-primary" type="submit">Import Excel</button></form>
-            <p class="form-hint">Excel format: two header rows with Product SKU, Product Name, Brand, and Unit Price under WMDP, SBHDP, EMDP, and SG.</p><div class="table-wrap"><table><thead><tr><th>SKU</th><th>Name</th><th>Brand</th><th>WMDP</th><th>SBHDP</th><th>EMDP</th><th>SGDP</th><th>Action</th></tr></thead><tbody><?php foreach ($normalProducts as $product): ?><tr><td class="composite-code"><?= compositeEscape($product['product_sku']) ?></td><td><?= compositeEscape($product['product_name'] ?? '') ?></td><td><?= compositeEscape($product['brand'] ?? '') ?></td><td><?= compositeEscape($product['wmdp'] ?? '') ?></td><td><?= compositeEscape($product['sbhdp'] ?? '') ?></td><td><?= compositeEscape($product['emdp'] ?? '') ?></td><td><?= compositeEscape($product['sgdp'] ?? '') ?></td><td class="normal-sku-actions"><button type="button" class="btn btn-secondary btn-small ajax-edit-normal" data-sku="<?= compositeEscape($product['product_sku']) ?>">Edit</button><button type="button" class="btn btn-danger btn-small open-normal-delete" data-normal-sku="<?= compositeEscape($product['product_sku']) ?>" data-normal-name="<?= compositeEscape($product['product_name'] ?? "") ?>">Delete</button></td></tr><?php endforeach; ?></tbody></table></div>
-            <?php if ($normalPageCount > 1): ?><nav class="pagination" aria-label="Normal SKU pages"><?php for ($page = 1; $page <= $normalPageCount; $page++): ?><a class="<?= $page === $normalPage ? 'active' : '' ?>" href="sku_setup.php?mode=normal&amp;q=<?= rawurlencode($normalSearch) ?>&amp;page=<?= $page ?>"><?= $page ?></a><?php endfor; ?></nav><?php endif; ?>
+            <form method="post" action="sku_setup.php" enctype="multipart/form-data" class="sku-import-form">
+                <input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>">
+                <input type="hidden" name="action" value="import_normal_excel">
+                <label class="file-picker">
+                    <span>Choose Excel file</span>
+                    <input type="file" name="normal_excel" accept=".xlsx,.xls,.csv" required>
+                </label>
+                <button class="btn btn-primary" type="submit">Import Excel</button>
+                <a class="btn btn-secondary" href="sku_setup.php?download=normal_template" download>Download Template</a>
+            </form>
+            <p class="form-hint">Excel format: two header rows with Product SKU, Product Name, Brand, and Unit Price under WMDP, SBHDP, EMDP, and SG.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>SKU</th>
+                            <th>Name</th>
+                            <th>Brand</th>
+                            <th>WMDP</th>
+                            <th>SBHDP</th>
+                            <th>EMDP</th>
+                            <th>SGDP</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($normalProducts as $product): ?>
+                            <tr>
+                                <td class="composite-code"><?= compositeEscape($product['product_sku']) ?></td>
+                                <td><?= compositeEscape($product['product_name'] ?? '') ?></td>
+                                <td><?= compositeEscape($product['brand'] ?? '') ?></td>
+                                <td><?= compositeEscape($product['wmdp'] ?? '') ?></td>
+                                <td><?= compositeEscape($product['sbhdp'] ?? '') ?></td>
+                                <td><?= compositeEscape($product['emdp'] ?? '') ?></td>
+                                <td><?= compositeEscape($product['sgdp'] ?? '') ?></td>
+                                <td class="normal-sku-actions">
+                                    <button type="button" class="btn btn-secondary btn-small ajax-edit-normal" data-sku="<?= compositeEscape($product['product_sku']) ?>">Edit</button>
+                                    <button type="button" class="btn btn-danger btn-small open-normal-delete" data-normal-sku="<?= compositeEscape($product['product_sku']) ?>" data-normal-name="<?= compositeEscape($product['product_name'] ?? "") ?>">Delete</button>
+                                </td>
+                            </tr><?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php if ($normalPageCount > 1): ?>
+                <nav class="pagination" aria-label="Normal SKU pages">
+                    <?php for ($page = 1; $page <= $normalPageCount; $page++): ?>
+                        <a class="<?= $page === $normalPage ? 'active' : '' ?>" href="sku_setup.php?mode=normal&amp;q=<?= rawurlencode($normalSearch) ?>&amp;page=<?= $page ?>"><?= $page ?></a>
+                        <?php endfor; ?>
+                </nav>
+                <?php endif; ?>
         </section>
     <?php endif; ?>
-
     <div class="sku-edit-modal" id="normalEditModal" hidden role="dialog" aria-modal="true" aria-labelledby="normalEditTitle">
         <div class="sku-edit-content">
-            <button type="button" class="sku-edit-close" id="closeNormalEdit" aria-label="Close edit popup"><span aria-hidden="true">&times;</span></button>
+            <button type="button" class="sku-edit-close" id="closeNormalEdit" aria-label="Close edit popup">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" focusable="false">
+                    <path d="M6 6l12 12M18 6L6 18"/>
+                </svg>
+            </button>
             <h2 class="sku-edit-title" id="normalEditTitle">Edit Loose SKU</h2>
             <p class="sku-edit-subtitle">Update the product details and unit prices for this loose SKU.</p>
             <form id="normalEditForm">
@@ -1432,7 +1559,11 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
 
     <div id="compositeAjaxModal" class="sku-edit-modal" hidden role="dialog" aria-modal="true" aria-labelledby="compositeAjaxTitle">
         <div class="sku-edit-content">
-            <button type="button" id="closeCompositeAjax" class="sku-edit-close" aria-label="Close edit popup"><span aria-hidden="true">&times;</span></button>
+            <button type="button" id="closeCompositeAjax" class="sku-edit-close" aria-label="Close edit popup">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" focusable="false">
+                    <path d="M6 6l12 12M18 6L6 18"/>
+                </svg>
+            </button>
             <h2 class="sku-edit-title" id="compositeAjaxTitle">Edit Composite</h2>
             <p class="sku-edit-subtitle">Use the composite SKU exactly as it appears in your Tax Invoice.</p>
 
@@ -1451,6 +1582,12 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                             <label for="compositeAjaxName">Composite name <span>*</span></label>
                             <input class="uppercase-input" id="compositeAjaxName" type="text" name="item_description" required>
                         </div>
+                    </div>
+                    <div class="sku-edit-section">
+                        <label class="form-label">
+                            <input type="checkbox" name="include_in_overall" value="1">
+                            Include this composite in Overall Products allocation
+                        </label>
                     </div>
                     <div class="sku-edit-section">
                         <h3>Loose items</h3>
@@ -1499,7 +1636,7 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                             <input type="hidden" name="item_code" value="<?= compositeEscape($originalCode) ?>">
                             <span class="form-hint" id="compositeSkuHint">Composite SKU cannot be changed.</span>
                         <?php else: ?>
-                            <input class="form-control uppercase-input" id="compositeSku" name="item_code" maxlength="50" value="<?= compositeEscape($formCode) ?>" placeholder="E.g. DRINKS4" autocomplete="off"required>
+                            <input class="form-control uppercase-input" id="compositeSku" name="item_code" maxlength="50" value="<?= compositeEscape($formCode) ?>" placeholder="E.g. DRINKS4" autocomplete="off" required>
                         <?php endif; ?>
                     </div>
                     <div class="form-group">
@@ -1521,11 +1658,7 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                     </button>
                     <button type="submit" class="btn btn-success">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path
-                                d="M19 21H5a2 2 0 0 1-2-2V5a2
-                                2 0 0 1 2-2h12l4 4v12a2
-                                2 0 0 1-2 2Z"
-                            />
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/>
                             <path d="M17 21v-8H7v8M7 3v5h8"/>
                         </svg>
                         <?= $isEditing ? 'Update composite' : 'Save composite' ?>
@@ -1551,12 +1684,14 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
     <?php if ($pdo !== null): ?>
         <section class="card" aria-labelledby="savedCompositesTitle">
             <h2 class="card-title" id="savedCompositesTitle">Saved Composites</h2>
-            <form method="get" class="sku-search-form"><input type="hidden" name="mode" value="composite"><input class="form-control" type="search" name="composite_q" value="<?= compositeEscape($compositeSearch) ?>" placeholder="Search composite SKU or name"><button class="btn btn-primary" type="submit">Search</button><a class="btn btn-secondary" href="sku_setup.php?mode=composite">Clear</a></form>
-             <div class="uploader"><strong>Import composite SKU</strong></div>
-            <form method="POST" enctype="multipart/form-data" class="sku-import-form">
+            <form method="get" action="sku_setup.php" class="sku-search-form"><input type="hidden" name="mode" value="composite"><input class="form-control uppercase-input" type="search" name="composite_q" value="<?= compositeEscape($compositeSearch) ?>" placeholder="Search composite SKU or name"><button class="btn btn-primary" type="submit">Search</button><a class="btn btn-secondary" href="sku_setup.php?mode=composite">Clear</a></form>
+            <div class="uploader"><strong>Import composite SKU</strong></div>
+            <form method="post" action="sku_setup.php" enctype="multipart/form-data" class="sku-import-form">
+                <input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>">
                 <input type="hidden" name="action" value="import_excel">
                 <label class="file-picker"><span>Choose Excel file</span><input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls,.csv" required></label>
                 <button type="submit" class="btn btn-primary">Import Excel</button>
+                <a class="btn btn-secondary" href="sku_setup.php?download=composite_template" download>Download Template</a>
             </form>
             <div class="table-wrap" tabindex="0" role="region" aria-label="Saved composites">
                 <table>
@@ -1588,13 +1723,13 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
                                     <?php else: ?><span class="text-muted">Not configured</span><?php endif; ?>
                                 </td>
                                 <td>
-                                <div class="composite-actions">
-                                    <button type="button" class="btn btn-secondary btn-small ajax-edit-composite" data-sku="<?= compositeEscape($composite['item_code']) ?>">Edit</button>
-                                    <button type="button" class="btn btn-danger btn-small open-delete-modal" data-composite-code="<?= compositeEscape($composite['item_code']) ?>" data-composite-name="<?= compositeEscape($composite['item_description']) ?>">
-                                        Delete
-                                    </button>
-                                </div>
-                            </td>
+                                    <div class="composite-actions">
+                                        <button type="button" class="btn btn-secondary btn-small ajax-edit-composite" data-sku="<?= compositeEscape($composite['item_code']) ?>">Edit</button>
+                                        <button type="button" class="btn btn-danger btn-small open-delete-modal" data-composite-code="<?= compositeEscape($composite['item_code']) ?>" data-composite-name="<?= compositeEscape($composite['item_description']) ?>">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                         <?php if (!$displayComposites): ?><tr><td colspan="4" class="empty-state">No composites available.</td></tr><?php endif; ?>
@@ -1603,23 +1738,27 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
             </div>
             <?php if ($compositePageCount > 1): ?><nav class="pagination" aria-label="Composite SKU pages"><?php for ($page = 1; $page <= $compositePageCount; $page++): ?><a class="<?= $page === $compositePage ? 'active' : '' ?>" href="sku_setup.php?mode=composite&amp;composite_q=<?= rawurlencode($compositeSearch) ?>&amp;composite_page=<?= $page ?>"><?= $page ?></a><?php endfor; ?></nav><?php endif; ?>
         </section>
-        <?php if (!empty($importMessage)): ?><div class="alert alert-success"><?= htmlspecialchars($importMessage) ?></div><?php endif; ?>
-        <?php if (!empty($importError)): ?><div class="alert alert-danger"><?= htmlspecialchars($importError) ?></div><?php endif; ?>
+        <?php if (!empty($importMessage)): ?><div class="alert alert-success"><?= compositeEscape($importMessage) ?></div><?php endif; ?>
+        <?php if (!empty($importError)): ?><div class="alert alert-error"><?= compositeEscape($importError) ?></div><?php endif; ?>
     <?php endif; ?>
     <?php endif; ?>
 
     <div class="modal-backdrop" id="deleteNormalModal" role="dialog" aria-modal="true" aria-labelledby="deleteNormalTitle" hidden>
         <div class="modal-card delete-modal-card">
-            <button type="button" class="modal-dismiss" id="closeNormalDelete" aria-label="Close delete popup"><span aria-hidden="true">&times;</span></button>
+            <button type="button" class="modal-dismiss" id="closeNormalDelete" aria-label="Close delete popup">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" focusable="false">
+                    <path d="M6 6l12 12M18 6L6 18"/>
+                </svg>
+            </button>
             <div class="modal-icon modal-icon-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg></div>
             <h2 class="modal-title" id="deleteNormalTitle">Delete loose SKU?</h2>
             <p class="modal-message">You are about to delete <strong id="deleteNormalDescription"></strong>.</p>
-            <form method="post" action="sku_setup.php?mode=normal"><input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>"><input type="hidden" name="action" value="delete_normal"><input type="hidden" name="original_sku" id="deleteNormalSku"><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelNormalDelete">Cancel</button><button type="submit" class="btn btn-danger">Delete SKU</button></div></form>
+            <form method="post" action="sku_setup.php"><input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>"><input type="hidden" name="action" value="delete_normal"><input type="hidden" name="original_sku" id="deleteNormalSku"><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelNormalDelete">Cancel</button><button type="submit" class="btn btn-danger">Delete SKU</button></div></form>
         </div>
     </div>
 
     <?php if ($mode === 'composite'): ?>
-        <div class="modal-backdrop" id="deleteCompositeModal" role="dialog" aria-modal="true" aria-labelledby="deleteCompositeTitle" hidden>
+    <div class="modal-backdrop" id="deleteCompositeModal" role="dialog" aria-modal="true" aria-labelledby="deleteCompositeTitle" hidden>
         <div class="modal-card delete-modal-card">
             <button type="button" class="modal-dismiss" id="closeDeleteModal" aria-label="Close delete popup">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
@@ -1638,9 +1777,7 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
             </div>
 
             <h2 class="modal-title" id="deleteCompositeTitle">Delete composite?</h2>
-            <p class="modal-message">
-                You are about to delete <strong id="deleteCompositeDescription"></strong>.Its loose-item configuration will be removed.
-            </p>
+            <p class="modal-message">You are about to delete <strong id="deleteCompositeDescription"></strong>. Its loose-item configuration will be removed.</p>
 
             <form method="post" action="sku_setup.php">
                 <input type="hidden" name="csrf" value="<?= compositeEscape($_SESSION['composite_csrf']) ?>">
@@ -1658,33 +1795,89 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
 </div>
 
 <script>
-const rows = document.getElementById('componentRows');
-const addButton = document.getElementById('addItem');
-const uppercaseInputs = document.querySelectorAll('.uppercase-input');
-const editModal = document.getElementById('editCompositeModal');
+const PAGE = 'sku_setup.php';
+let currentUrl = PAGE + location.search;
+let navController = null;
 
-if (editModal) {
-    document.body.classList.add('modal-open');
+// Elements that are replaced every time the content reloads
+let rows, addButton, editModal, successModal, deleteModal, normalDeleteModal;
+let normalEditController = null, compositeEditController = null;
+let looseItemTemplate = null, compositeAjaxRows = null, compositeAjaxStatus = null;
+let compositeRowId = 0;
+
+// Keep the address bar clean. The active mode is remembered in the PHP session.
+if (location.search) history.replaceState(null, '', location.pathname);
+
+/* ============ AJAX NAVIGATION (URL never changes) ============ */
+async function navigate(url, options = {}) {
+    navController?.abort();
+    navController = new AbortController();
+    const main = document.querySelector('main.main');
+    main.style.opacity = '.55';
+    main.style.pointerEvents = 'none';
+
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: navController.signal,
+            credentials: 'same-origin',
+            headers: {'X-Requested-With': 'fetch'}
+        });
+        const html = await response.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const newMain = doc.querySelector('main.main');
+
+        // Session expired / redirected to login
+        if (!newMain) {
+            window.location.href = response.url;
+            return;
+        }
+
+        currentUrl = response.url;
+        const scrollX = window.scrollX;
+        const scrollY = window.scrollY;
+        main.innerHTML = newMain.innerHTML;
+        initPage();
+        window.scrollTo(scrollX, scrollY);   // stay where the user was
+    } catch (error) {
+        if (error.name !== 'AbortError') alert('Unable to load the page. Please try again.');
+    } finally {
+        main.style.opacity = '';
+        main.style.pointerEvents = '';
+    }
 }
 
-uppercaseInputs.forEach(input => {
-    input.addEventListener('input', () => {
-        const start = input.selectionStart;
-        const end = input.selectionEnd;
+// Every link inside <main> that points to sku_setup.php
+document.addEventListener('click', event => {
+    const link = event.target.closest('main.main a[href]');
+    if (!link || link.hasAttribute('download') || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || link.target === '_blank') return;
 
-        input.value = input.value.toLocaleUpperCase();
+    const url = new URL(link.href, location.href);
+    if (url.origin !== location.origin || !url.pathname.endsWith('/' + PAGE)) return;
 
-        if (
-            start !== null &&
-            end !== null
-        ) {
-            input.setSelectionRange(start, end);
-        }
-    });
-
-    input.value = input.value.toLocaleUpperCase();
+    event.preventDefault();
+    navigate(url.href);
 });
 
+// Every form inside <main> (search, import, save, delete)
+document.addEventListener('submit', event => {
+    const form = event.target;
+    // The edit modals handle their own submit and call preventDefault()
+    if (event.defaultPrevented || !form.closest('main.main')) return;
+
+    event.preventDefault();
+    const method = (form.getAttribute('method') || 'get').toLowerCase();
+    const action = new URL(form.getAttribute('action') || PAGE, location.href);
+
+    if (method === 'get') {
+        action.search = new URLSearchParams(new FormData(form)).toString();
+        navigate(action.href);
+    } else {
+        navigate(action.href, {method: 'POST', body: new FormData(form)});
+    }
+});
+
+/* ============ EDIT MODAL (AJAX) ============ */
 function setupSkuEditModal({modalId, formId, statusId, closeId, cancelId, triggerSelector, endpoint, populate, clear = () => {}}) {
     const modal = document.getElementById(modalId);
     const form = document.getElementById(formId);
@@ -1712,6 +1905,7 @@ function setupSkuEditModal({modalId, formId, statusId, closeId, cancelId, trigge
     async function request(url, options, fallback) {
         const response = await fetch(url, {
             ...options,
+            credentials: 'same-origin',
             headers: {'Accept': 'application/json'}
         });
         let result;
@@ -1749,7 +1943,7 @@ function setupSkuEditModal({modalId, formId, statusId, closeId, cancelId, trigge
 
         try {
             const result = await request(
-                `sku_setup.php?ajax=${endpoint}&sku=${encodeURIComponent(button.dataset.sku || '')}`,
+                `${PAGE}?ajax=${endpoint}&sku=${encodeURIComponent(button.dataset.sku || '')}`,
                 {signal: loadRequest.signal},
                 'Unable to load SKU.'
             );
@@ -1768,8 +1962,9 @@ function setupSkuEditModal({modalId, formId, statusId, closeId, cancelId, trigge
     document.getElementById(closeId)?.addEventListener('click', close);
     document.getElementById(cancelId)?.addEventListener('click', close);
     modal.addEventListener('click', event => { if (event.target === modal) close(); });
+
     form.addEventListener('submit', async event => {
-        event.preventDefault();
+        event.preventDefault();             
         if (!ready || saving) return;
         const body = new FormData(form);
         const version = requestVersion;
@@ -1777,8 +1972,8 @@ function setupSkuEditModal({modalId, formId, statusId, closeId, cancelId, trigge
         setEnabled(false);
         setStatus('Saving...');
         try {
-            await request('sku_setup.php', {method: 'POST', body}, 'Unable to save SKU.');
-            window.location.reload();
+            await request(PAGE, {method: 'POST', body}, 'Unable to save SKU.');
+            await navigate(currentUrl);
         } catch (error) {
             if (version === requestVersion) setStatus(error.message, true);
         } finally {
@@ -1790,168 +1985,7 @@ function setupSkuEditModal({modalId, formId, statusId, closeId, cancelId, trigge
     return {modal, close};
 }
 
-const normalEditController = setupSkuEditModal({
-    modalId: 'normalEditModal', formId: 'normalEditForm', statusId: 'normalEditStatus',
-    closeId: 'closeNormalEdit', cancelId: 'cancelNormalEdit',
-    triggerSelector: '.ajax-edit-normal', endpoint: 'normal_sku',
-    populate(result, form) {
-        ['product_sku', 'product_name', 'brand', 'wmdp', 'sbhdp', 'emdp', 'sgdp'].forEach(field => {
-            form.elements[field].value = result.sku[field] ?? '';
-        });
-    }
-});
-
-const normalDeleteModal=document.getElementById('deleteNormalModal');
-const normalDeleteSku=document.getElementById('deleteNormalSku');
-const normalDeleteDescription=document.getElementById('deleteNormalDescription');
-function closeNormalDelete()
-{
-    if(normalDeleteModal)
-        {
-            normalDeleteModal.hidden=true;document.body.classList.remove('modal-open');}}
-            document.querySelectorAll('.open-normal-delete').forEach(button=>button.addEventListener('click',()=>{normalDeleteSku.value=button.dataset.normalSku||'';
-            normalDeleteDescription.textContent=(button.dataset.normalSku||'')+(button.dataset.normalName?' - '+button.dataset.normalName:'');
-            normalDeleteModal.hidden=false;document.body.classList.add('modal-open');}));
-            document.getElementById('closeNormalDelete')?.addEventListener('click',closeNormalDelete);
-            document.getElementById('cancelNormalDelete')?.addEventListener('click',closeNormalDelete);
-            normalDeleteModal?.addEventListener('click',event=>{if(event.target===normalDeleteModal)closeNormalDelete();});
-
-const deleteModal = document.getElementById('deleteCompositeModal');
-const deleteCodeInput = document.getElementById('deleteCompositeCode');
-const deleteDescription = document.getElementById('deleteCompositeDescription');
-const closeDeleteButton = document.getElementById('closeDeleteModal');
-const cancelDeleteButton = document.getElementById('cancelDeleteComposite');
-
-function openDeleteModal(button) {
-    if (
-        !deleteModal || !deleteCodeInput || !deleteDescription
-    ) {
-        return;
-    }
-
-    const code = button.dataset.compositeCode || '';
-    const name = button.dataset.compositeName || '';
-
-    deleteCodeInput.value = code;
-    deleteDescription.textContent =
-        name ? `${code} - ${name}` : code;
-
-    deleteModal.hidden = false;
-    document.body.classList.add('modal-open');
-
-    cancelDeleteButton?.focus();
-}
-
-function closeDeleteModal() {
-    if (!deleteModal) {
-        return;
-    }
-
-    deleteModal.hidden = true;
-    deleteCodeInput.value = '';
-    document.body.classList.remove('modal-open');
-}
-
-document.querySelectorAll('.open-delete-modal')
-    .forEach(button => {
-        button.addEventListener('click', () => {
-            openDeleteModal(button);
-        });
-    });
-
-closeDeleteButton?.addEventListener('click', closeDeleteModal);
-cancelDeleteButton?.addEventListener('click', closeDeleteModal);
-
-deleteModal?.addEventListener('click', event => {
-    if (event.target === deleteModal) {
-        closeDeleteModal();
-    }
-});
-
-const successModal = document.getElementById('successModal');
-const closeSuccessButton = document.getElementById('closeSuccessModal');
-const confirmSuccessButton = document.getElementById('confirmSuccessModal');
-
-function closeSuccessModal() {
-    if (!successModal) {
-        return;
-    }
-
-    successModal.remove();
-    document.body.classList.remove('modal-open');
-}
-
-if (successModal) {
-    document.body.classList.add('modal-open');
-
-    closeSuccessButton?.addEventListener('click', closeSuccessModal);
-    confirmSuccessButton?.addEventListener('click', closeSuccessModal);
-
-    successModal.addEventListener('click', event => {
-        if (event.target === successModal) {
-            closeSuccessModal();
-        }
-    });
-}
-
-if (rows && addButton) {
-    addButton.addEventListener('click', () => {
-        if (rows.children.length >= 100) {
-            alert('A composite can contain up to 100 loose items.');
-            return;
-        }
-
-        const template = document.getElementById('componentTemplate');
-        rows.append(template.content.cloneNode(true));
-    });
-
-    rows.addEventListener('click', event => {
-        const button = event.target.closest('.remove-item');
-
-        if (!button) return;
-
-        if (rows.children.length === 1) {
-            alert('Keep at least one loose item.');
-            return;
-        }
-
-        button.closest('.component-row').remove();
-    });
-}
-
-document.addEventListener('keydown', event => {
-    if (event.key !== 'Escape') {
-        return;
-    }
-
-    for (const controller of [normalEditController, compositeEditController]) {
-        if (controller && !controller.modal.hidden) {
-            controller.close();
-            return;
-        }
-    }
-
-    if (deleteModal && !deleteModal.hidden) {
-        closeDeleteModal();
-        return;
-    }
-
-    if (successModal) {
-        closeSuccessModal();
-        return;
-    }
-
-    if (editModal) {
-        window.location.href = 'sku_setup.php';
-    }
-});
-
-const compositeAjaxRows = document.getElementById('compositeAjaxRows');
-const compositeAjaxStatus = document.getElementById('compositeAjaxStatus');
-const looseItemTemplate = document.getElementById('componentTemplate')
-    ?.content.querySelector('select[name="loose_code[]"]');
-let compositeRowId = 0;
-
+/* ============ COMPOSITE AJAX ROWS ============ */
 function addCompositeAjaxRow(item = {}) {
     const row = document.createElement('div');
     const rowId = ++compositeRowId;
@@ -1973,7 +2007,6 @@ function addCompositeAjaxRow(item = {}) {
 
     const select = row.querySelector('select');
     const quantity = row.querySelector('[name="quantity[]"]');
-    // Template children live in the template's content fragment.
     if (looseItemTemplate) select.innerHTML = looseItemTemplate.innerHTML;
     select.value = item.item_code ?? '';
     quantity.value = item.quantity ?? 1;
@@ -1989,30 +2022,159 @@ function addCompositeAjaxRow(item = {}) {
     compositeAjaxRows.append(row);
 }
 
-const compositeEditController = setupSkuEditModal({
-    modalId: 'compositeAjaxModal', formId: 'compositeAjaxForm', statusId: 'compositeAjaxStatus',
-    closeId: 'closeCompositeAjax', cancelId: 'cancelCompositeAjax',
-    triggerSelector: '.ajax-edit-composite', endpoint: 'composite_sku',
-    clear() { compositeAjaxRows.innerHTML = ''; },
-    populate(result, form) {
-        if (!looseItemTemplate) throw new Error('No loose SKUs are available. Add a loose SKU before editing this composite.');
-        form.elements.original_code.value = result.composite.item_code;
-        form.elements.item_code.value = result.composite.item_code;
-        form.elements.item_description.value = result.composite.item_description || '';
-        (result.composite.loose_items || []).forEach(item => addCompositeAjaxRow(item));
-        if (compositeAjaxRows.children.length === 0) addCompositeAjaxRow();
+/* ============ DELETE / SUCCESS MODALS ============ */
+function closeNormalDelete() {
+    if (!normalDeleteModal) return;
+    normalDeleteModal.hidden = true;
+    document.body.classList.remove('modal-open');
+}
+
+function closeDeleteModal() {
+    if (!deleteModal) return;
+    deleteModal.hidden = true;
+    const codeInput = document.getElementById('deleteCompositeCode');
+    if (codeInput) codeInput.value = '';
+    document.body.classList.remove('modal-open');
+}
+
+function closeSuccessModal() {
+    if (!successModal) return;
+    successModal.remove();
+    successModal = null;
+    document.body.classList.remove('modal-open');
+}
+
+/* ============ INIT (runs after every content swap) ============ */
+function initPage() {
+    rows = document.getElementById('componentRows');
+    addButton = document.getElementById('addItem');
+    editModal = document.getElementById('editCompositeModal');
+    successModal = document.getElementById('successModal');
+    deleteModal = document.getElementById('deleteCompositeModal');
+    normalDeleteModal = document.getElementById('deleteNormalModal');
+    compositeAjaxRows = document.getElementById('compositeAjaxRows');
+    compositeAjaxStatus = document.getElementById('compositeAjaxStatus');
+    looseItemTemplate = document.getElementById('componentTemplate')
+        ?.content.querySelector('select[name="loose_code[]"]') || null;
+
+    document.body.classList.toggle('modal-open', !!(editModal || successModal));
+
+    // Uppercase inputs
+    document.querySelectorAll('.uppercase-input').forEach(input => {
+        input.addEventListener('input', () => {
+            const start = input.selectionStart;
+            const end = input.selectionEnd;
+            input.value = input.value.toLocaleUpperCase();
+            if (start !== null && end !== null) input.setSelectionRange(start, end);
+        });
+        input.value = input.value.toLocaleUpperCase();
+    });
+
+    // Loose SKU edit modal
+    normalEditController = setupSkuEditModal({
+        modalId: 'normalEditModal', formId: 'normalEditForm', statusId: 'normalEditStatus',
+        closeId: 'closeNormalEdit', cancelId: 'cancelNormalEdit',
+        triggerSelector: '.ajax-edit-normal', endpoint: 'normal_sku',
+        populate(result, form) {
+            ['product_sku', 'product_name', 'brand', 'wmdp', 'sbhdp', 'emdp', 'sgdp'].forEach(field => {
+                form.elements[field].value = result.sku[field] ?? '';
+            });
+        }
+    });
+
+    // Composite edit modal
+    compositeEditController = setupSkuEditModal({
+        modalId: 'compositeAjaxModal', formId: 'compositeAjaxForm', statusId: 'compositeAjaxStatus',
+        closeId: 'closeCompositeAjax', cancelId: 'cancelCompositeAjax',
+        triggerSelector: '.ajax-edit-composite', endpoint: 'composite_sku',
+        clear() { compositeAjaxRows.innerHTML = ''; },
+        populate(result, form) {
+            if (!looseItemTemplate) throw new Error('No loose SKUs are available. Add a loose SKU before editing this composite.');
+            form.elements.original_code.value = result.composite.item_code;
+            form.elements.item_code.value = result.composite.item_code;
+            form.elements.item_description.value = result.composite.item_description || '';
+            form.elements.include_in_overall.checked = Number(result.composite.include_in_overall) === 1;
+            (result.composite.loose_items || []).forEach(item => addCompositeAjaxRow(item));
+            if (compositeAjaxRows.children.length === 0) addCompositeAjaxRow();
+        }
+    });
+
+    document.getElementById('addCompositeAjaxItem')?.addEventListener('click', () => {
+        if (compositeAjaxRows.children.length >= 100) {
+            compositeAjaxStatus.textContent = 'Maximum 100 loose items allowed.';
+            compositeAjaxStatus.classList.add('error');
+            return;
+        }
+        addCompositeAjaxRow();
+    });
+
+    // Delete loose SKU modal
+    document.querySelectorAll('.open-normal-delete').forEach(button => button.addEventListener('click', () => {
+        document.getElementById('deleteNormalSku').value = button.dataset.normalSku || '';
+        document.getElementById('deleteNormalDescription').textContent =
+            (button.dataset.normalSku || '') + (button.dataset.normalName ? ' - ' + button.dataset.normalName : '');
+        normalDeleteModal.hidden = false;
+        document.body.classList.add('modal-open');
+    }));
+    document.getElementById('closeNormalDelete')?.addEventListener('click', closeNormalDelete);
+    document.getElementById('cancelNormalDelete')?.addEventListener('click', closeNormalDelete);
+    normalDeleteModal?.addEventListener('click', e => { if (e.target === normalDeleteModal) closeNormalDelete(); });
+
+    // Delete composite modal
+    document.querySelectorAll('.open-delete-modal').forEach(button => button.addEventListener('click', () => {
+        const code = button.dataset.compositeCode || '';
+        const name = button.dataset.compositeName || '';
+        document.getElementById('deleteCompositeCode').value = code;
+        document.getElementById('deleteCompositeDescription').textContent = name ? `${code} - ${name}` : code;
+        deleteModal.hidden = false;
+        document.body.classList.add('modal-open');
+        document.getElementById('cancelDeleteComposite')?.focus();
+    }));
+    document.getElementById('closeDeleteModal')?.addEventListener('click', closeDeleteModal);
+    document.getElementById('cancelDeleteComposite')?.addEventListener('click', closeDeleteModal);
+    deleteModal?.addEventListener('click', e => { if (e.target === deleteModal) closeDeleteModal(); });
+
+    // Success modal
+    document.getElementById('closeSuccessModal')?.addEventListener('click', closeSuccessModal);
+    document.getElementById('confirmSuccessModal')?.addEventListener('click', closeSuccessModal);
+    successModal?.addEventListener('click', e => { if (e.target === successModal) closeSuccessModal(); });
+
+    // Add / remove rows (Add Composite form)
+    if (rows && addButton) {
+        addButton.addEventListener('click', () => {
+            if (rows.children.length >= 100) {
+                alert('A composite can contain up to 100 loose items.');
+                return;
+            }
+            rows.append(document.getElementById('componentTemplate').content.cloneNode(true));
+        });
+
+        rows.addEventListener('click', event => {
+            const button = event.target.closest('.remove-item');
+            if (!button) return;
+            if (rows.children.length === 1) {
+                alert('Keep at least one loose item.');
+                return;
+            }
+            button.closest('.component-row').remove();
+        });
     }
+}
+
+/* ============ ESCAPE KEY (registered once) ============ */
+document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+
+    for (const controller of [normalEditController, compositeEditController]) {
+        if (controller && !controller.modal.hidden) { controller.close(); return; }
+    }
+    if (normalDeleteModal && !normalDeleteModal.hidden) { closeNormalDelete(); return; }
+    if (deleteModal && !deleteModal.hidden) { closeDeleteModal(); return; }
+    if (successModal) { closeSuccessModal(); return; }
+    if (editModal) { navigate(PAGE); }
 });
 
-document.getElementById('addCompositeAjaxItem')?.addEventListener('click', () => {
-    if (compositeAjaxRows.children.length >= 100) {
-        compositeAjaxStatus.textContent = 'Maximum 100 loose items allowed.';
-        compositeAjaxStatus.classList.add('error');
-        return;
-    }
-    addCompositeAjaxRow();
-});
-
+initPage();
 </script>
 </body>
 </html>
