@@ -286,7 +286,7 @@ function luckyReportUrl(
     }
 
     // Request tarikh yang dipilih di external report.
-    // The precise time filtering happens locally.
+    // Masa yang tepat berlaku locally
     $dates = [$from->format('d-m-Y'), $to->format('d-m-Y')];
     $index = 0;
 
@@ -409,7 +409,6 @@ foreach (($errors ? [] : $REGIONS) as $code => $url) {
         if ($missing) {
             $errors[] = "$code: header jadual tidak lengkap (perlu: " . implode(', ', $missing) . ").";
         } else {
-            // A successfully parsed empty report is a valid zero-entry result.
             $GLOBALS['NOTES'][] = "$code: tiada rekod pada laporan.";
         }
         continue;
