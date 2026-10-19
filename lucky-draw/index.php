@@ -453,7 +453,7 @@ foreach (($errors ? [] : $REGIONS) as $code => $url) {
     }
     $GLOBALS['NOTES'][] = "$code: $outside baris order region lain diabaikan (awalan dibenarkan: " . implode('/', $prefixes) . ").";
 }
-// Never draw from a partial pool when a requested report or filter failed.
+
 if ($errors) {
     $entries = [];
     $agg = [];
