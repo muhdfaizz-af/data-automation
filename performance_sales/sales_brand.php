@@ -160,29 +160,11 @@ function getSalesByBrand(
         implode(', ', $orderTypePlaceholders) .
         ')';
 
-    $subOrderTypePlaceholders = [];
-    foreach ($orderTypes as $index => $orderType) {
-        $placeholder = 'sub_order_type_' . $index;
-        $subOrderTypePlaceholders[] = ':' . $placeholder;
-        $params[$placeholder] = $orderType;
-    }
-    $subOrderTypeCondition = ' AND o2.order_type IN (' .
-        implode(', ', $subOrderTypePlaceholders) .
-        ')';
-
     if ($companyFilter !== 'all') {
         $companyCondition = ' AND c.company_code = :company_code';
         $params['company_code'] = $companyFilter;
     }
 
-    /*
-     * starter_order determines the Starter Kit brand for each order.
-     *
-     * PERFORMANCE: this is joined to `orders` and filtered by the same
-     * date range as the main query, so it only aggregates the orders
-     * in the selected period — not the entire order_items table on
-     * every request (that was the original slowdown).
-     */
     $sql = "
         SELECT
             classified.sale_date,
@@ -216,7 +198,7 @@ function getSalesByBrand(
                     THEN 'Zeky'
 
                     WHEN UPPER(TRIM(COALESCE(oi.brand, ''))) = 'STK'
-                    THEN starter_order.starter_brand
+                    THEN 'STK'
 
                     ELSE NULL
                 END AS report_brand,
@@ -237,65 +219,6 @@ function getSalesByBrand(
             INNER JOIN companies c
                 ON c.id = o.company_id
 
-            LEFT JOIN (
-                SELECT
-                    kit_items.order_id,
-
-                    CASE
-                        WHEN SUM(
-                            UPPER(TRIM(kit_items.item_code)) =
-                                'STK-CA'
-
-                            OR UPPER(TRIM(kit_items.item_code))
-                                LIKE 'STK-CA-%'
-
-                            OR UPPER(TRIM(kit_items.item_description))
-                                LIKE '%CHOCO ALBAB STARTER KIT%'
-                        ) > 0
-                        THEN 'Choco Albab'
-
-                        WHEN SUM(
-                            UPPER(TRIM(kit_items.item_code)) =
-                                'STK-NF'
-
-                            OR UPPER(TRIM(kit_items.item_code))
-                                LIKE 'STK-NF-%'
-
-                            OR UPPER(TRIM(kit_items.item_description))
-                                LIKE '%NAFESA STARTER KIT%'
-                        ) > 0
-                        THEN 'Nafesa'
-
-                        WHEN SUM(
-                            UPPER(TRIM(kit_items.item_code)) =
-                                'STK-ZEKY'
-
-                            OR UPPER(TRIM(kit_items.item_code))
-                                LIKE 'STK-ZEKY-%'
-
-                            OR UPPER(TRIM(kit_items.item_description))
-                                LIKE '%ZEKY STARTER KIT%'
-                        ) > 0
-                        THEN 'Zeky'
-
-                        ELSE NULL
-                    END AS starter_brand
-
-                FROM order_items kit_items
-
-                -- Scoped to the SAME orders the outer query cares
-                -- about, instead of the whole table.
-                INNER JOIN orders o2
-                    ON o2.id = kit_items.order_id
-                   AND o2.order_datetime >= :from_date_sub
-                   AND o2.order_datetime < :to_exclusive_sub
-                   AND o2.order_status = :confirmed_status_sub
-                   {$subOrderTypeCondition}
-
-                GROUP BY kit_items.order_id
-            ) starter_order
-                ON starter_order.order_id = o.id
-
             WHERE o.order_datetime >= :from_date
               AND o.order_datetime < :to_exclusive
               AND o.order_status = :confirmed_status
@@ -311,10 +234,6 @@ function getSalesByBrand(
         ORDER BY classified.sale_date, classified.report_brand
     ";
 
-    $params['from_date_sub'] = $params['from_date'];
-    $params['to_exclusive_sub'] = $params['to_exclusive'];
-    $params['confirmed_status_sub'] = $params['confirmed_status'];
-
     $statement = $pdo->prepare($sql);
     $statement->execute($params);
 
@@ -328,7 +247,7 @@ function getSalesByBrand(
     }
 
     $sales = [];
-    foreach (['Choco Albab', 'Nafesa', 'Zeky', 'Event Ticket'] as $brand) {
+    foreach (['Choco Albab', 'Nafesa', 'Zeky', 'STK', 'Event Ticket'] as $brand) {
         $sales[$brand] = array_fill_keys($dates, 0.00);
     }
 
@@ -395,7 +314,7 @@ function combineReports(array $repurchase, array $registration): array
 {
     $dates = $repurchase['dates']; // same date range for both
 
-    $brands = ['Choco Albab', 'Nafesa', 'Zeky', 'Event Ticket'];
+    $brands = ['Choco Albab', 'Nafesa', 'Zeky', 'STK', 'Event Ticket'];
 
     $combinedSales = [];
     foreach ($brands as $brand) {
@@ -703,7 +622,7 @@ include __DIR__ . '/../includes/sidebar.php';
 
     <header class="page-header">
         <h1>Sales by Brand</h1>
-        <p>Converted Tax Invoice sales for Choco Albab, Nafesa, Zeky and Event Tickets.</p>
+        <p>Converted Tax Invoice sales for Choco Albab, Nafesa, Zeky, STK and Event Tickets.</p>
     </header>
 
     <div id="errorContainer"></div>
@@ -783,7 +702,7 @@ include __DIR__ . '/../includes/sidebar.php';
         <section class="card">
             <div class="card-title">Total Sales by Brand</div>
             <div class="card-subtitle">
-                Combined repurchase and registration sales, separated by brand.
+                Combined repurchase and registration sales, with Choco Albab, Nafesa, Zeky and STK shown separately.
             </div>
             <div class="table-wrap">
                 <table class="brand-table" id="combinedBrandTable">
@@ -815,7 +734,7 @@ include __DIR__ . '/../includes/sidebar.php';
         <section class="card">
             <div class="card-title">Register Sales by Brand</div>
             <div class="card-subtitle">
-                Registration Order and On Behalf Register Order, separated by brand.
+                Registration Order and On Behalf Register Order, with Choco Albab, Nafesa, Zeky and STK shown separately.
             </div>
             <div class="table-wrap">
                 <table class="brand-table" id="registrationBrandTable">
