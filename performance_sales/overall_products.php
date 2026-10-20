@@ -303,11 +303,15 @@ function identifyProductCategory(
 
     // Consolidate all actual Nafesa scarves
     // Inner products are kept as seperate category
-    if ($brand === 'NAFESA') {
-        if (
-            preg_match('/^(?:NCH|NTU|NST|NIN)/', $itemCode) ||
-            str_contains($description, 'INNER')
-        ) {
+    if (
+        ($brand === 'STK' && preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) ||
+        $brand === 'NAFESA'
+    ) {
+        if (preg_match('/\bHANDSOCK\b/', $description)) {
+            return 'HANDSOCK';
+        }
+
+        if (preg_match('/\bINNER\b/', $description)) {
             return 'INNER';
         }
 
@@ -369,8 +373,6 @@ function isCategoryQuantityRow(
             'BRACELET',
             'KEYCHAIN',
             'ENAMEL PIN',
-            'HANDSOCK',
-            'HAND SOCK',
             'STK-NMJ04-MR',
             'STK-NMJ02-BG',
             'STK-NMJ06-RC',
@@ -408,9 +410,10 @@ function isCategoryQuantityRow(
         // Brazillian Coffee loose component
         'BRAZILIAN COFFEE DRINK' => $itemCode === 'BRC-001',
 
-        // Nafesa scarves
+        // NAFESA and starter-kit textile categories
         'SCARF' => $productType === 'NORMAL' || (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode),
         'INNER' => $productType === 'NORMAL',
+        'HANDSOCK' => $productType === 'NORMAL' || (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode),
 
         // Other categories use normal/loose rows only
         default => $productType === 'NORMAL',
