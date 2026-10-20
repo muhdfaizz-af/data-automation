@@ -166,8 +166,11 @@ function dashboardProductCategory($brand, $itemCode, $description, $productType)
     if (preg_match('/^(?:BMD|BMDC)/', $itemCode) || str_contains($description, 'BELGIAN MOCHA')) return 'BELGIAN MOCHA DRINK';
     if (preg_match('/^(?:BBC|BBCC)/', $itemCode) || str_contains($description, 'BLUEBERRY CHOCOLATE')) return 'BLUEBERRY CHOCOLATE DRINK';
     if (str_starts_with($itemCode, 'ZEKY-BH') || str_starts_with($itemCode, 'STK-ZEKY-BH') || str_contains($description, 'ZEKY BRAIN HERO')) return 'ZEKY BRAIN HERO';
-    if ($brand === 'STK' && preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) return 'SCARF';
-    if ($brand === 'NAFESA') return preg_match('/^(?:NCH|NTU|NST|NIN)/', $itemCode) || str_contains($description, 'INNER') ? 'INNER' : 'SCARF';
+    if (($brand === 'STK' && preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) || $brand === 'NAFESA') {
+        if (preg_match('/\bHANDSOCK\b/', $description)) return 'HANDSOCK';
+        if (preg_match('/\bINNER\b/', $description)) return 'INNER';
+        return 'SCARF';
+    }
     if ($brand === 'CHOCO ALBAB' && (in_array($itemCode, ['CAC-027', 'CA-18', 'CA-018'], true) || str_contains($description, 'CHOCO ALBAB RUBY INDULGENCE CUTIE TUB'))) return 'CHOCO ALBAB RUBY INDULGENCE CUTIE TUB';
     if ($brand === 'CHOCO ALBAB' && (in_array($itemCode, ['CAC-1001', 'CA-1001'], true) || str_contains($description, 'SIGNATURE BOX PREMIX DRINK'))) return 'SIGNATURE BOX PREMIX DRINK';
     if ($brand === 'CHOCO ALBAB') return $productType === 'NORMAL' ? dashboardProductName($description) : null;
@@ -179,13 +182,15 @@ function dashboardQuantityRow($category, $itemCode, $productType, $description) 
     $productType = strtoupper(trim($productType));
     $search = $itemCode . ' ' . strtoupper(trim($description));
     if ($category === 'SCARF') {
-        foreach (['CHARM', 'BRACELET', 'KEYCHAIN', 'ENAMEL PIN', 'HANDSOCK', 'HAND SOCK', 'STK-NMJ04-MR', 'STK-NMJ02-BG', 'STK-NMJ06-RC', 'STK-NRQ01-EM', 'STK-NRW01-EM'] as $term) {
+        foreach (['CHARM', 'BRACELET', 'KEYCHAIN', 'ENAMEL PIN', 'STK-NMJ04-MR', 'STK-NMJ02-BG', 'STK-NMJ06-RC', 'STK-NRQ01-EM', 'STK-NRW01-EM'] as $term) {
             if (str_contains($search, $term)) return false;
         }
     }
     $codes = ['(BCDB) BOX BELGIAN CHOCOLATE DRINK' => 'BCD-002', 'UNICORN STRAWBERRY CHOCOLATE TUB' => 'CA-6', 'CUTIE MINI CHOCO CRUNCH TUB' => 'CA-9', 'CUTIE CHOCO BALL TUB' => 'CA-8', 'CUTIE MINI CHOCO DORAYAKI TUB' => 'CA-13', 'CUTIE CHOCO RICE TUB' => 'CA-12', 'PISTACHIO DREAM TUB' => 'CA-15', 'COTTON CANDY CHOCOLATE TUB' => 'CA-10', 'ZEKY BRAIN HERO' => 'ZEKY-BH', 'BRAZILIAN COFFEE DRINK' => 'BRC-001'];
     if (isset($codes[$category])) return $itemCode === $codes[$category];
-    if ($category === 'SCARF') return $productType === 'NORMAL' || (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode);
+    if (in_array($category, ['SCARF', 'INNER', 'HANDSOCK'], true)) {
+        return $productType === 'NORMAL' || (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode);
+    }
     return $productType === 'NORMAL';
 }
 
