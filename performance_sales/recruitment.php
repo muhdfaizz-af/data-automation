@@ -389,6 +389,8 @@ function getRecruitmentMetrics(
                 WHERE purchase.member_code IS NOT NULL
                     AND TRIM(purchase.member_code) <> ''
 
+                    AND purchase.company_id = registration.company_id
+
                     AND UPPER(TRIM(purchase.member_code)) =
                         UPPER(TRIM(registration.member_code))
 
