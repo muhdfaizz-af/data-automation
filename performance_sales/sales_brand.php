@@ -223,6 +223,29 @@ function getSalesByBrand(
 
     $stkBrand = $separateStk ? "'STK'" : 'starter_order.starter_brand';
 
+    // Classify JOYPRENEUR repurchase SKUs by their exact item code
+    // Preserve the combined report's existing separate STK category
+    $joypreneurRepurchaseCases = '';
+
+    if (!$separateStk) {
+        $joypreneurRepurchaseCases = "
+            WHEN o.order_type IN (
+                'Repurchase Order',
+                'On Behalf Repurchase Order'
+            )
+            AND UPPER(TRIM(COALESCE(oi.item_code, ''))) IN (
+                'STK-JOYP-1001-CA',
+                'STK-JOYP-1001-NF',
+                'STK-JOYP-1001-ZEKY'
+            )
+            THEN CASE UPPER(TRIM(COALESCE(oi.item_code, '')))
+                WHEN 'STK-JOYP-1001-CA' THEN 'Choco Albab'
+                WHEN 'STK-JOYP-1001-NF' THEN 'Nafesa'
+                WHEN 'STK-JOYP-1001-ZEKY' THEN 'Zeky'
+            END
+        ";
+    }
+
     if ($companyFilter !== 'all') {
         $companyCondition = ' AND c.company_code = :company_code';
         $params['company_code'] = $companyFilter;
@@ -238,6 +261,8 @@ function getSalesByBrand(
             SELECT
                 DATE(o.order_datetime) AS sale_date,
                 CASE
+                    {$joypreneurRepurchaseCases}
+
                     WHEN UPPER(TRIM(COALESCE(oi.brand, ''))) =
                          'EVENTTICKET'
 

@@ -4,6 +4,7 @@ session_start();
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -44,6 +45,145 @@ if (
 
 $_SESSION['last_activity'] = time();
 $_SESSION['composite_csrf'] ??= bin2hex(random_bytes(32));
+
+// Export every brand's loose SKUs with dedicated-carton quantities (no prices).
+if (($_GET['download'] ?? '') === 'sku_catalogue') {
+    $looseProducts = $pdo->query(
+        'SELECT product_sku, product_name, brand
+         FROM price_code
+         ORDER BY brand, product_sku'
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    $packs = $pdo->query(
+        'SELECT item_code, item_description, loose_items
+         FROM composite_items
+         ORDER BY item_code'
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    $minimumQuantities = [];
+
+    foreach ($packs as $pack) {
+        $packName = trim((string) ($pack['item_description'] ?? ''));
+
+        // Include preorder cartons too, wherever CARTON appears in the name.
+        $isCarton = preg_match('/\bCARTON\b/i', $packName) === 1;
+        // Mixed-carton portions do not represent the product's own carton size.
+        $isMixedCarton = preg_match('/\bMIX(?:ED)?\b/i', $packName) === 1;
+
+        if (!$isCarton || $isMixedCarton) {
+            continue;
+        }
+
+        $components = json_decode(
+            (string) ($pack['loose_items'] ?? '[]'),
+            true
+        );
+
+        if (
+            !is_array($components)
+            || !array_is_list($components)
+            || $components === []
+        ) {
+            error_log('Carton export: invalid components for ' . $pack['item_code']);
+            continue;
+        }
+
+        // Combine duplicate component rows before comparing different cartons.
+        $cartonQuantities = [];
+        foreach ($components as $component) {
+            if (!is_array($component)) {
+                $cartonQuantities = [];
+                break;
+            }
+
+            $code = $component['item_code'] ?? null;
+            $sku = is_string($code) ? strtoupper(trim($code)) : '';
+            $quantity = filter_var(
+                $component['quantity'] ?? null,
+                FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 1, 'max_range' => 1000000]]
+            );
+
+            if ($sku === '' || $quantity === false) {
+                $cartonQuantities = [];
+                break;
+            }
+
+            $cartonQuantities[$sku] = ($cartonQuantities[$sku] ?? 0) + $quantity;
+        }
+
+        if ($cartonQuantities === []) {
+            error_log('Carton export: invalid component quantity/SKU for ' . $pack['item_code']);
+            continue;
+        }
+
+        foreach ($cartonQuantities as $sku => $quantity) {
+            $minimumQuantities[$sku] = isset($minimumQuantities[$sku])
+                ? min($minimumQuantities[$sku], $quantity)
+                : $quantity;
+        }
+    }
+
+    $workbook = new Spreadsheet();
+    $cartonSheet = $workbook->getActiveSheet();
+    $cartonSheet->setTitle('Loose SKU AWB');
+
+    $cartonSheet->fromArray([
+        ['Loose Item', 'Item Name', 'Total Loose (Per AWB)'],
+    ], null, 'A1');
+
+    $rowNumber = 2;
+    // Include all catalogue brands even when no dedicated carton is configured.
+    foreach ($looseProducts as $product) {
+        $sku = strtoupper(trim((string) $product['product_sku']));
+        $quantity = $minimumQuantities[$sku] ?? null;
+        $cartonSheet->setCellValueExplicit(
+            'A' . $rowNumber,
+            $sku,
+            DataType::TYPE_STRING
+        );
+        $cartonSheet->setCellValueExplicit(
+            'B' . $rowNumber,
+            (string) ($product['product_name'] ?? ''),
+            DataType::TYPE_STRING
+        );
+        $cartonSheet->setCellValueExplicit(
+            'C' . $rowNumber,
+            $quantity ?? 'Not configured',
+            $quantity === null ? DataType::TYPE_STRING : DataType::TYPE_NUMERIC
+        );
+        $rowNumber++;
+    }
+
+    $cartonSheet->getStyle('A1:C1')->getFont()->setBold(true);
+    $cartonSheet->freezePane('A2');
+    $cartonSheet->setAutoFilter('A1:C' . max(1, $rowNumber - 1));
+    $cartonSheet->getStyle('C1:C' . max(1, $rowNumber - 1))
+        ->getAlignment()->setHorizontal('center');
+
+    foreach (['A', 'B', 'C'] as $column) {
+        $cartonSheet->getColumnDimension($column)->setAutoSize(true);
+    }
+
+    $filename = 'all_brands_loose_per_awb_' . date('Y-m-d_His') . '.xlsx';
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header(
+        'Content-Type: application/vnd.openxmlformats-officedocument.'
+        . 'spreadsheetml.sheet'
+    );
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: private, no-store');
+
+    (new Xlsx($workbook))->save('php://output');
+
+    $workbook->disconnectWorksheets();
+    exit;
+}
+
 
 // Download Excel import templates (generated on the fly, matches the import parsers).
 if (in_array($_GET['download'] ?? '', ['composite_template', 'normal_template'], true)) {
@@ -1423,6 +1563,7 @@ to {opacity: 1;transform: translateY(0) scale(1);}}
         <nav class="sku-mode-toggle" aria-label="SKU setup type">
             <a class="btn <?= $mode === 'composite' ? 'btn-primary' : 'btn-secondary' ?>" href="sku_setup.php?mode=composite">Composite SKU</a>
             <a class="btn <?= $mode === 'normal' ? 'btn-primary' : 'btn-secondary' ?>" href="sku_setup.php?mode=normal">Loose SKU</a>
+            <a class="btn btn-secondary" href="sku_setup.php?download=sku_catalogue" download>Export All Brands AWB Excel</a>
         </nav>
     </div>
 
