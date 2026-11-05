@@ -1,0 +1,8 @@
+[2026-10-20 16:42:20] [INFO] Starting order history import. from=2026-10-01 to=2026-10-19 companies=MY,SG
+[2026-10-20 16:42:22] [INFO] Session login succeeded.
+[2026-10-20 16:42:22] [INFO] Fetching report path: /index.php/report/RepDPProduction/printOrderHistory
+[2026-10-20 16:42:25] [INFO] MY: created import batch ID 3 rows=5910
+[2026-10-20 16:42:28] [INFO] MY: import finished. imported=4874 failed=0 excluded_handling_fee=1036 batch_id=3 status=completed
+[2026-10-20 16:42:28] [INFO] Fetching report path: /index.php/report/RepDPProduction/printOrderHistory
+[2026-10-20 16:42:29] [INFO] SG: created import batch ID 4 rows=994
+[2026-10-20 16:42:30] [INFO] SG: import finished. imported=994 failed=0 excluded_handling_fee=0 batch_id=4 status=completed

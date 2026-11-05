@@ -1,0 +1,9 @@
+[2026-10-20 16:42:37] [INFO] Starting tax invoice import. from=2026-10-01 to=2026-10-19 companies=MY,SG
+[2026-10-20 16:42:38] [INFO] Session login succeeded.
+[2026-10-20 16:42:38] [INFO] Fetching report path: /index.php/report/RepDPProduction/printTaxInvoice
+[2026-10-20 16:42:42] [INFO] MY: created import batch ID 5 rows=17465
+[2026-10-20 16:42:48] [WARN] MY: 1036 order(s) not found in orders table - run api_orderhistory.php first. Sample: MYHQCSB261000990, MYHQCSB261000991, MYHQCSB261000992, MYHQCSB261000993, MYHQCSB261000994, MYHQCSB261000995, MYHQCSB261000996, MYHQCSB261000997, MYHQCSB261000998, MYHQCSB261000999, MYHQCSB261001000, MYHQCSB261001001, MYHQCSB261001002, MYHQCSB261001003, MYHQCSB261001004, MYHQCSB261001005, MYHQCSB261001006, MYHQCSB261001007, MYHQCSB261001008, MYHQCSB261001009
+[2026-10-20 16:42:48] [INFO] MY: import finished. imported=16428 failed=1036 batch_id=5 status=completed_with_errors
+[2026-10-20 16:42:48] [INFO] Fetching report path: /index.php/report/RepDPProduction/printTaxInvoice
+[2026-10-20 16:42:50] [INFO] SG: created import batch ID 6 rows=3312
+[2026-10-20 16:42:51] [INFO] SG: import finished. imported=3311 failed=0 batch_id=6 status=completed
