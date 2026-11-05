@@ -122,13 +122,18 @@ function getAgentBehaviourReport(
             ->modify('first day of this month')->format('Y-m-d 00:00:00'),
         'upgrade_to' => (new DateTimeImmutable($to))
             ->modify('first day of next month')->format('Y-m-d 00:00:00'),
+        'new_agent_from' => $from . ' 00:00:00',
+        'new_agent_to_exclusive' => (new DateTimeImmutable($to))
+            ->modify('+1 day')
+            ->format('Y-m-d 00:00:00'),
     ];
 
     /*
      * This query loads qualifying Distributor and SPC repurchase orders.
      *
-     * Only repurchase subtotals contribute to sales. New Agent is determined
-     * from joining or a confirmed upgrade in the order's calendar month. 
+     * Only repurchase subtotals contribute to sales. New Agents must have a
+     * confirmed registration or SPC upgrade and a confirmed repurchase in
+     * the selected report period, matching the Recruitment report.
      */
     $sql = "
         SELECT
@@ -152,6 +157,10 @@ function getAgentBehaviourReport(
                  ELSE fallback_member.highest_rank END AS highest_rank,
         /* Determine if member upgrade in the same month, and determine new agent category */
             (upgrades.member_code IS NOT NULL) AS upgraded_in_month,
+
+        /* Identify agents registered or upgraded during the report period. */
+            COALESCE(new_agent_members.registered_in_period, 0) AS registered_in_period,
+            COALESCE(new_agent_members.upgraded_in_period, 0) AS upgraded_in_period,
 
         /* SG conversion */
             CASE
@@ -183,6 +192,31 @@ function getAgentBehaviourReport(
 
         /* The upgrade and purchase must be in the same year and month. */
            AND upgrades.upgrade_month = DATE_FORMAT(o.order_datetime, '%Y-%m')
+
+        LEFT JOIN (
+            SELECT
+                company_id,
+                UPPER(TRIM(member_code)) AS member_code,
+                MAX(order_type IN (
+                    'Registration Order',
+                    'On Behalf Register Order'
+                )) AS registered_in_period,
+                MAX(order_type = 'SPC Upgrade Order') AS upgraded_in_period
+            FROM orders
+            WHERE order_datetime >= :new_agent_from
+              AND order_datetime < :new_agent_to_exclusive
+              AND order_status = 'Confirmed'
+              AND member_code IS NOT NULL
+              AND TRIM(member_code) <> ''
+              AND order_type IN (
+                  'Registration Order',
+                  'On Behalf Register Order',
+                  'SPC Upgrade Order'
+              )
+            GROUP BY company_id, UPPER(TRIM(member_code))
+        ) new_agent_members
+            ON new_agent_members.company_id = o.company_id
+           AND new_agent_members.member_code = UPPER(TRIM(o.member_code))
 
         /* Find the member profile belonging to the order's company. LEFT JOIN keeps the order even when the profile is missing. */
         LEFT JOIN members m
@@ -326,59 +360,35 @@ function getAgentBehaviourReport(
     foreach ($selectedRows as $row) {
         $memberCode = $row['member_code'];
         $agentKey = $row['company_id'] . ':' . $memberCode;
-
-        // SPC purchases remain separate from all Distributor categories.
-        if (isSpcMemberType((string)($row['member_type']?? ''))) {
-            $sales = (float)$row['sales_myr'];
-
-            $summary['spc'] += $sales;
-            $summary['total'] += $sales;
-
-            if ($includeDetails) {
-                $details[] = agentBehaviourDetail(
-                    $row, 'spc', $agentKey,
-                    !isset($purchasingMembers['spc'][$agentKey]),
-                    'Repurchase order recorded as Privilege Member or SPC; SPC takes priority.',
-                    null
-                );
-            }
-            $purchasingMembers['spc'][$agentKey] = true;
-            $purchasingMembers['total'][$agentKey] = true;
-
-            continue;
-        }
-
         $orderType = $row['order_type'];
         $orderDate = new DateTimeImmutable($row['order_datetime']);
         $history = $agentHistory[$agentKey] ?? null;
-
-        if (!$history) {
-            continue;
-        }
-
         $sales = (float)$row['sales_myr'];
         $category = 'existing_agent';
-        $reason = 'Distributor repurchase outside the joining/upgrade month and first purchase day.';
+        $reason = 'Repurchase outside the new-agent report period and first-purchase day.';
+        $isSpcMember = isSpcMemberType((string)($row['member_type'] ?? ''));
 
         $joinDate = !empty($row['joined_date'])
             ? new DateTimeImmutable($row['joined_date'])
             : null;
-        $firstPurchaseDate = $history['first_purchase_date'];
+        $firstPurchaseDate = $history['first_purchase_date'] ?? null;
 
-        // Each order uses its own month, including reports spanning several months.
         if (
-            ($joinDate !== null && $joinDate->format('Y-m') === $orderDate->format('Y-m'))
-            || (bool)$row['upgraded_in_month']
+            (bool)$row['registered_in_period']
+            || (bool)$row['upgraded_in_period']
         ) {
             $category = 'new_agent';
             $reasons = [];
-            if ($joinDate !== null && $joinDate->format('Y-m') === $orderDate->format('Y-m')) {
-                $reasons[] = 'Member joining date is in the order month';
+            if ((bool)$row['registered_in_period']) {
+                $reasons[] = 'Confirmed registration in the report period';
             }
-            if ((bool)$row['upgraded_in_month']) {
-                $reasons[] = 'Confirmed SPC upgrade in the same company and order month';
+            if ((bool)$row['upgraded_in_period']) {
+                $reasons[] = 'Confirmed SPC upgrade in the report period';
             }
             $reason = implode('; ', $reasons) . '.';
+        } elseif ($isSpcMember) {
+            $category = 'spc';
+            $reason = 'Repurchase order recorded as Privilege Member or SPC.';
         } elseif (
             in_array($orderType, PURCHASE_ORDER_TYPES, true) &&
             $firstPurchaseDate !== null &&
@@ -399,19 +409,21 @@ function getAgentBehaviourReport(
 
                 'highest_rank' => $row['highest_rank'] ?? 'N/A',
             ];
+        } elseif ($history === null) {
+            continue;
         }
 
         $summary[$category] += $sales;
         $summary['total'] += $sales;
         $countKey = $category === 'new_agent'
-            ? strtoupper(trim((string)$memberCode))
+            ? $row['company_id'] . ':' . strtoupper(trim((string)$memberCode))
             : $agentKey;
 
         if ($includeDetails) {
             $details[] = agentBehaviourDetail(
                 $row, $category, $countKey,
                 !isset($purchasingMembers[$category][$countKey]),
-                $reason, $firstPurchaseDate
+                $reason, $category === 'spc' ? null : $firstPurchaseDate
             );
         }
         $purchasingMembers[$category][$countKey] = true;
@@ -883,8 +895,8 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                 Select a date range for Agent Behaviour Sales.
                 The monthly report runs from the first day of the
                 ending month through To Date.
-                New Agent sales include members who joined or upgraded in the
-                same calendar month as each order.
+                New Agent repurchases are from members with a confirmed
+                registration or SPC upgrade in the selected report period.
             </p>
 
             <form method="get" class="report-filter">
@@ -937,7 +949,7 @@ body.sidebar-collapsed .main {margin-left:var(--sidebar-w-collapsed);}
                     ) ?>
                     &middot; Eligible Sales in MYR.
                     <br>
-                    New Agent: joined or upgraded in the same month as the order.
+                    New Agent: confirmed registration or SPC upgrade and repurchase in the report period.
                 </p>
 
                 <?php if ($configuration['data'] !== null): ?>
