@@ -293,29 +293,45 @@ function identifyProductCategory(
         return 'ZEKY BRAIN HERO';
     }
 
-    // Free/component scarf codes inside a Nafesa Starter Kit.
     if (
-        $brand === 'STK' &&
-        preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)
+        ($brand === 'STK' && preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) ||
+        $brand === 'NAFESA'
     ) {
-        return 'SCARF';
-    }
+        if (preg_match('/\bHANDSOCK\b/', $description)) {
+            return 'HANDSOCK';
+        }
 
-    // Consolidate all actual Nafesa scarves
-    // Inner products are kept as seperate category
-    if ($brand === 'NAFESA') {
-        if (
-            preg_match('/^(?:NCH|NTU|NST|NIN)/', $itemCode) ||
-            str_contains($description, 'INNER')
-        ) {
+        if (preg_match('/\bINNER\b/', $description)) {
             return 'INNER';
         }
 
         return 'SCARF';
     }
 
-    // Other Choco Albab products are consolidate by cleaned name
-   if ($brand === 'CHOCO ALBAB') {
+    // Ruby Indulgence carton sales roll up to the loose product category.
+    if (
+        $brand === 'CHOCO ALBAB' &&
+        (
+            in_array($itemCode, ['CAC-027', 'CA-18', 'CA-018'], true) ||
+            str_contains($description, 'CHOCO ALBAB RUBY INDULGENCE CUTIE TUB')
+        )
+    ) {
+        return 'CHOCO ALBAB RUBY INDULGENCE CUTIE TUB';
+    }
+
+    // Signature Box carton sales roll up to the loose product category.
+    if (
+        $brand === 'CHOCO ALBAB' &&
+        (
+            in_array($itemCode, ['CAC-1001', 'CA-1001'], true) ||
+            str_contains($description, 'SIGNATURE BOX PREMIX DRINK')
+        )
+    ) {
+        return 'SIGNATURE BOX PREMIX DRINK';
+    }
+
+    // Other Choco Albab products are consolidated by cleaned name.
+    if ($brand === 'CHOCO ALBAB') {
         return $productType === 'NORMAL'
             ? cleanProductName($description)
             : null;
@@ -347,8 +363,6 @@ function isCategoryQuantityRow(
             'BRACELET',
             'KEYCHAIN',
             'ENAMEL PIN',
-            'HANDSOCK',
-            'HAND SOCK',
             'STK-NMJ04-MR',
             'STK-NMJ02-BG',
             'STK-NMJ06-RC',
@@ -386,9 +400,10 @@ function isCategoryQuantityRow(
         // Brazillian Coffee loose component
         'BRAZILIAN COFFEE DRINK' => $itemCode === 'BRC-001',
 
-        // Nafesa scarves
+        // NAFESA and starter-kit textile categories
         'SCARF' => $productType === 'NORMAL' || (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode),
         'INNER' => $productType === 'NORMAL',
+        'HANDSOCK' => $productType === 'NORMAL' || (bool)preg_match('/^STK-N(?!F(?:-|$))/', $itemCode),
 
         // Other categories use normal/loose rows only
         default => $productType === 'NORMAL',
@@ -1146,8 +1161,10 @@ include __DIR__ . '/../includes/sidebar.php';
             Rankings use confirmed MY and SG Tax Invoice
             lines. Singapore sales are converted using SGD ×
             <?= number_format(SGD_TO_MYR_RATE, 2) ?>.
-            Sets, bundles, packages, cartons and Starter Kits
-            are excluded.
+            Ruby Indulgence and Signature Box carton sales are
+            included, with quantities sourced from loose CA-18 and
+            CA-1001 respectively. Other bundle/carton treatment
+            follows the existing product-specific rules.
         </div>
     <?php endif; ?>
     </main>

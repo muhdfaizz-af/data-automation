@@ -136,7 +136,8 @@ function getSalesByBrand(
     string $from,
     string $to,
     string $companyFilter,
-    array $orderTypes
+    array $orderTypes,
+    bool $separateStk = false
 ): array {
     $params = [
         'from_date' => $from . ' 00:00:00',
@@ -160,29 +161,73 @@ function getSalesByBrand(
         implode(', ', $orderTypePlaceholders) .
         ')';
 
-    $subOrderTypePlaceholders = [];
-    foreach ($orderTypes as $index => $orderType) {
-        $placeholder = 'sub_order_type_' . $index;
-        $subOrderTypePlaceholders[] = ':' . $placeholder;
-        $params[$placeholder] = $orderType;
+    $starterOrderJoin = '';
+    if (!$separateStk) {
+        $subOrderTypePlaceholders = [];
+        foreach ($orderTypes as $index => $orderType) {
+            $placeholder = 'sub_order_type_' . $index;
+            $subOrderTypePlaceholders[] = ':' . $placeholder;
+            $params[$placeholder] = $orderType;
+        }
+        $subOrderTypeCondition = ' AND o2.order_type IN (' .
+            implode(', ', $subOrderTypePlaceholders) .
+            ')';
+
+        $params['from_date_sub'] = $params['from_date'];
+        $params['to_exclusive_sub'] = $params['to_exclusive'];
+        $params['confirmed_status_sub'] = $params['confirmed_status'];
+
+        $starterOrderJoin = "
+            LEFT JOIN (
+                SELECT
+                    kit_items.order_id,
+                    CASE
+                        WHEN SUM(
+                            UPPER(TRIM(kit_items.item_code)) = 'STK-CA'
+                            OR UPPER(TRIM(kit_items.item_code)) LIKE 'STK-CA-%'
+                            OR UPPER(TRIM(kit_items.item_description))
+                                LIKE '%CHOCO ALBAB STARTER KIT%'
+                        ) > 0
+                        THEN 'Choco Albab'
+
+                        WHEN SUM(
+                            UPPER(TRIM(kit_items.item_code)) = 'STK-NF'
+                            OR UPPER(TRIM(kit_items.item_code)) LIKE 'STK-NF-%'
+                            OR UPPER(TRIM(kit_items.item_description))
+                                LIKE '%NAFESA STARTER KIT%'
+                        ) > 0
+                        THEN 'Nafesa'
+
+                        WHEN SUM(
+                            UPPER(TRIM(kit_items.item_code)) = 'STK-ZEKY'
+                            OR UPPER(TRIM(kit_items.item_code)) LIKE 'STK-ZEKY-%'
+                            OR UPPER(TRIM(kit_items.item_description))
+                                LIKE '%ZEKY STARTER KIT%'
+                        ) > 0
+                        THEN 'Zeky'
+
+                        ELSE NULL
+                    END AS starter_brand
+                FROM order_items kit_items
+                INNER JOIN orders o2
+                    ON o2.id = kit_items.order_id
+                   AND o2.order_datetime >= :from_date_sub
+                   AND o2.order_datetime < :to_exclusive_sub
+                   AND o2.order_status = :confirmed_status_sub
+                   {$subOrderTypeCondition}
+                GROUP BY kit_items.order_id
+            ) starter_order
+                ON starter_order.order_id = o.id
+        ";
     }
-    $subOrderTypeCondition = ' AND o2.order_type IN (' .
-        implode(', ', $subOrderTypePlaceholders) .
-        ')';
+
+    $stkBrand = $separateStk ? "'STK'" : 'starter_order.starter_brand';
 
     if ($companyFilter !== 'all') {
         $companyCondition = ' AND c.company_code = :company_code';
         $params['company_code'] = $companyFilter;
     }
 
-    /*
-     * starter_order determines the Starter Kit brand for each order.
-     *
-     * PERFORMANCE: this is joined to `orders` and filtered by the same
-     * date range as the main query, so it only aggregates the orders
-     * in the selected period — not the entire order_items table on
-     * every request (that was the original slowdown).
-     */
     $sql = "
         SELECT
             classified.sale_date,
@@ -216,7 +261,7 @@ function getSalesByBrand(
                     THEN 'Zeky'
 
                     WHEN UPPER(TRIM(COALESCE(oi.brand, ''))) = 'STK'
-                    THEN starter_order.starter_brand
+                    THEN {$stkBrand}
 
                     ELSE NULL
                 END AS report_brand,
@@ -237,64 +282,7 @@ function getSalesByBrand(
             INNER JOIN companies c
                 ON c.id = o.company_id
 
-            LEFT JOIN (
-                SELECT
-                    kit_items.order_id,
-
-                    CASE
-                        WHEN SUM(
-                            UPPER(TRIM(kit_items.item_code)) =
-                                'STK-CA'
-
-                            OR UPPER(TRIM(kit_items.item_code))
-                                LIKE 'STK-CA-%'
-
-                            OR UPPER(TRIM(kit_items.item_description))
-                                LIKE '%CHOCO ALBAB STARTER KIT%'
-                        ) > 0
-                        THEN 'Choco Albab'
-
-                        WHEN SUM(
-                            UPPER(TRIM(kit_items.item_code)) =
-                                'STK-NF'
-
-                            OR UPPER(TRIM(kit_items.item_code))
-                                LIKE 'STK-NF-%'
-
-                            OR UPPER(TRIM(kit_items.item_description))
-                                LIKE '%NAFESA STARTER KIT%'
-                        ) > 0
-                        THEN 'Nafesa'
-
-                        WHEN SUM(
-                            UPPER(TRIM(kit_items.item_code)) =
-                                'STK-ZEKY'
-
-                            OR UPPER(TRIM(kit_items.item_code))
-                                LIKE 'STK-ZEKY-%'
-
-                            OR UPPER(TRIM(kit_items.item_description))
-                                LIKE '%ZEKY STARTER KIT%'
-                        ) > 0
-                        THEN 'Zeky'
-
-                        ELSE NULL
-                    END AS starter_brand
-
-                FROM order_items kit_items
-
-                -- Scoped to the SAME orders the outer query cares
-                -- about, instead of the whole table.
-                INNER JOIN orders o2
-                    ON o2.id = kit_items.order_id
-                   AND o2.order_datetime >= :from_date_sub
-                   AND o2.order_datetime < :to_exclusive_sub
-                   AND o2.order_status = :confirmed_status_sub
-                   {$subOrderTypeCondition}
-
-                GROUP BY kit_items.order_id
-            ) starter_order
-                ON starter_order.order_id = o.id
+            {$starterOrderJoin}
 
             WHERE o.order_datetime >= :from_date
               AND o.order_datetime < :to_exclusive
@@ -311,10 +299,6 @@ function getSalesByBrand(
         ORDER BY classified.sale_date, classified.report_brand
     ";
 
-    $params['from_date_sub'] = $params['from_date'];
-    $params['to_exclusive_sub'] = $params['to_exclusive'];
-    $params['confirmed_status_sub'] = $params['confirmed_status'];
-
     $statement = $pdo->prepare($sql);
     $statement->execute($params);
 
@@ -328,7 +312,13 @@ function getSalesByBrand(
     }
 
     $sales = [];
-    foreach (['Choco Albab', 'Nafesa', 'Zeky', 'Event Ticket'] as $brand) {
+    $brands = ['Choco Albab', 'Nafesa', 'Zeky'];
+    if ($separateStk) {
+        $brands[] = 'STK';
+    }
+    $brands[] = 'Event Ticket';
+
+    foreach ($brands as $brand) {
         $sales[$brand] = array_fill_keys($dates, 0.00);
     }
 
@@ -395,7 +385,7 @@ function combineReports(array $repurchase, array $registration): array
 {
     $dates = $repurchase['dates']; // same date range for both
 
-    $brands = ['Choco Albab', 'Nafesa', 'Zeky', 'Event Ticket'];
+    $brands = ['Choco Albab', 'Nafesa', 'Zeky', 'STK', 'Event Ticket'];
 
     $combinedSales = [];
     foreach ($brands as $brand) {
@@ -526,7 +516,26 @@ if ($isAjax) {
             $companyFilter,
             REGISTRATION_ORDER_TYPES
         );
-        $combinedReport = combineReports($repurchaseReport, $registrationReport);
+        $repurchaseCombinedReport = getSalesByBrand(
+            $pdo,
+            $from,
+            $to,
+            $companyFilter,
+            REPURCHASE_ORDER_TYPES,
+            true
+        );
+        $registrationCombinedReport = getSalesByBrand(
+            $pdo,
+            $from,
+            $to,
+            $companyFilter,
+            REGISTRATION_ORDER_TYPES,
+            true
+        );
+        $combinedReport = combineReports(
+            $repurchaseCombinedReport,
+            $registrationCombinedReport
+        );
     } catch (Throwable $e) {
         error_log('Sales by Brand report failed: ' . $e->getMessage());
         http_response_code(500);
@@ -783,7 +792,7 @@ include __DIR__ . '/../includes/sidebar.php';
         <section class="card">
             <div class="card-title">Total Sales by Brand</div>
             <div class="card-subtitle">
-                Combined repurchase and registration sales, separated by brand.
+                Combined repurchase and registration sales, with Choco Albab, Nafesa, Zeky and STK shown separately.
             </div>
             <div class="table-wrap">
                 <table class="brand-table" id="combinedBrandTable">
@@ -815,7 +824,7 @@ include __DIR__ . '/../includes/sidebar.php';
         <section class="card">
             <div class="card-title">Register Sales by Brand</div>
             <div class="card-subtitle">
-                Registration Order and On Behalf Register Order, separated by brand.
+                Registration Order and On Behalf Register Order, with starter kits attributed to their brand.
             </div>
             <div class="table-wrap">
                 <table class="brand-table" id="registrationBrandTable">
