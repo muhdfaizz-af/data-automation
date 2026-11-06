@@ -210,7 +210,7 @@ function getProductTypeLabel(string $type): string
  * Convert an item code to its master/canonical code.
  *
  * First, explicitly configured aliases are applied.
- * Second, common PRE- and PREORDER- prefixes are removed.
+ * Second, common PRE-, PREORDER-, Q- and 24HR- prefixes are removed.
  */
 function canonicalizeItemCode(string $code): string
 {
@@ -220,7 +220,7 @@ function canonicalizeItemCode(string $code): string
         return PRODUCT_CODE_MAP[$code];
     }
 
-    $code = preg_replace('/^(?:(?:PREORDER|PRE|Q)-)+/i', '', $code);
+    $code = preg_replace('/^(?:(?:PREORDER|PRE|Q|24HR)-)+/i', '', $code);
 
     return $code ?: 'UNKNOWN';
 }
@@ -463,8 +463,17 @@ function getRankedProducts(
     $rows = $statement->fetchAll();
     $products = [];
 
-    // Process NORMAL rows first so COMPOSITE rows can only merge into
-    // an existing loose SKU and never appear standalone.
+    // Identify actual loose SKUs present in the selected report
+    $normalCodes = [];
+    foreach ($rows as $row) {
+        if (strtoupper(trim((string) ($row['product_type'] ?? ''))) === 'NORMAL') {
+            $normalBrand = strtoupper(trim((string) $row['brand']));
+            $normalCode = canonicalizeItemCode((string) $row['item_code']);
+            $normalCodes[$normalBrand][$normalCode] = true;
+        }
+    }
+
+    // Prefer NORMAL descriptions when merging promotional sales.
     usort(
         $rows,
         static function (array $left, array $right): int {
@@ -490,10 +499,26 @@ function getRankedProducts(
         // - sales from COMPOSITE rows can still create the product entry,
         //   but quantity comes only from loose/normal scarf rows or starter-kit units.
         $masterCode = canonicalizeItemCode($rawCode);
+        $isNormalRow = strtoupper(trim((string) ($row['product_type'] ?? ''))) === 'NORMAL';
+
+        // Matching logic that checks row is composite, description ends with "X number", ends with the corresponding "-number" suffix 
+        if (
+            !$isNormalRow &&
+            !isset($normalCodes[$brand][$masterCode]) &&
+            preg_match('/(?:^|\s)X\s*([1-9][0-9]*)\s*$/i', $description, $packMatch) === 1
+        ) {
+            $packSuffix = '-' . $packMatch[1];
+            if (str_ends_with($masterCode, $packSuffix)) {
+                $looseCode = substr($masterCode, 0, -strlen($packSuffix));
+                if (isset($normalCodes[$brand][$looseCode])) {
+                    $masterCode = $looseCode;
+                }
+            }
+        }
+
         $key = $selectedType === 'inner' || $selectedType === 'hand_socks'
             ? $brand . '|' . strtoupper($description)
             : $brand . '|' . $masterCode;
-        $isNormalRow = strtoupper(trim((string)($row['product_type'] ?? ''))) === 'NORMAL';
 
         if (!isset($products[$key])) {
             $products[$key] = [
