@@ -182,6 +182,20 @@ function identifyProductCategory(
     $description = strtoupper(trim($description));
     $productType = strtoupper(trim($productType));
 
+    $cartonPromoCategories = [
+        'BBCC-001-01' => 'BLUEBERRY CHOCOLATE DRINK',
+        'BCLC-001-01' => 'BUTTERCREAM LATTE DRINK',
+        'BMDC-001-01' => 'BELGIAN MOCHA DRINK',
+        'BRCC-001-01' => 'BRAZILLIAN COFFEE DRINK',
+        'CBCDA-002-01' => '(BCDB) BOX BELGIAN CHOCOLATE DRINK',
+    ];
+
+    if (
+        $brand === 'CHOCO ALBAB' && isset($cartonPromoCategories[$itemCode])
+    ) {
+        return $cartonPromoCategories[$itemCode];
+    }
+
     // Exclude transactions that cannot represent product sales.
     $excludedTerms = [
         'PAPERBAG',
@@ -293,16 +307,6 @@ function identifyProductCategory(
         return 'ZEKY BRAIN HERO';
     }
 
-    // Free/component scarf codes inside a Nafesa Starter Kit.
-    if (
-        $brand === 'STK' &&
-        preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)
-    ) {
-        return 'SCARF';
-    }
-
-    // Consolidate all actual Nafesa scarves
-    // Inner products are kept as seperate category
     if (
         ($brand === 'STK' && preg_match('/^STK-N(?!F(?:-|$))/', $itemCode)) ||
         $brand === 'NAFESA'
@@ -316,6 +320,13 @@ function identifyProductCategory(
         }
 
         return 'SCARF';
+    }
+
+    if (
+        $brand === 'CHOCO ALBAB' &&
+        in_array($itemCode, ['AC-020', 'ACC-020'], true)
+    ) {
+        return 'BELGIAN CHOCOLATE COOKIES (BCC)';
     }
 
     // Ruby Indulgence carton sales roll up to the loose product category.
@@ -388,7 +399,7 @@ function isCategoryQuantityRow(
     return match ($category) {
         // Joy bundles already have their loose BCD quantity recorded separately.
         '(BCDB) BOX BELGIAN CHOCOLATE DRINK' => $itemCode === 'BCD-002',
-
+        
         // CA-6 is the loose component generated from Unicorn cartons and packs. Not count CA-006/CAC-011
         'UNICORN STRAWBERRY CHOCOLATE TUB' => $itemCode === 'CA-6',
 
@@ -454,140 +465,7 @@ function getDailySalesTotal(
     return round((float)$statement->fetchColumn(), 2);
 }
 
-// Load composite item promo data, loads selected composites, component mappings, and catalogue prices
-function loadOverallPromoData(PDO $pdo): array
-{
-    $promos = [];
-    $componentCodes = [];
-
-    foreach ($pdo->query(
-        'SELECT company_code, item_code, loose_items
-        /* Selects promos that use weighted allocation */
-        FROM composite_items WHERE include_in_overall = 1'
-    ) as $promo) {
-        $company = strtoupper(trim($promo['company_code'] ?: 'ALL'));
-        $code = strtoupper(trim($promo['item_code']));
-    
-        $promos[$company][$code] = (string) ($promo['loose_items'] ?? '');
-        /* Supplies component SKUs and quantities per pack */
-        $items = json_decode($promo['loose_items'] ?? '[]', true);
-        if (is_array($items)) {
-            foreach ($items as $item) {
-                if (is_array($item) && !empty($item['item_code'])) {
-                    $componentCodes[strtoupper(trim($item['item_code']))] = true;
-                }
-            }
-        }
-    }
-
-    $products = [];
-    foreach ($pdo->query(
-        'SELECT product_sku, product_name, brand, wmdp, sbhdp, emdp, sgdp
-        /* Supplies component names, brands, and regional prices */
-        FROM price_code'
-    ) as $product) {
-        $products[strtoupper(trim($product['product_sku']))] = $product;
-    }
-
-    return [$promos, $products, $componentCodes];
-}
-
-// Composite item validations, determines reporting categories, and calculates quantity x price weights
-function overallPromoComponents(
-    string $json,
-    array $products,
-    string $field
-): array {
-    $items = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
-
-    if (!is_array($items) || !$items) {
-        throw new RuntimeException('No configured components.');
-    }
-
-    $components = [];
-
-    foreach ($items as $item) {
-        if (!is_array($item)) {
-            throw new RuntimeException('Invalid component.');
-        }
-
-        $code = strtoupper(trim((string) ($item['item_code'] ?? '')));
-        $qty = filter_var(
-            $item['quantity'] ?? null,
-            FILTER_VALIDATE_INT,
-            ['options' => ['min_range' => 1]]
-        );
-
-        if ($code === '' || $qty === false) {
-            throw new RuntimeException('Invalid component SKU or quantity.');
-        }
-
-        $product = $products[$code] ?? null;
-
-        if (!$product || !isset($product[$field]) ||
-        (float) $product[$field] <= 0) {
-            throw new RuntimeException(
-                "Missing positive {$field} price for {$code}."
-            );
-        }
-
-        $category = identifyProductCategory(
-            (string) ($product['brand'] ?? ''),
-            $code,
-            (string) ($product['product_name'] ?? ''),
-            'NORMAL'
-        );
-
-        $components[$code] ??= [
-            'category' => $category,
-            'weight' => 0.0,
-        ];
-
-        $components[$code]['weight'] +=
-        $qty * (float) $product[$field];
-    }
-
-    return $components;
-}
-
-// Distributes invoice revenue according to weights, including cent rounding
-function overallPromoAmounts(float $sales, array $components): array
-{
-    $totalWeight = array_sum(array_column($components, 'weight'));
-
-    if ($totalWeight <= 0) {
-        throw new RuntimeException('No positive weights.');
-    }
-
-    $totalCents = (int) round(abs($sales) * 100);
-    $cents = [];
-    $fractions = [];
-
-    foreach ($components as $code => $component) {
-        $exact = $totalCents * $component['weight'] / $totalWeight;
-        $cents[$code] = (int) floor($exact);
-        $fractions[$code] = $exact - $cents[$code];
-    }
-
-    $remaining = $totalCents - array_sum($cents);
-    arsort($fractions, SORT_NUMERIC);
-
-    foreach (array_keys($fractions) as $code) {
-        if ($remaining <= 0) break;
-        $cents[$code]++;
-        $remaining--;
-    }
-
-    $sign = $sales < 0 ? -1 : 1;
-
-    foreach ($cents as $code => $amount) {
-        $cents[$code] = $sign * $amount / 100;
-    }
-
-    return $cents;
-}
-
-// Applies the allocation to selected promo invoice rows and accumulates sales into product categories
+// Load and consolidate loose products from Tax Invoice MY and SG
 function getOverallProducts(
     PDO $pdo,
     string $from,
@@ -615,8 +493,6 @@ function getOverallProducts(
         oi.item_code,
         oi.item_description,
         c.company_code,
-        UPPER(TRIM(COALESCE(oi.order_processed_location, ''))) AS processed_location,
-        UPPER(TRIM(COALESCE(o.invoice_prefix, ''))) AS invoice_prefix,
 
         SUM(COALESCE(oi.qty, 0)) AS row_quantity,
 
@@ -650,20 +526,13 @@ function getOverallProducts(
                 oi.product_type,
                 oi.item_code,
                 oi.item_description,
-                c.company_code,
-                UPPER(TRIM(COALESCE(oi.order_processed_location, ''))),
-                UPPER(TRIM(COALESCE(o.invoice_prefix, '')))
+                c.company_code
         ";
 
     $statement = $pdo->prepare($sql);
     $statement->execute($params);
 
     $rows = $statement->fetchAll();
-    [$promoCatalogue, $promoProducts, $promoComponentCodes] = loadOverallPromoData($pdo);
-    $promoWeightCache = [];
-    $promoIssues = [];
-    $unallocatedPromoSales = 0.0;
-    $unrankedPromoSales = 0.0;
     $categories = [];
     $overallSales = 0.00;
     $soldScarfCodes = [];
@@ -673,11 +542,8 @@ function getOverallProducts(
     foreach ($rows as $row) {
         $itemCode = strtoupper(trim((string)$row['item_code']));
         $orderId = (int)$row['order_id'];
-        $configuredPromo = $promoCatalogue[$row['company_code']][$itemCode]
-            ?? $promoCatalogue['ALL'][$itemCode]
-            ?? null;
 
-        if ($itemCode === 'JOY-BUNDLE-1' && $configuredPromo === null) {
+        if ($itemCode === 'JOY-BUNDLE-1') {
             $joyBundleOrderIds[$orderId] = true;
         }
 
@@ -689,7 +555,7 @@ function getOverallProducts(
     }
 
     /*
-     * Record every Nafesa scarf master code with positive sales.
+     * Record every Nafesa scarf master code with positive sales. 
      * Sales may be held by a COMPOSITE Q-code while quantity is held by its
      * corresponding NORMAL/loose code.
      */
@@ -740,79 +606,12 @@ function getOverallProducts(
             default => null,
         };
 
-        $category = identifyProductCategory($brand, $itemCode, $description, $productType);
-
-        if (
-            strtoupper(trim($productType)) === 'NORMAL'
-            && isset($promoComponentCodes[$normalizedItemCode], $promoProducts[$normalizedItemCode])
-        ) {
-            $master = $promoProducts[$normalizedItemCode];
-
-            $category = identifyProductCategory(
-                (string) ($master['brand'] ?? ''),
-                $normalizedItemCode,
-                (string) ($master['product_name'] ?? ''),
-                'NORMAL'
-            );
-        }
-
-        $promoJson = $promoCatalogue[$row['company_code']][$normalizedItemCode]
-            ?? $promoCatalogue['ALL'][$normalizedItemCode]
-            ?? null;
-
-        if (
-            $promoJson !== null
-            && strtoupper(trim($productType)) === 'COMPOSITE'
-        ) {
-            // Current report tiers: Singapore, Bintulu, other Malaysia.
-            $field = $row['company_code'] === 'SG'
-            ? 'sgdp'
-            : (($row['processed_location'] === 'MYBTWH'
-            || $row['invoice_prefix'] === 'MYBT') ? 'emdp': 'wmdp');
-
-            $promoSales = round(
-                $sales * ($row['company_code'] === 'SG' ? SGD_TO_MYR_RATE : 1),
-                2
-            );
-
-            $overallSales += $promoSales;
-
-            $key = $row['company_code']
-            . '|' . $normalizedItemCode
-            . '|' . $field;
-
-            if (!array_key_exists($key, $promoWeightCache)) {
-                try {
-                    $promoWeightCache[$key] = overallPromoComponents($promoJson, $promoProducts, $field);
-                } catch (Throwable $error) {
-                    $promoWeightCache[$key] = $error->getMessage();
-                }
-            }
-
-            $components = $promoWeightCache[$key];
-
-            if (is_string($components)) {
-                $unallocatedPromoSales += $promoSales;
-                $promoIssues[$key] = "{$normalizedItemCode} ({$field}): {$components}";
-                continue;
-            }
-
-            foreach (overallPromoAmounts($promoSales, $components) as $code => $amount) {
-                $promoCategory = $components[$code]['category'];
-
-                // Priced accessories can receive a share without entering rankings.
-                if ($promoCategory === null) {
-                    $unrankedPromoSales += $amount;
-                    continue;
-                }
-
-                $categories[$promoCategory] ??= ['category' => $promoCategory, 'total_quantity' => 0, 'total_sales' => 0.00, 'source_codes' => [],];
-                $categories[$promoCategory]['total_sales'] += $amount;
-                $categories[$promoCategory]['source_codes'][$normalizedItemCode] = true;
-            }
-
-            continue;
-        }
+        $category = identifyProductCategory(
+            $brand,
+            $itemCode,
+            $description,
+            $productType
+        );
 
         // Only JOY-BUNDLE-1 uses its loose BCD quantity for sales.
         if ($isJoyBundle) {
@@ -917,9 +716,6 @@ function getOverallProducts(
     return [
         'products' => $result,
         'overall_sales' => round($overallSales, 2),
-        'promo_issues' => array_values($promoIssues),
-        'unallocated_promo_sales' => round($unallocatedPromoSales, 2),
-        'unranked_promo_sales' => round($unrankedPromoSales, 2),
     ];
 }
 
@@ -1066,9 +862,6 @@ $topSales = 0.00;
 $topPercentage = 0.00;
 $bttomSales = 0.00;
 $bottomPercentage = 0.00;
-$promoIssues = [];
-$unallocatedPromoSales = 0.0;
-$unrankedPromoSales = 0.0;
 
 $pdo = getDBConnection();
 
@@ -1085,9 +878,6 @@ if(empty($errors) && $pdo) {
             $regionFilter
         );
 
-        $promoIssues = $productReport['promo_issues'];
-        $unallocatedPromoSales = $productReport['unallocated_promo_sales'];
-        $unrankedPromoSales = $productReport['unranked_promo_sales'];
         $products = $productReport['products'];
         // Keep the displayed total aligned with item-level adjustments,
         // including loose BCDB pricing and excluded composite bundles.
@@ -1267,24 +1057,6 @@ include __DIR__ . '/../includes/sidebar.php';
                     <li><?= htmlspecialchars($error) ?></li>
                 <?php endforeach; ?>
             </ul>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($promoIssues || $unallocatedPromoSales != 0 || $unrankedPromoSales != 0): ?>
-        <div class="error-box" role="status">
-            <strong>Promo allocation review</strong>
-
-            <p>Unallocated promo sales: RM<?= number_format($unallocatedPromoSales, 2) ?></p>
-            <p>Non-product component shares: RM<?= number_format($unrankedPromoSales, 2) ?></p>
-            <p>These amounts remain in overall sales but are excluded from product rankings.</p>
-
-            <?php if ($promoIssues): ?>
-                <ul>
-                    <?php foreach ($promoIssues as $issue): ?>
-                        <li><?= htmlspecialchars($issue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php endif; ?>
         </div>
     <?php endif; ?>
 
