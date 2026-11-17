@@ -150,6 +150,21 @@ function dashboardProductCategory($brand, $itemCode, $description, $productType)
     $itemCode = strtoupper(trim($itemCode));
     $description = strtoupper(trim($description));
     $productType = strtoupper(trim($productType));
+
+    $cartonPromoCategories = [
+        'BBCC-001-01' => 'BLUEBERRY CHOCOLATE DRINK',
+        'BCLC-001-01' => 'BUTTERCREAM LATTE DRINK',
+        'BMDC-001-01' => 'BELGIAN MOCHA DRINK',
+        'BRCC-001-01' => 'BRAZILLIAN COFFEE DRINK',
+        'CBCDA-002-01' => '(BCDB) BOX BELGIAN CHOCOLATE DRINK',
+    ];
+
+    if (
+        $brand === 'CHOCO ALBAB' && isset($cartonPromoCategories[$itemCode])
+    ) {
+        return $cartonPromoCategories[$itemCode];
+    }
+
     if (str_starts_with($itemCode, 'BPCC-') || str_contains($description, 'JOY CUP')) return null;
     foreach (['PAPERBAG', 'PAPER BAG', 'BUNTING', 'BROCHURE', 'FLYER', 'VOUCHER', 'DISPLAY', 'MINI RAK', 'MINI RACK', 'TABLE CLOTH', 'APRON', 'PLASTIC CUP', 'TUMBLER', 'WOVEN BAG', 'MENU BOARD', ' BOARD '] as $term) {
         if (str_contains($description, $term)) return null;
